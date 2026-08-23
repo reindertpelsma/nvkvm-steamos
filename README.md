@@ -1,50 +1,81 @@
-# nvkvm-pv on SteamOS — working artifacts
+# nvkvm-pv on SteamOS
 
-Rescued from the physical PC (`root@172.22.1.20`), which is periodically handed
-over and is **not durable storage**. Everything here is the part that cannot be
-regenerated; everything regenerable was deliberately left behind.
+An **attempt** to run [SteamOS](https://store.steampowered.com/steamos) as a
+guest of [nvkvm-pv](https://github.com/reindertpelsma/nvkvm-pv), NVIDIA GPU
+paravirtualisation for KVM.
 
-## What this is
+**Status: it boots and the desktop is GPU-accelerated. It is not finished.**
+No game has been launched yet.
 
-Getting **SteamOS** — an immutable, AMD-first OS with no NVIDIA support of its
-own — to run as an **nvkvm-pv guest** with working GPU acceleration, and
-ultimately to run games.
+SteamOS is an interesting target precisely because nothing about it was built
+for this: it is immutable (read-only rootfs, atomic A/B updates), has no usable
+package manager, is AMD-first, and ships **no NVIDIA support at all**.
 
-Status at time of rescue (2026-08-23): SteamOS boots as an nvkvm guest,
-`nvidia-smi` reports the host's RTX 4070 / driver 595.84, Vulkan enumerates the
-GPU (`vkEnumeratePhysicalDevices rc=0 count=1`), and **Steam's client renders
-through nvkvm under gamescope**. Open: persistent disk (the repair image's 5 GB
-rootfs leaves ~36 MB after the driver install), whole-desktop-on-nvkvm, and
-launching an actual game.
+## What works
 
-## Files
+Measured on an RTX 4070 host (driver 595.84), guest booted from Valve's
+SteamOS recovery image:
 
-| file | what |
-|---|---|
-| `NOTES.md` | the working log — read this first |
-| `install_nvkvm_userspace.sh` | the offline installer (NBD-mount the image, `btrfs property set ro false`, chroot, install) |
-| `nv2081_fix.diff` | adds the `NV2081_BINAPI` alloc-param size row to nvkvm (`src/abi/nvgpu.h` + both switch sites in `src/guest/nvkvm_main.c`) — **not yet committed upstream** |
-| `diagnostics/vk_probe.py` | ctypes-only Vulkan probe; needs no compiler, which the repair image lacks |
-| `type_send.sh` | drives the guest via QEMU-monitor `sendkey` (the image has no sshd) |
-| `*_boot*.log`, `gate_build.log`, `build_qemu.log` | build and boot evidence |
-| `evidence/*.ppm.gz` | screendumps from inside the guest |
+- `nvkvm-guest.ko` builds against Valve's neptune kernel (`6.16.12-valve24.4`)
+- `nvidia-smi` **inside the guest** reports the host's GPU: `Driver 595.84,
+  CUDA 13.2, NVIDIA GeForce RTX 4070`
+- Vulkan enumerates the GPU: `vkEnumeratePhysicalDevices rc=0 count=1`
+- **The entire Plasma desktop renders through nvkvm**, automatically from a cold
+  boot — `nvidia-smi` in the guest lists `kwin_wayland`, `Xwayland` and
+  `plasmashell` as real GPU processes, and KWin holds only nvkvm's DRM node open
+- QEMU reports `display mode = GL zero-copy ... NVIDIA GeForce RTX 4070`,
+  **40–60 fps at under 0.5 ms present latency, zero dropped frames**
+- Steam's client runs (under gamescope and from the desktop) on persistent disk
 
-## Two lessons worth keeping
+## What does not
+
+- **No game launched.** Steam sits at an unauthenticated sign-in screen; that
+  needs interactive credentials and 2FA.
+- Built against the **recovery image**, not a real installed SteamOS. Whether
+  the recovery image's own install flow carries these changes into an installed
+  system is untested.
+- One non-fatal `GL_INVALID_OPERATION` per boot, matching nvkvm's documented
+  limitation that NVIDIA cannot use a LINEAR dma-buf as an EGLImage render
+  target — believed to be KWin's hardware cursor plane. Cosmetic; the desktop
+  composites fine.
+- `NVKVM_PRESENT_MODE=readback` **hangs the guest at the GRUB handoff** on this
+  host, reproducibly. Not root-caused.
+
+## Build
+
+```sh
+./build_nvkvm_steamos_image.sh --ko path/to/nvkvm-guest.ko   # see --help
+```
+
+Offline: NBD-mount the image, `btrfs property set ro false`, install the module,
+run NVIDIA's own installer in a chroot, write config, resize. No boot required.
+
+This script was **run and its output booted** as an independent VM reaching the
+same measured end state — not merely written. Its header states two limits it
+does not solve: it takes a prebuilt `.ko`, and it hardcodes
+`KWIN_DRM_DEVICES=/dev/dri/card0` from observation rather than a sysfs lookup.
+
+## Two lessons worth more than the code
 
 1. **Never hand-pick NVIDIA userspace libraries.** A hand-written file list
-   silently omitted `libnvidia-glsi/tls/glcore/gpucomp`, so `libGLX_nvidia.so.0`
-   failed to `dlopen`, Vulkan enumerated zero devices, and **no kernel activity
+   omitted `libnvidia-glsi/tls/glcore/gpucomp`, so `libGLX_nvidia.so.0` failed
+   to `dlopen`, Vulkan enumerated zero devices, and **no kernel activity
    happened at all** — which looked like an nvkvm forwarding bug and was not.
-   Use NVIDIA's own installer with `--no-kernel-modules`; it staged 69 files
-   against ~19 by hand, including the 32-bit compat libs Steam needs.
+   Use `nvidia-installer --no-kernel-modules`: 69 files staged against ~19 by
+   hand, including the 32-bit libs Steam needs.
 2. **Mount where you can, install where you must.** On a managed distro,
    mounting the host's driver libraries into the guest makes them track the host
-   automatically. SteamOS's immutable rootfs makes that impossible, so
-   `nvidia-installer` is the only route there — at the cost of pinning a version
-   that must be re-run when the host driver moves.
+   automatically. An immutable rootfs makes that impossible, so the installer is
+   the only route — at the cost of pinning a version.
 
-## Deliberately not rescued (all regenerable)
+## Layout
 
-`steamos-nvkvm.qcow2`, the extracted `NVIDIA-Linux-x86_64-595.84.run` payload,
-Valve's `linux-neptune-*-headers` tarball and its `vmlinux`, and the SteamOS
-repair image itself — ~7.9 GB combined.
+| path | what |
+|---|---|
+| `build_nvkvm_steamos_image.sh` | the image builder |
+| `install_nvkvm_userspace.sh` | the userspace half, standalone |
+| `agent.py`, `inject_agent.sh` | command channel for a guest with no sshd (base64 over the QEMU monitor) |
+| `diagnostics/vk_probe.py` | ctypes-only Vulkan probe — the recovery image has no compiler |
+| `nv2081_fix.diff` | adds the `NV2081_BINAPI` alloc-param size row to nvkvm |
+| `NOTES.md` | the full working log, 700+ lines |
+| `evidence/` | screendumps from inside the guest |
