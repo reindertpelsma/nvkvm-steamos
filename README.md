@@ -56,6 +56,73 @@ SteamOS recovery image:
 - `NVKVM_PRESENT_MODE=readback` **hangs the guest at the GRUB handoff** on this
   host, reproducibly. Not root-caused.
 
+## The path: image to working desktop
+
+There is **one** supported path, and one script. `boot/steamos_boot.sh` is a
+single self-repairing mechanism that runs at every boot and converges the system
+to a known state. There is deliberately **no separate "fresh install" and
+"update" path** — every step is check-then-act and safe to re-run. On a fresh
+image everything is missing so it does everything; when only the host driver
+changed it reinstalls only the `.run`; when only the nvkvm repo moved it rebuilds
+only the `.ko`.
+
+The script lives on the **read-only 9p share**, not in the image, so changing
+this logic never means touching the SteamOS image.
+
+### 1. Bootstrap (the only steps done from the host)
+
+Exactly two actions, both against the repair `.img`:
+
+1. **Resize it.** Note that `qemu-img resize` leaves the backup GPT header at the
+   old end-of-disk. Linux tolerates that; **OVMF does not** and will refuse to
+   boot. Fix with `sgdisk -e`, and run it against a **loop** device — against
+   `/dev/nbd0` sgdisk fails with `Read error 5`.
+2. **Provision the image offline**, which also plants the systemd unit:
+
+   ```
+   steamos_boot.sh --install-only --root <mounted rootfs>
+   ```
+
+   `--install-only` touches no running-kernel state, so it is safe against a root
+   that is not yours.
+
+Nothing else is ever done by hand.
+
+### 2. Boot
+
+`nvkvm-boot.service` fires, mounts the 9p share, hands over to the script, which
+converges, validates, and hands to the desktop. A healthy run reads:
+
+```
+module up to date at <commit> → NVIDIA userspace matches host (<version>)
+→ Part 1 finished (rc=0) → validation OK
+```
+
+The QEMU command line needs `-fw_cfg opt/ovmf/X-PciMmio64Mb,string=262144` or
+OVMF hangs in firmware before the bootloader **with no error on any console**;
+the qcow2 must be presented as **nvme** (SteamOS expects `/dev/nvme0n1p*`); and
+for playable games use the **SDL** display backend, because GTK does not deliver
+pointer lock.
+
+### 3. Updates
+
+A SteamOS update replaces the entire rootfs, so everything the script installed
+is gone in the new image. The update hook simply runs the same script against the
+new root:
+
+```
+steamos_boot.sh --install-only --root <new image root>
+```
+
+Part 1 sees the arm is missing there and **re-arms itself**, so the stub
+propagates forward without any copy step. Gating the update on this script's exit
+code is deliberate: if provisioning fails, the update does not apply and the old,
+working image keeps running.
+
+Note the gate can only ever check *"did it build and install"*, never *"does it
+work"* — it runs on a live system against a different kernel, so it cannot load
+the module. That is why the boot half has an interactive recovery menu.
+
 ## Build
 
 ```sh
