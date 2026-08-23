@@ -1,0 +1,29 @@
+Decisive GPU-forwarding proof (-vga none run, root-launched):
+  lspci in guest  -> 00:07.0 VGA compatible controller: NVIDIA Corporation AD104 [GeForce RTX 4070]
+                     (the ONLY VGA-class device in the machine)
+  /sys/class/drm  -> card0 -> nvidia         (by driver NAME, not index)
+                     no card1, bochs-drm module not loaded at all (lsmod count 0)
+  /dev/dri        -> card0, renderD128
+  /dev/nvidia*    -> nvidia0, nvidiactl, nvidia-modeset, nvidia-uvm, nvidia-uvm-tools
+  kwin_wayland fds-> /dev/dri/card0 + renderD128 only
+  connector       -> card0-Virtual-1, 1920x1080
+
+Present mode (host QEMU stderr, NVKVM_PRESENT_TIMING=1):
+  nvkvm present: display mode = GL zero-copy (host UI renders on NVIDIA: native import);
+  host GL renderer: NVIDIA Corporation / NVIDIA GeForce RTX 4070/PCIe/SSE2
+  nvkvm present #106: host dma-buf fd=169 1920x1080 pitch=7680 fmt=0x34325241
+                      mod=0x300000000606014   (NVIDIA block-linear, not LINEAR)
+
+Unprivileged run (QEMU as uid 1000 "ubuntu", not root) — WORKS:
+  isolate degrades namespace -> seccomp and SAYS SO loudly
+    ("'namespace' UNAVAILABLE - clone(CLONE_NEWUSER|...) failed: Permission denied",
+     "'uid' UNAVAILABLE - CAP_SETUID=no CAP_SETGID=no",
+     "this is WEAKER than the default 'namespace' isolation")
+  /dev/nvidia* all present, card0 -> nvidia, nvidia-smi OK,
+  "session N RING MAPPED ... 3-way OK", display mode = GL zero-copy, 60.0 frames/s.
+  The commit-7baeeb8 failure (SETUP_RING -ENODEV, "logind could not take device")
+  did NOT reproduce. /dev/kvm carries an ACL: user:ubuntu:rw-
+
+Benign denials (present on a fully working system, correlate with no failure):
+  nvkvm: DENY ctrl cmd 0x00730102   x2
+  nvkvm: DENY ctrl cmd 0x2080220b   x6
