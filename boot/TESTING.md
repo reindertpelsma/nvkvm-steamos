@@ -6,6 +6,73 @@ was decompressed, loop-mounted, and Part 1 was run against it with
 `--root <mounted rootfs>`, with a bind mount standing in for the 9p share.
 This exercises everything except the 9p transport itself and an actual guest boot.
 
+---
+
+## AMENDMENT — 2026-08-23: a bare-metal run, and what it changed
+
+Everything above and below this line, unless a note says otherwise, was
+measured on the **rented vast.ai box (RTX 3090, host driver 580.105.08,
+nested)**. On 2026-08-23 the same script ran on a **physical workstation
+(RTX 4070, host driver 595.84)** with a real SteamOS A/B install, and that
+moved the line in **both directions**. Read the rig before you read the result:
+several conclusions in this file are properties of the rented box, not of the
+script.
+
+**Newly proven (bare metal, RTX 4070):**
+
+- **Part 2 runs.** The guest boots, converges at every boot, loads the module
+  and hands over to the desktop, with no manual step after the one-time offline
+  provisioning. This file's *"No guest boot"* line is obsolete.
+- **The module builds and installs through this script.** `module up to date at
+  7ed98e26…` in `evidence-pc-20260823/part1_rerun.log` is `built_commit`
+  matching `repo_commit`, and that `.commit` file is written by
+  `build_and_install_module` and nothing else. The *"module was never actually
+  built"* blocker was an artifact of the repair image's kernel being older than
+  Valve's repo, not of the script.
+- **GL zero-copy**, not readback — see the correction to *"Present path
+  ANSWERED"* below.
+- **A game runs.** Portal 2 launches and plays on the SteamOS guest, which
+  retires this file's *"No actual game was launched"* caveat.
+
+**Two real bugs this run found — both now fixed in `steamos_boot.sh`:**
+
+1. **`ensure_build_deps` ran before the is-module-current check.** Caught in the
+   act in `evidence-pc-20260823/part1_rerun.log`: `installing core build tools:
+   gcc make` is printed *before* `module up to date at 7ed98e26…`. Two costs.
+   It fetched gcc+make (55 MB down, 216 MB installed) on **every boot** on a
+   rootfs with ~500 MB free and then removed them again; and on a root with no
+   resolver the install fails, which set `rc=1` — so a **fully converged,
+   perfectly working system reported `Part 1 finished (rc=1)` forever**. The
+   toolchain fetch now lives inside the out-of-date branch, so it happens only
+   when a build is actually going to happen.
+2. **`validate()` returned a false CLASS 4 on a fully working system.** It gates
+   on `ldconfig -p | grep libGLX_nvidia`, and on a real A/B install the offline
+   chroot's `ldconfig` **did not persist** — `/etc/ld.so.cache` still had no
+   NVIDIA entries on first boot. Everything worked anyway (the libs sit in
+   `/usr/lib`, a default search directory, and the SONAME symlinks resolve), so
+   the system printed *"validation FAILED … The desktop will start on the
+   emulated VGA"* while the desktop was in fact running on nvkvm at 60 fps.
+   This matters more than a cosmetic wrong message: **the recovery menu keys its
+   three failure classes off `validate`**, so a green system was being routed
+   into the recovery path. Fixed by running `in_target ldconfig` on **every**
+   converge, not only after an install — cheap, idempotent, and it fixes
+   `nvkvm-recovery.sh`'s own copy of the check at the same time, since both read
+   the same cache. The check itself is unchanged.
+
+   A green system reporting a hard failure is exactly as bad as the reverse, and
+   this file exists to state what is proven — so it is worth naming the class of
+   error: **the validator, not the system, was the thing that was broken.**
+
+The reproduction path that reaches this end state is written out command by
+command in [`../TUTORIAL.md`](../TUTORIAL.md).
+
+**Still not exercised, on any rig:** the update hook against a real rauc A/B
+device, the 30-second countdown, `nvkvm.skip=1`, and the interactive
+`nvkvm-recovery.sh menu` selections. The CLASS-4 *branch* of Part 2 did run —
+by way of bug 2 above — and printed its guidance correctly.
+
+---
+
 ## Verified working (MEASURED)
 
 - `ensure_pacman_keyring` — a freshly-mounted SteamOS rootfs has no initialised
@@ -53,7 +120,20 @@ This exercises everything except the 9p transport itself and an actual guest boo
 7. **Extracting into the target rootfs fills it.** Now extracted outside the root
    and bind-mounted in, which is also what the proven offline recipe does.
 
+> **[CORRECTED 2026-08-23, bare metal RTX 4070]** Two more, found only once the script ran on real hardware: `ensure_build_deps`
+> firing before the is-module-current check, and `validate()` returning a false
+> CLASS 4. Both are written up in the AMENDMENT section above.
+
+
 ## Still failing / open
+
+> **[CORRECTED 2026-08-23]** Three of the four items below have moved. The module
+> **does** build and install through this script; the guest **does** boot and
+> Part 2 **does** run; disk space is no longer a hard blocker in practice,
+> because the documented path grows the image by 60 GB before provisioning it
+> (README step 1) — the underlying tightness of an *ungrown* 5 GB repair rootfs
+> is unchanged and the pre-flight check still guards it. Only **the update hook
+> against a real rauc A/B device** remains untested. See the AMENDMENT above.
 
 - **The module was never actually built.** Blocked on 5: Valve's repo no longer
   carries headers for the repair image's kernel (`valve24.4`; the repo is on
@@ -195,6 +275,16 @@ therefore still unanswered on this 3090 host. Not asserting either.
 
 ## Present path ANSWERED: readback, and why — plus the compositor fix
 
+> **[CORRECTED 2026-08-23, bare metal RTX 4070]** **The title is now rig-specific.** `readback` was this *rented box's* answer,
+> and the section itself says so ("a rig limitation, not an nvkvm regression").
+> On bare metal with `-display gtk,gl=on` the measured answer is
+> `display mode = GL zero-copy (host UI renders on NVIDIA: native import)`,
+> importing a dma-buf with the NVIDIA block-linear modifier
+> `0x300000000606014` at 60 fps, `present_mean` ~0.31 ms, zero dropped or
+> failed frames. `evidence-pc-20260823/final-state.txt`. Zero-copy remains
+> unverified **on a 3090** — nobody has retried it there.
+
+
 ### Getting the compositor onto nvkvm's plane
 Root cause of it staying on the VGA was an **ordering bug in my own unit**.
 `nvkvm-drm-env.service` was ordered only `After=systemd-udev-settle`, so it ran
@@ -271,6 +361,40 @@ is not a proof for `gamescope-session` or for a Steam game, neither of which has
 been run since the trim profile landed.
 
 ## SDL settled — and the readback reason is NOT "the rig has no GL"
+
+> **[CORRECTED 2026-08-23, bare metal RTX 4070]** *"SDL settled"* is the wrong
+> title for this section now, and its closing verdict — *"Working configuration
+> for this box: `-display gtk`"* — is a statement about **that rented box**,
+> not a recommendation.
+>
+> What is true now, attributed to guest and backend because the behaviour
+> differs along both:
+>
+> | backend | pointer lock | Linux guest (Mint) | SteamOS guest |
+> |---|---|---|---|
+> | `sdl,gl=on` | **works** | renders; Minecraft playable at max settings | **black window**, cause unknown |
+> | `gtk,gl=on` | **does not work** | renders | renders; Portal 2 launches and plays |
+>
+> - **SDL is not broken.** It gives a real Wayland pointer lock, and Minecraft
+>   is playable at max settings through it on the Mint guest — a game that
+>   cannot be played at all without mouse-look, which is what makes that a
+>   proof rather than a frame counter.
+> - **The SteamOS guest under SDL is a black window**, on the bare-metal box,
+>   while QEMU reports zero-copy at ~60 fps and the guest is fully alive. The
+>   cause is **not established**. The useful clue is that it is
+>   **guest-specific** — same host, same nvkvm build, Mint is fine.
+> - The `could not bind the render-node context to the present thread`
+>   /`eglGetError=0x3000` failure recorded below was measured **on the 3090
+>   box**. It is tempting to reach for it as the explanation of the SteamOS
+>   black window, and the Mint result argues against it: that mechanism is
+>   host-side and would break Mint under SDL too. Treat it as an open,
+>   separate bug — the wrong-error-code half of it is a real defect either way.
+> - **GTK's inability to grab is separately root-caused** and is not a
+>   rig quirk: nvkvm-pv's pointer-lock investigation (2026-08-21) measured zero
+>   `REL_X`/`REL_Y` events reaching the guest while grabbed, because QEMU runs
+>   as an **X11 client under Xwayland** on a Wayland host and cannot confine or
+>   warp the pointer.
+
 
 The QEMU on the test box **is built with SDL**:
 
@@ -357,6 +481,16 @@ Caveats, stated rather than glossed:
   errors for the 10-bit formats AB4H/XB4H. gamescope continues past them.
 - **No actual game was launched.** Steam is present in the image but needs a real
   login. "gamescope selects the GPU and Vulkan renders" is what is proven here.
+
+> **[CORRECTED 2026-08-23]** A game has now been launched — **Portal 2, on the
+> SteamOS guest on the bare-metal RTX 4070, under `gtk,gl=on`**: menu and
+> in-game, smooth, nvkvm's present counter at ~60 fps. Portal 2 is a 32-bit
+> Source title, so it also exercises the `lib32` NVIDIA libraries the `steamos`
+> trim profile keeps — which the trim profile had not been proven against
+> before. Mouse-look is unusable under GTK; see the SDL/GTK correction above.
+> That run was through the **Plasma** session, not `gamescope-session`, so the
+> gamescope caveats above still stand as written.
+
 
 ## Serial console: the in-guest access this project kept lacking
 

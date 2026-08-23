@@ -1,6 +1,8 @@
 # archive/ — superseded, kept for reference
 
-Nothing here is on the supported path. `boot/steamos_boot.sh` replaced all of it.
+Nothing here is on the supported path. `boot/steamos_boot.sh` replaced all of
+it — see [`../README.md`](../README.md) for what is current and
+[`../TUTORIAL.md`](../TUTORIAL.md) for how to reproduce it.
 Kept because the notes and evidence elsewhere in this repo reference these by
 name, and because each records a problem that had to be solved before the boot
 script existed.

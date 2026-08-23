@@ -1,5 +1,44 @@
 # SteamOS-as-nvkvm-guest — run notes (2026-08-23)
 
+> ---
+> ## ⚠ HISTORICAL — read the README first
+>
+> *(Banner and the inline `[2026-08-23, later]` notes were added on the evening
+> of 2026-08-23, after the first bare-metal run. The log below was written
+> earlier that same day and on the days before it.)*
+>
+> **This file is an investigation log, not instructions.** It records how
+> SteamOS was dissected, what blocked it, and what was measured, in the order it
+> happened. It is kept because that reasoning is worth more than the scripts it
+> produced. It is **not** a description of how the project works now.
+>
+> Everything below **predates `boot/steamos_boot.sh`**, which replaced the whole
+> install/update mechanism with one self-repairing script that converges the
+> system at every boot. The scripts this file names as current —
+> `install_nvkvm_userspace.sh`, `agent.py`, `inject_agent.sh`, `type_send.sh` —
+> are **superseded and now live in [`archive/`](archive/README.md)**. Do not
+> follow this file to set anything up.
+>
+> - **What is true now:** [`README.md`](README.md) — the supported path,
+>   end to end, with commands.
+> - **How to reproduce it:** [`TUTORIAL.md`](TUTORIAL.md) — every command from a
+>   bare Debian host through to launching a game.
+> - **What has been tested, and where:** [`boot/TESTING.md`](boot/TESTING.md).
+> - **Why the old scripts are gone:** [`archive/README.md`](archive/README.md).
+>
+> Three conclusions in this file were **overtaken by later work on real
+> hardware (2026-08-23)** and are marked inline where they appear:
+>
+> 1. *"Goal 3: launch a game — not reached"* — **it was reached.** Portal 2
+>    launches and plays on the SteamOS guest.
+> 2. `NVKVM_PRESENT_MODE=readback` is no longer the present path — GL zero-copy
+>    works, so there is no reason to force readback at all.
+> 3. The `GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT`/cursor problem was root-caused
+>    to a **missing cursor plane** in nvkvm's virtual KMS, not to a LINEAR
+>    dma-buf as guessed here.
+> ---
+
+
 Artifacts in this directory:
 - steamos-nvkvm.qcow2        — patched working copy (module + 595.84 userspace baked in)
 - OVMF_VARS.fd                — UEFI vars for this VM (OVMF_CODE is shared/system, read-only)
@@ -11,6 +50,14 @@ Artifacts in this directory:
 - mnt/rootfs, nbd_dev.txt     — leftover mount-point/bookkeeping from the offline-mount steps (nothing mounted now)
 - build_qemu.log, steamos_boot.log, gate_build.log — raw logs
 - type_send.sh                — QEMU-monitor sendkey typing helper (no guest network/SSH access in this image)
+
+> **[2026-08-23, later]** This artifact list describes a *working directory on a machine that
+> no longer exists*, not this repository. Of the scripts named here,
+> `install_nvkvm_userspace.sh` and `type_send.sh` are superseded and now live in
+> [`archive/`](archive/README.md). The current mechanism is
+> `boot/steamos_boot.sh`, which installs the real NVIDIA `.run` matching the
+> host driver rather than staging a hand-picked library list.
+
 
 ## Result summary
 M1 GATE: PASS. nvkvm-guest.ko builds clean against the exact SteamOS/neptune
@@ -252,6 +299,16 @@ game if time allows.
 
 ### In-guest command channel — `agent.py` (no sshd workaround)
 
+> **[2026-08-23, later]** **Superseded.** `agent.py` / `inject_agent.sh` / `type_send.sh` are in
+> [`archive/`](archive/README.md). Two cheaper routes exist now:
+> `steamos_boot.sh` provisions sshd when `data/authorized_keys` is present on
+> the 9p share, and a serial getty baked into the image gives a real shell over
+> a unix socket (see `boot/TESTING.md`). The keystroke channel also required a
+> getty already logged in as `deck`, so it was never usable unattended. It is
+> still the only way into a guest with no sshd *and* no serial console, which is
+> why it is kept.
+
+
 This repair/live image has **no sshd** and no way to get a real shell except
 QEMU-monitor `sendkey` keystroke injection, which is too slow/fragile for
 anything beyond a few short commands (screendumps had to be OCR'd by eye,
@@ -457,6 +514,19 @@ boot beyond re-injecting `agent.py` to go measure it):**
   been artifacts of racing two kwin instances for the same DRM master, not
   a real steady-state problem — see below).
 
+> **[2026-08-23, later]** **Overtaken by a root cause.** The "LINEAR dma-buf as an EGLImage render
+> target" reading of these `GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT` errors was
+> wrong. Measured on bare metal 2026-08-23: nvkvm's virtual KMS is built with
+> `drm_simple_display_pipe` and therefore has **no cursor plane at all** —
+> `DRM_IOCTL_MODE_GETPLANERESOURCES` in-guest returns **0 planes**. KWin drives
+> the cursor through a GL path that cannot work, producing 621 of these errors
+> per 15 s of pointer motion (0 when idle, which is why a quiet boot showed
+> only one). `KWIN_FORCE_SW_CURSOR=1` takes it to 0 and now ships in
+> `write_desktop_config`; the durable fix is a real cursor plane in nvkvm and it
+> is not done. See `evidence-pc-20260823/cursor-latency-ab.txt` and the
+> README.
+
+
 **What this is NOT**: this is Plasma (the repair image's own session,
 `sddm.conf.d`'s `Session=plasma`), not `gamescope-session`. On a real
 deployed SteamOS the actual session is gamescope, which is architecturally
@@ -495,6 +565,13 @@ trying it.
   blocks EGL init or compositing.
 
 ### `NVKVM_PRESENT_MODE=readback` hangs the guest at the GRUB handoff — real finding, cost a rebuild
+
+> **[2026-08-23, later]** The hang itself still stands and is still not root-caused. What has
+> changed is that **there is no longer any reason to force readback**: on the
+> bare-metal RTX 4070 the present path is `GL zero-copy (host UI renders on
+> NVIDIA: native import)` with a block-linear modifier, at 60 fps. Do not set
+> `NVKVM_PRESENT_MODE` at all.
+
 
 Tried to force readback mode to get a pixel-level `NVKVM_PRESENT_DUMP`
 measurement (screendump/dump both need it, see above). Booting with
@@ -574,6 +651,14 @@ Goal 2's fixes are now properties of the image, not of this session's
 runtime patches.
 
 ### Goal 3: launch a game — not reached
+
+> **[2026-08-23, later]** **Reached, 2026-08-23.** On the bare-metal RTX 4070 box, **Portal 2
+> launches and plays** on the SteamOS guest — menu and in-game, under
+> `-display gtk,gl=on`. Portal 2 is a 32-bit Source title, so it exercises the
+> `lib32` NVIDIA libraries the `steamos` trim profile deliberately keeps. Mouse-
+> look is unusable under GTK because QEMU delivers no pointer lock there; see
+> the README's *Display backends* section for the full picture.
+
 
 Steam's UI has been confirmed rendering (both via gamescope, previous
 session, and now via the full Plasma desktop, this session) but **no Steam
@@ -677,6 +762,14 @@ logs/fds/`nvidia-smi` alone — though it matches all of that evidence
 exactly.
 
 ### `build_nvkvm_steamos_image.sh` — written and end-to-end tested (supersedes the "Next steps" note above)
+
+> **[2026-08-23, later]** **No longer the supported path.** `boot/steamos_boot.sh --install-only`
+> replaced it: it builds the module from source on the 9p share instead of
+> taking a prebuilt `.ko`, and it is the same code that then converges the
+> system at every boot. The builder is kept because it was genuinely run and its
+> output booted, so it documents a working offline recipe — but new work should
+> not start here.
+
 
 The "Next steps" section above was written as a TODO. It is done now: the
 exact hand-run recipe from the "Rebuilt the guest image from scratch"
