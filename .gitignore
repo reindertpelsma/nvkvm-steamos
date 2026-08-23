@@ -1,0 +1,8 @@
+# scratch and run logs — never commit these
+*.log
+*.tgz
+loopdev.txt
+nbd_dev.txt
+data/authorized_keys
+data/root_authorized_keys
+nvidia/*.run
