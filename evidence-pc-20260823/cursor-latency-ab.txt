@@ -1,0 +1,31 @@
+Cursor-latency A/B — SteamOS 3.8.14 guest under nvkvm, host RTX 4070 / driver 595.84
+Metric: count of "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT" in the guest journal.
+Motion injected via QMP input-send-event (abs pointer), ~125 events/s.
+Session relogged (loginctl terminate-user deck) and allowed to settle between arms;
+the variable was confirmed present/absent in kwin_wayland's own /proc/<pid>/environ.
+
+  arm        KWIN_FORCE_SW_CURSOR   idle 15s   motion 15s
+  BASELINE   absent  (environ=0)           0          621
+  SW_CURSOR  present (environ=1)           0            0
+
+Independently reproduced: an earlier, separate run on the root-launched -vga none
+guest gave idle 0 / motion 621 — the same 621.
+
+Present rate did NOT rise under motion in the baseline arm:
+  idle   : nvkvm disp stats: 2.9 frames/s present_mean=0.31ms
+  motion : nvkvm disp stats: 3.6 frames/s present_mean=0.29ms
+i.e. cursor updates were failing in GL and never being presented, rather than being
+presented slowly.
+
+Underlying nvkvm gap (NOT fixed — needs hardware validation):
+  DRM_IOCTL_MODE_GETPLANERESOURCES in-guest -> plane count = 0
+  /sys/kernel/debug/dri/0/state             -> only "plane[34]: plane-0"
+  src/guest/nvkvm_kms.c builds the pipeline with drm_simple_display_pipe, which
+  creates one primary plane and no cursor plane.
+
+Automatic-application check (after the fix landed in steamos_boot.sh):
+  hand-written /etc/environment.d/91-nvkvm-cursor.conf deleted, guest rebooted
+  -> boot script re-created it during converge, before sddm
+  -> kwin environ had KWIN_DRM_DEVICES=/dev/dri/card0 and KWIN_FORCE_SW_CURSOR=1
+  -> 15s motion: 0 errors
+  -> user confirmed the mouse is smooth on the physical screen
