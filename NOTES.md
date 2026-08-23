@@ -675,3 +675,37 @@ with both compositors opening the same `/dev/dri/card0`). This is
 independent, human-observed confirmation on real hardware, not inferred from
 logs/fds/`nvidia-smi` alone — though it matches all of that evidence
 exactly.
+
+### `build_nvkvm_steamos_image.sh` — written and end-to-end tested (supersedes the "Next steps" note above)
+
+The "Next steps" section above was written as a TODO. It is done now: the
+exact hand-run recipe from the "Rebuilt the guest image from scratch"
+section is mechanized as `build_nvkvm_steamos_image.sh` (saved here,
+executable). It takes the pristine `.img`, an already-built `nvkvm-guest.ko`,
+and the extracted nvidia `.run` payload as inputs (see the script's own
+header comment for exactly what it does and does not automate — notably it
+does not build the kernel module from source, and it hardcodes
+`KWIN_DRM_DEVICES=/dev/dri/card0`, both flagged in-script as scope
+boundaries, not oversights).
+
+**Tested for real, not just syntax-checked**: ran it against the pristine
+image to a fresh output path (`--driver-version 595.84`, auto-detection also
+works via host `nvidia-smi` when `--driver-version` is omitted), independently
+remounted the *result* read-only via a second `qemu-nbd` connection and
+confirmed the config files, kernel module, and previously-fragile nvidia
+libs (`libnvidia-glsi`/`tls`/`glcore`) all landed correctly — then went
+further and **booted the script's output as a second, fully independent
+concurrent VM** (separate monitor socket, separate hostfwd ports, generic
+OVMF vars template rather than the hand-crafted one, alongside the
+still-running main VM the whole time, no interference) and measured the
+same result as the hand-built image, zero manual steps beyond re-injecting
+`agent.py` purely to go read the numbers:
+```
+privileged_modeset  -> N        (module default, no toggle)
+kwin_wayland fds     -> only /dev/dri/card0 (19,20) + /dev/dri/renderD128 (40,48)
+kwin_wayland environ -> KWIN_DRM_DEVICES=/dev/dri/card0 present
+```
+Torn down cleanly afterward (`quit` via its own monitor socket, test qcow2
+removed) — this was a real second guest, not a simulation, and it is gone
+now; the running production VM (`steamos-nvkvm.qcow2`) was never touched by
+this validation pass.
