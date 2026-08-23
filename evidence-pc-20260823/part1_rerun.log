@@ -1,0 +1,38 @@
+[nvkvm] === Part 1: converge (ROOT=/mnt/sos_b, profile=steamos) ===
+[nvkvm] rootfs was rw on entry
+[nvkvm] installing core build tools: gcc make
+resolving dependencies...
+looking for conflicting packages...
+
+Packages (4) libisl-0.27-1  libmpc-1.3.1-2  gcc-15.1.1+r7+gf36ec88aa85a-1  make-4.4.1-2
+
+Total Download Size:    55.43 MiB
+Total Installed Size:  215.72 MiB
+
+:: Proceed with installation? [Y/n] 
+:: Retrieving packages...
+ gcc-15.1.1+r7+gf36ec88aa85a-1-x86_64 downloading...
+ libisl-0.27-1-x86_64 downloading...
+ make-4.4.1-2-x86_64 downloading...
+ libmpc-1.3.1-2-x86_64 downloading...
+error: failed retrieving file 'gcc-15.1.1+r7+gf36ec88aa85a-1-x86_64.pkg.tar.zst' from steamdeck-packages.steamos.cloud : Could not resolve host: steamdeck-packages.steamos.cloud
+warning: fatal error from steamdeck-packages.steamos.cloud, skipping for the remainder of this transaction
+error: failed retrieving file 'libisl-0.27-1-x86_64.pkg.tar.zst' from steamdeck-packages.steamos.cloud : Could not resolve host: steamdeck-packages.steamos.cloud
+error: failed retrieving file 'make-4.4.1-2-x86_64.pkg.tar.zst' from steamdeck-packages.steamos.cloud : Could not resolve host: steamdeck-packages.steamos.cloud
+error: failed retrieving file 'libmpc-1.3.1-2-x86_64.pkg.tar.zst' from steamdeck-packages.steamos.cloud : Could not resolve host: steamdeck-packages.steamos.cloud
+warning: failed to retrieve some files
+error: failed to commit transaction (invalid url for server)
+Errors occurred, no packages were upgraded.
+[nvkvm] ERROR: could not install core build tools
+[nvkvm] module up to date at 7ed98e2624a0f774f6310b643aa3a2423137f502
+[nvkvm] no packages to remove
+[nvkvm] NVIDIA userspace matches host (595.84)
+[nvkvm] desktop configuration written
+[nvkvm] ssh: openssh already present in the image
+[nvkvm] ssh: host keys already present, keeping them
+[nvkvm] ssh: installed authorized_keys for 'deck' (1 key line(s))
+[nvkvm] ssh: installed authorized_keys for 'root' (1 key line(s))
+[nvkvm] ssh: enabled. Reachable only once QEMU also has a hostfwd, e.g.
+[nvkvm] ssh:   -netdev user,id=net0,hostfwd=tcp::15022-:22
+[nvkvm] in-image stub + recovery installed
+[nvkvm] === Part 1 finished (rc=1) ===

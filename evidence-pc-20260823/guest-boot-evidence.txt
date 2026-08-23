@@ -1,0 +1,538 @@
+Aug 23 11:37:26 steamdeck systemd[1]: Starting nvkvm guest provisioning and validation...
+Aug 23 11:37:26 steamdeck nvkvm-recovery.sh[983]: [nvkvm-recovery] share mounted -- handing over to /run/nvkvm/boot/steamos_boot.sh
+Aug 23 11:37:26 steamdeck nvkvm-recovery.sh[983]: [nvkvm] === Part 2: boot ===
+Aug 23 11:37:26 steamdeck nvkvm-recovery.sh[983]: [nvkvm] === Part 1: converge (ROOT=/, profile=steamos) ===
+Aug 23 11:37:26 steamdeck nvkvm-recovery.sh[983]: [nvkvm] rootfs was rw on entry
+Aug 23 11:37:27 steamdeck nvkvm-recovery.sh[983]: [nvkvm] module up to date at 7ed98e2624a0f774f6310b643aa3a2423137f502
+Aug 23 11:37:27 steamdeck nvkvm-recovery.sh[983]: [nvkvm] no packages to remove
+Aug 23 11:37:27 steamdeck nvkvm-recovery.sh[983]: [nvkvm] NVIDIA userspace matches host (595.84)
+Aug 23 11:37:27 steamdeck nvkvm-recovery.sh[983]: [nvkvm] desktop configuration written
+Aug 23 11:37:27 steamdeck nvkvm-recovery.sh[983]: [nvkvm] ssh: openssh already present in the image
+Aug 23 11:37:27 steamdeck nvkvm-recovery.sh[983]: [nvkvm] ssh: host keys already present, keeping them
+Aug 23 11:37:27 steamdeck nvkvm-recovery.sh[983]: [nvkvm] ssh: installed authorized_keys for 'deck' (1 key line(s))
+Aug 23 11:37:27 steamdeck nvkvm-recovery.sh[983]: [nvkvm] ssh: installed authorized_keys for 'root' (1 key line(s))
+Aug 23 11:37:27 steamdeck nvkvm-recovery.sh[983]: [nvkvm] ssh: enabled. Reachable only once QEMU also has a hostfwd, e.g.
+Aug 23 11:37:27 steamdeck nvkvm-recovery.sh[983]: [nvkvm] ssh:   -netdev user,id=net0,hostfwd=tcp::15022-:22
+Aug 23 11:37:27 steamdeck nvkvm-recovery.sh[983]: [nvkvm] in-image stub + recovery installed
+Aug 23 11:37:27 steamdeck nvkvm-recovery.sh[983]: [nvkvm] === Part 1 finished (rc=0) ===
+Aug 23 11:37:27 steamdeck nvkvm-recovery.sh[983]: [nvkvm] validation OK -- handing over to the desktop
+Aug 23 11:37:27 steamdeck systemd[1]: Finished nvkvm guest provisioning and validation.
+Aug 23 11:38:30 steamdeck systemd[1]: nvkvm-boot.service: Deactivated successfully.
+Aug 23 11:38:30 steamdeck systemd[1]: Stopped nvkvm guest provisioning and validation.
+Aug 23 11:38:30 steamdeck systemd[1]: Stopping nvkvm guest provisioning and validation...
+Aug 23 11:38:30 steamdeck systemd[1]: Starting nvkvm guest provisioning and validation...
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm-recovery] share mounted -- handing over to /run/nvkvm/boot/steamos_boot.sh
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] === Part 2: boot ===
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] === Part 1: converge (ROOT=/, profile=steamos) ===
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] rootfs was rw on entry
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] module up to date at 7ed98e2624a0f774f6310b643aa3a2423137f502
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] no packages to remove
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] NVIDIA userspace matches host (595.84)
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] desktop configuration written
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] ssh: openssh already present in the image
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] ssh: host keys already present, keeping them
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] ssh: installed authorized_keys for 'deck' (1 key line(s))
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] ssh: installed authorized_keys for 'root' (1 key line(s))
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] ssh: enabled. Reachable only once QEMU also has a hostfwd, e.g.
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] ssh:   -netdev user,id=net0,hostfwd=tcp::15022-:22
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] in-image stub + recovery installed
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] === Part 1 finished (rc=0) ===
+Aug 23 11:38:30 steamdeck nvkvm-recovery.sh[3447]: [nvkvm] validation OK -- handing over to the desktop
+Aug 23 11:38:30 steamdeck systemd[1]: Finished nvkvm guest provisioning and validation.
+
+===DMESG===
+[    2.023988] nvkvm_guest: loading out-of-tree module taints kernel.
+[    2.023991] nvkvm_guest: module verification failed: signature and/or required key missing - tainting kernel
+[    2.027962] nvkvm: probe called for virtio device id=0x32
+[    2.029381] nvkvm: host NVIDIA driver 595.84, slot_size=65536
+[    2.029401] nvidia 0000:00:07.0: nvkvm: claimed NVIDIA-id device for DRM identity (no HW access)
+[    2.029601] nvkvm: virtual KMS head ready (1920x1080, 1 connector/crtc)
+[    2.029729] nvkvm: registered nvidia-drm render node under 0000:00:07.0 (primary minor 0)
+[    2.030026] nvkvm: host reports 1 GPU(s); exposing 1
+[    2.030175] nvkvm: registered nvidiactl (major 195), nvidia0-0 (major 195), nvidia-uvm/uvm-tools (major 241)
+[    2.030184] nvkvm: NVIDIA GPU passthrough guest module loaded
+[    6.713152] nvkvm: session 1 RING MAPPED gpa=0x4000000000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[    6.725076] nvkvm: session 2 RING MAPPED gpa=0x4000021000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[    9.411468] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[    9.529865] nvkvm: session 4 RING MAPPED gpa=0x4000a78000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[    9.529865] nvkvm: session 3 RING MAPPED gpa=0x4000a57000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[    9.551670] nvkvm: session 4 RING MAPPED gpa=0x4000a99000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   10.311053] nvkvm: tx_done: unknown type 27
+[   10.327418] nvkvm: tx_done: unknown type 27
+[   10.332717] nvkvm: tx_done: unknown type 27
+[   10.345074] nvkvm: session 5 RING MAPPED gpa=0x400124a000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   10.358065] nvkvm: tx_done: unknown type 27
+[   10.362544] nvkvm: tx_done: unknown type 27
+[   10.367999] nvkvm: tx_done: unknown type 27
+[   10.446361] nvkvm: session 6 RING MAPPED gpa=0x40012ff000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   10.482716] nvkvm: session 7 RING MAPPED gpa=0x4001320000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   10.993884] nvkvm: tx_done: unknown type 27
+[   11.025318] nvkvm: tx_done: unknown type 27
+[   11.029793] nvkvm: tx_done: unknown type 27
+[   11.091876] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   11.175056] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   11.209526] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   11.291784] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   11.308594] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   11.441983] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   11.458744] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   11.475692] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   11.492299] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   12.124663] nvkvm: session 5 RING MAPPED gpa=0x400328d000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   13.869441] nvkvm: session 8 RING MAPPED gpa=0x4003887000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   13.893202] nvkvm: session 9 RING MAPPED gpa=0x40038a8000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   14.424201] nvkvm_present_send: 173 callbacks suppressed
+[   14.424205] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   14.441069] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   14.475494] nvkvm: tx_done: unknown type 27
+[   14.479891] nvkvm: tx_done: unknown type 27
+[   14.502859] nvkvm: tx_done: unknown type 27
+[   14.514077] nvkvm: tx_done: unknown type 27
+[   14.541346] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   14.557991] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   14.575278] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   14.593794] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   14.608273] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   14.658914] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   14.675089] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   14.692448] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   14.884082] nvkvm: session 10 RING MAPPED gpa=0x4003e6b000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   15.612709] nvkvm: session 3 RING MAPPED gpa=0x400438e000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   15.629010] nvkvm: session 11 RING MAPPED gpa=0x40043af000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   15.644273] nvkvm: session 12 RING MAPPED gpa=0x40043f0000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   15.660646] nvkvm: session 13 RING MAPPED gpa=0x4004411000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   15.805747] nvkvm: session 14 RING MAPPED gpa=0x40044d4000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   18.066141] nvkvm: session 15 RING MAPPED gpa=0x4000a78000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   19.658721] nvkvm_present_send: 82 callbacks suppressed
+[   19.658725] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   19.675518] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   19.742203] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   19.758903] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   19.775565] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   19.816143] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   19.823664] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   19.840670] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   19.857507] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   19.874384] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   24.556026] nvkvm: session 3 RING MAPPED gpa=0x40014b9000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   24.731745] nvkvm: tx_done: unknown type 27
+[   24.736144] nvkvm: tx_done: unknown type 27
+[   24.748393] nvkvm: tx_done: unknown type 27
+[   24.752772] nvkvm: tx_done: unknown type 27
+[   26.120861] nvkvm: session 3 RING MAPPED gpa=0x4000a57000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   26.470980] nvkvm: tx_done: unknown type 27
+[   26.475669] nvkvm: tx_done: unknown type 27
+[   26.492918] nvkvm: tx_done: unknown type 27
+[   26.497567] nvkvm: tx_done: unknown type 27
+[   27.058502] nvkvm: tx_done: unknown type 27
+[   27.062929] nvkvm: tx_done: unknown type 27
+[   27.069142] nvkvm: tx_done: unknown type 27
+[   27.073214] nvkvm: tx_done: unknown type 27
+[   27.079099] nvkvm: tx_done: unknown type 27
+[   27.083691] nvkvm: tx_done: unknown type 27
+[   27.088195] nvkvm: tx_done: unknown type 27
+[   27.093725] nvkvm: tx_done: unknown type 27
+[   27.098418] nvkvm: tx_done: unknown type 27
+[   27.108449] nvkvm: tx_done: unknown type 27
+[   27.112926] nvkvm: tx_done: unknown type 27
+[   27.118644] nvkvm: tx_done: unknown type 27
+[   27.123170] nvkvm: tx_done: unknown type 27
+[   27.128992] nvkvm: tx_done: unknown type 27
+[   27.133466] nvkvm: tx_done: unknown type 27
+[   27.143376] nvkvm: tx_done: unknown type 27
+[   27.147950] nvkvm: tx_done: unknown type 27
+[   27.153737] nvkvm: tx_done: unknown type 27
+[   27.157988] nvkvm: tx_done: unknown type 27
+[   27.163764] nvkvm: tx_done: unknown type 27
+[   27.168240] nvkvm: tx_done: unknown type 27
+[   27.173826] nvkvm: tx_done: unknown type 27
+[   27.177994] nvkvm: tx_done: unknown type 27
+[   27.183887] nvkvm: tx_done: unknown type 27
+[   27.188077] nvkvm: tx_done: unknown type 27
+[   27.193502] nvkvm: tx_done: unknown type 27
+[   27.198088] nvkvm: tx_done: unknown type 27
+[   27.203777] nvkvm: tx_done: unknown type 27
+[   27.207918] nvkvm: tx_done: unknown type 27
+[   27.213595] nvkvm: tx_done: unknown type 27
+[   27.218159] nvkvm: tx_done: unknown type 27
+[   27.223651] nvkvm: tx_done: unknown type 27
+[   27.227922] nvkvm: tx_done: unknown type 27
+[   27.234133] nvkvm: tx_done: unknown type 27
+[   27.275205] nvkvm: session 12 RING MAPPED gpa=0x40055ca000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   27.738934] nvkvm: tx_done: unknown type 27
+[   27.743365] nvkvm: tx_done: unknown type 27
+[   27.761011] nvkvm: tx_done: unknown type 27
+[   27.765865] nvkvm: tx_done: unknown type 27
+[   27.830258] nvkvm: tx_done: unknown type 27
+[   27.834756] nvkvm: tx_done: unknown type 27
+[   27.844774] nvkvm: tx_done: unknown type 27
+[   27.849469] nvkvm: tx_done: unknown type 27
+[   27.855269] nvkvm: tx_done: unknown type 27
+[   27.859417] nvkvm: tx_done: unknown type 27
+[   27.865405] nvkvm: tx_done: unknown type 27
+[   27.869564] nvkvm: tx_done: unknown type 27
+[   27.875107] nvkvm: tx_done: unknown type 27
+[   27.879381] nvkvm: tx_done: unknown type 27
+[   27.885081] nvkvm: tx_done: unknown type 27
+[   27.890602] nvkvm: tx_done: unknown type 27
+[   27.894660] nvkvm: tx_done: unknown type 27
+[   27.899372] nvkvm: tx_done: unknown type 27
+[   27.905043] nvkvm: tx_done: unknown type 27
+[   27.915394] nvkvm: tx_done: unknown type 27
+[   27.919584] nvkvm: tx_done: unknown type 27
+[   27.925170] nvkvm: tx_done: unknown type 27
+[   27.929689] nvkvm: tx_done: unknown type 27
+[   27.935531] nvkvm: tx_done: unknown type 27
+[   27.939593] nvkvm: tx_done: unknown type 27
+[   27.945462] nvkvm: tx_done: unknown type 27
+[   27.949874] nvkvm: tx_done: unknown type 27
+[   27.955367] nvkvm: tx_done: unknown type 27
+[   27.959436] nvkvm: tx_done: unknown type 27
+[   27.965554] nvkvm: tx_done: unknown type 27
+[   27.969571] nvkvm: tx_done: unknown type 27
+[   27.974993] nvkvm: tx_done: unknown type 27
+[   27.979562] nvkvm: tx_done: unknown type 27
+[   27.985261] nvkvm: tx_done: unknown type 27
+[   27.989373] nvkvm: tx_done: unknown type 27
+[   27.995147] nvkvm: tx_done: unknown type 27
+[   27.999751] nvkvm: tx_done: unknown type 27
+[   28.005408] nvkvm: tx_done: unknown type 27
+[   28.009622] nvkvm: tx_done: unknown type 27
+[   28.019807] nvkvm: tx_done: unknown type 27
+[   28.025372] nvkvm: tx_done: unknown type 27
+[   28.030136] nvkvm: tx_done: unknown type 27
+[   28.034875] nvkvm: tx_done: unknown type 27
+[   28.040360] nvkvm: tx_done: unknown type 27
+[   28.044416] nvkvm: tx_done: unknown type 27
+[   28.049441] nvkvm: tx_done: unknown type 27
+[   28.367071] nvkvm: session 12 RING MAPPED gpa=0x400472b000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   28.851617] nvkvm: session 16 RING MAPPED gpa=0x4001f56000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   29.076232] nvkvm_present_send: 138 callbacks suppressed
+[   29.076235] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   29.303407] nvkvm: tx_done: unknown type 27
+[   29.307672] nvkvm: tx_done: unknown type 27
+[   29.312424] nvkvm: tx_done: unknown type 27
+[   29.317444] nvkvm: tx_done: unknown type 27
+[   29.323057] nvkvm: tx_done: unknown type 27
+[   29.327266] nvkvm: tx_done: unknown type 27
+[   29.332316] nvkvm: tx_done: unknown type 27
+[   29.338081] nvkvm: tx_done: unknown type 27
+[   29.342398] nvkvm: tx_done: unknown type 27
+[   29.347281] nvkvm: tx_done: unknown type 27
+[   29.353413] nvkvm: tx_done: unknown type 27
+[   29.357596] nvkvm: tx_done: unknown type 27
+[   29.368316] nvkvm: tx_done: unknown type 27
+[   29.372466] nvkvm: tx_done: unknown type 27
+[   29.378117] nvkvm: tx_done: unknown type 27
+[   29.382911] nvkvm: tx_done: unknown type 27
+[   29.388416] nvkvm: tx_done: unknown type 27
+[   29.392655] nvkvm: tx_done: unknown type 27
+[   29.402996] nvkvm: tx_done: unknown type 27
+[   29.407256] nvkvm: tx_done: unknown type 27
+[   29.413413] nvkvm: tx_done: unknown type 27
+[   29.418332] nvkvm: tx_done: unknown type 27
+[   29.422623] nvkvm: tx_done: unknown type 27
+[   29.427418] nvkvm: tx_done: unknown type 27
+[   29.432256] nvkvm: tx_done: unknown type 27
+[   29.437824] nvkvm: tx_done: unknown type 27
+[   29.443371] nvkvm: tx_done: unknown type 27
+[   29.448127] nvkvm: tx_done: unknown type 27
+[   29.452284] nvkvm: tx_done: unknown type 27
+[   29.457740] nvkvm: tx_done: unknown type 27
+[   29.463414] nvkvm: tx_done: unknown type 27
+[   29.467886] nvkvm: tx_done: unknown type 27
+[   29.473477] nvkvm: tx_done: unknown type 27
+[   29.477624] nvkvm: tx_done: unknown type 27
+[   29.482595] nvkvm: tx_done: unknown type 27
+[   29.488284] nvkvm: tx_done: unknown type 27
+[   29.492798] nvkvm: tx_done: unknown type 27
+[   29.497349] nvkvm: tx_done: unknown type 27
+[   29.503373] nvkvm: tx_done: unknown type 27
+[   29.507634] nvkvm: tx_done: unknown type 27
+[   29.513603] nvkvm: tx_done: unknown type 27
+[   29.518171] nvkvm: tx_done: unknown type 27
+[   29.522355] nvkvm: tx_done: unknown type 27
+[   29.528218] nvkvm: tx_done: unknown type 27
+[   29.533155] nvkvm: tx_done: unknown type 27
+[   29.680326] nvkvm: tx_done: unknown type 27
+[   29.685562] nvkvm: tx_done: unknown type 27
+[   29.707368] nvkvm: tx_done: unknown type 27
+[   29.712342] nvkvm: tx_done: unknown type 27
+[   29.783402] nvkvm: session 12 RING MAPPED gpa=0x40043f0000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   29.966831] nvkvm: tx_done: unknown type 27
+[   29.971322] nvkvm: tx_done: unknown type 27
+[   29.983737] nvkvm: tx_done: unknown type 27
+[   29.988236] nvkvm: tx_done: unknown type 27
+[   30.293896] nvkvm: tx_done: unknown type 27
+[   30.298832] nvkvm: tx_done: unknown type 27
+[   30.310506] nvkvm: tx_done: unknown type 27
+[   30.315382] nvkvm: tx_done: unknown type 27
+[   30.960934] nvkvm: session 12 RING MAPPED gpa=0x4003085000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   31.667029] nvkvm: tx_done: unknown type 21
+[   31.683638] nvkvm: tx_done: unknown type 21
+[   32.008576] nvkvm: tx_done: unknown type 21
+[   32.008646] nvkvm: tx_done: unknown type 21
+[   32.008740] nvkvm: tx_done: unknown type 21
+[   32.008803] nvkvm: tx_done: unknown type 21
+[   32.008930] nvkvm: tx_done: unknown type 21
+[   32.008999] nvkvm: tx_done: unknown type 21
+[   32.487635] nvkvm: session 12 RING MAPPED gpa=0x40055ca000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   32.888192] nvkvm: session 17 RING MAPPED gpa=0x4001e03000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   33.161913] nvkvm: tx_done: unknown type 21
+[   33.162042] nvkvm: tx_done: unknown type 21
+[   33.177679] nvkvm: tx_done: unknown type 21
+[   33.370896] nvkvm: tx_done: unknown type 27
+[   33.375823] nvkvm: tx_done: unknown type 27
+[   33.408321] nvkvm: tx_done: unknown type 27
+[   33.413989] nvkvm: tx_done: unknown type 27
+[   34.190878] nvkvm: tx_done: unknown type 27
+[   34.195424] nvkvm: tx_done: unknown type 27
+[   34.218267] nvkvm: tx_done: unknown type 27
+[   34.222663] nvkvm: tx_done: unknown type 27
+[   34.366872] nvkvm: tx_done: unknown type 27
+[   34.371203] nvkvm: tx_done: unknown type 27
+[   34.377164] nvkvm: tx_done: unknown type 27
+[   34.384572] nvkvm: tx_done: unknown type 27
+[   34.390345] nvkvm: tx_done: unknown type 27
+[   34.395399] nvkvm: tx_done: unknown type 27
+[   34.400057] nvkvm: tx_done: unknown type 27
+[   34.404739] nvkvm: tx_done: unknown type 27
+[   34.410612] nvkvm: tx_done: unknown type 27
+[   34.419882] nvkvm: tx_done: unknown type 27
+[   34.425678] nvkvm: tx_done: unknown type 27
+[   34.429836] nvkvm: tx_done: unknown type 27
+[   34.434659] nvkvm: tx_done: unknown type 27
+[   34.439600] nvkvm: tx_done: unknown type 27
+[   34.445539] nvkvm: tx_done: unknown type 27
+[   34.449726] nvkvm: tx_done: unknown type 27
+[   34.455353] nvkvm: tx_done: unknown type 27
+[   34.459513] nvkvm: tx_done: unknown type 27
+[   34.465060] nvkvm: tx_done: unknown type 27
+[   34.470555] nvkvm: tx_done: unknown type 27
+[   34.474827] nvkvm: tx_done: unknown type 27
+[   34.476777] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   34.523803] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   34.540967] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   34.557360] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   34.574047] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   34.590796] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   34.607508] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   35.474330] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   35.491077] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   35.507732] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   35.595377] nvkvm: tx_done: unknown type 27
+[   35.599131] nvkvm: tx_done: unknown type 27
+[   35.603919] nvkvm: tx_done: unknown type 27
+[   35.611727] nvkvm: tx_done: unknown type 27
+[   35.614596] nvkvm: tx_done: unknown type 27
+[   35.618983] nvkvm: tx_done: unknown type 27
+[   35.623419] nvkvm: tx_done: unknown type 27
+[   37.462935] nvkvm: tx_done: unknown type 27
+[   37.468463] nvkvm: tx_done: unknown type 27
+[   38.532320] nvkvm: tx_done: unknown type 27
+[   38.536856] nvkvm: tx_done: unknown type 27
+[   38.543833] nvkvm: tx_done: unknown type 27
+[   38.547505] nvkvm: tx_done: unknown type 27
+[   38.553084] nvkvm: tx_done: unknown type 27
+[   38.557333] nvkvm: tx_done: unknown type 27
+[   38.563114] nvkvm: tx_done: unknown type 27
+[   38.572379] nvkvm: tx_done: unknown type 27
+[   38.579285] nvkvm: tx_done: unknown type 27
+[   38.582174] nvkvm: tx_done: unknown type 27
+[   38.587846] nvkvm: tx_done: unknown type 27
+[   38.593999] nvkvm: tx_done: unknown type 27
+[   38.596865] nvkvm: tx_done: unknown type 27
+[   38.602550] nvkvm: tx_done: unknown type 27
+[   38.607524] nvkvm: tx_done: unknown type 27
+[   38.618035] nvkvm: tx_done: unknown type 27
+[   38.622349] nvkvm: tx_done: unknown type 27
+[   38.626869] nvkvm: tx_done: unknown type 27
+[   38.632293] nvkvm: tx_done: unknown type 27
+[   38.637932] nvkvm: tx_done: unknown type 27
+[   38.643788] nvkvm: tx_done: unknown type 27
+[   38.646850] nvkvm: tx_done: unknown type 27
+[   38.652899] nvkvm: tx_done: unknown type 27
+[   38.657164] nvkvm: tx_done: unknown type 27
+[   38.661958] nvkvm: tx_done: unknown type 27
+[   38.666945] nvkvm: tx_done: unknown type 27
+[   38.672095] nvkvm: tx_done: unknown type 27
+[   38.677421] nvkvm: tx_done: unknown type 27
+[   38.683079] nvkvm: tx_done: unknown type 27
+[   38.687622] nvkvm: tx_done: unknown type 27
+[   38.693569] nvkvm: tx_done: unknown type 27
+[   38.697838] nvkvm: tx_done: unknown type 27
+[   38.702147] nvkvm: tx_done: unknown type 27
+[   38.707152] nvkvm: tx_done: unknown type 27
+[   38.717812] nvkvm: tx_done: unknown type 27
+[   38.722145] nvkvm: tx_done: unknown type 27
+[   38.726960] nvkvm: tx_done: unknown type 27
+[   38.732046] nvkvm: tx_done: unknown type 27
+[   38.737620] nvkvm: tx_done: unknown type 27
+[   38.743594] nvkvm: tx_done: unknown type 27
+[   38.752515] nvkvm: tx_done: unknown type 27
+[   39.591297] nvkvm_present_send: 217 callbacks suppressed
+[   39.591300] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   40.008149] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   40.091481] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   40.591381] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   41.091506] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   41.591417] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   42.091303] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   42.591342] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   43.091516] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   43.591390] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   44.591617] nvkvm_present_send: 1 callbacks suppressed
+[   44.591620] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   45.091366] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   45.591390] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   46.091293] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   46.591360] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   47.091332] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   47.591464] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   48.091496] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   48.591357] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   49.091512] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   50.091345] nvkvm_present_send: 1 callbacks suppressed
+[   50.091348] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   50.591410] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   51.091303] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   51.591368] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   52.091337] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   52.591322] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   53.091498] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   53.591244] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   54.093722] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   54.591515] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   55.591534] nvkvm_present_send: 1 callbacks suppressed
+[   55.591537] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   56.091304] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   56.591417] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   57.091361] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   57.591389] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   58.091266] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   58.591332] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   59.091289] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   59.591433] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   60.091462] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   61.090191] nvkvm_present_send: 3 callbacks suppressed
+[   61.090195] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   61.590283] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   62.090398] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   62.590407] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   63.090443] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   63.590504] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   64.090756] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   64.590869] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   65.090913] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   65.590877] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   66.090856] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   66.590884] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   67.090918] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   67.590905] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   68.090985] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   68.591021] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   69.091244] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   69.591143] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   70.091311] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   70.591084] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   71.591172] nvkvm_present_send: 1 callbacks suppressed
+[   71.591176] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   72.091277] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   72.591719] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   73.091078] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   73.591098] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   74.091251] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   74.591126] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   75.091112] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   75.486931] nvkvm: tx_done: unknown type 27
+[   75.491295] nvkvm: tx_done: unknown type 27
+[   75.496409] nvkvm: tx_done: unknown type 27
+[   75.502088] nvkvm: tx_done: unknown type 27
+[   75.506355] nvkvm: tx_done: unknown type 27
+[   75.774404] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   75.824368] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   77.291070] nvkvm_present_send: 2 callbacks suppressed
+[   77.291073] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   77.307783] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   77.575566] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   77.607802] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   77.657815] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   77.824485] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   78.091159] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   78.591302] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   79.091292] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   79.174599] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   82.591388] nvkvm_present_send: 12 callbacks suppressed
+[   82.591391] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   83.091412] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   83.591281] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   84.091275] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   84.591227] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   85.091399] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   85.591256] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   86.091101] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   86.591344] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   87.091337] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   87.742105] nvkvm_present_send: 1 callbacks suppressed
+[   87.742106] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   88.440165] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   88.456835] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   88.590375] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   88.825050] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   88.906505] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   89.415604] nvkvm: session 12 RING MAPPED gpa=0x40055eb000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   89.477202] nvkvm: session 12 RING MAPPED gpa=0x40030c6000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   89.495495] nvkvm: RM_ALLOC hClass=0x2081 has no alloc-param size entry; forwarding a 256-byte window
+[   89.497829] nvkvm: synthesized GET_PIDS \xe2\x80\x94 17 guest pid(s)
+[   89.536532] nvkvm: session 12 RING MAPPED gpa=0x40030e7000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   89.556095] nvkvm: RM_ALLOC hClass=0x2081 has no alloc-param size entry; forwarding a 256-byte window
+[   89.588934] nvkvm: synthesized GET_PIDS \xe2\x80\x94 17 guest pid(s)
+[   89.594324] nvkvm: synthesized GET_PIDS \xe2\x80\x94 17 guest pid(s)
+[   89.600454] nvkvm: synthesized GET_PIDS \xe2\x80\x94 17 guest pid(s)
+[   89.605945] nvkvm: synthesized GET_PIDS \xe2\x80\x94 17 guest pid(s)
+[   89.610781] nvkvm: synthesized GET_PIDS \xe2\x80\x94 17 guest pid(s)
+[   89.617363] nvkvm: synthesized GET_PIDS \xe2\x80\x94 17 guest pid(s)
+[   89.685382] nvkvm: session 12 RING MAPPED gpa=0x4007043000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   90.190425] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   90.223430] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   90.240189] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   90.290294] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   91.069969] nvkvm: tx_done: unknown type 21
+[   91.070046] nvkvm: tx_done: unknown type 21
+[   91.073885] nvkvm: tx_done: unknown type 21
+[   93.056486] nvkvm_present_send: 8 callbacks suppressed
+[   93.056489] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   93.573245] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   93.673440] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   93.692610] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   93.705705] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   93.722521] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   93.739430] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   93.756271] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   93.773099] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+[   93.789928] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x4 \xe2\x86\x92 exported
+[   96.806213] nvkvm: session 12 RING MAPPED gpa=0x4003085000 bytes=65536 \xe2\x80\x94 3-way OK (req.size=65536 resp.size=65536)
+[   96.846115] nvkvm: RM_ALLOC hClass=0x2081 has no alloc-param size entry; forwarding a 256-byte window
+[   96.896526] nvkvm: synthesized GET_PIDS \xe2\x80\x94 17 guest pid(s)
+[   96.904067] nvkvm: synthesized GET_PIDS \xe2\x80\x94 17 guest pid(s)
+[   96.912560] nvkvm: synthesized GET_PIDS \xe2\x80\x94 17 guest pid(s)
+[   96.918324] nvkvm: synthesized GET_PIDS \xe2\x80\x94 17 guest pid(s)
+[   96.924846] nvkvm: synthesized GET_PIDS \xe2\x80\x94 17 guest pid(s)
+[   96.931240] nvkvm: synthesized GET_PIDS \xe2\x80\x94 17 guest pid(s)
+[  102.758810] nvkvm_present_send: 22 callbacks suppressed
+[  102.758813] nvkvm present: flip 1920x1080 pitch=7680 fmt=0x34325241 mod=0x300000000606014 stub_handle=0x3 \xe2\x86\x92 exported
+
+===DRM===
+card0 -> nvidia
+===LSPCI===
+00:00.0 Host bridge: Intel Corporation 82G33/G31/P35/P31 Express DRAM Controller
+00:01.0 Non-Volatile memory controller: Red Hat, Inc. QEMU NVM Express Controller (rev 02)
+00:02.0 Ethernet controller: Red Hat, Inc. Virtio network device
+00:03.0 Unclassified device [00ff]: Red Hat, Inc. Device 1072 (rev 01)
+00:04.0 Unclassified device [0002]: Red Hat, Inc. Virtio filesystem
+00:05.0 Keyboard controller: Red Hat, Inc. Virtio 1.0 input (rev 01)
+00:06.0 Input device controller: Red Hat, Inc. Virtio 1.0 input (rev 01)
+00:07.0 VGA compatible controller: NVIDIA Corporation AD104 [GeForce RTX 4070] (rev a1)
+00:1f.0 ISA bridge: Intel Corporation 82801IB (ICH9) LPC Interface Controller (rev 02)
+00:1f.2 SATA controller: Intel Corporation 82801IR/IO/IH (ICH9R/DO/DH) 6 port SATA Controller [AHCI mode] (rev 02)
+00:1f.3 SMBus: Intel Corporation 82801I (ICH9 Family) SMBus Controller (rev 02)

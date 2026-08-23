@@ -1,0 +1,36 @@
+--- /tmp/sb2.bak	2026-08-23 20:54:19.723919686 +0200
++++ steamos_boot.sh	2026-08-23 20:54:19.740295247 +0200
+@@ -591,7 +591,7 @@
+ # ── Desktop config + in-image stub ───────────────────────────────────────────
+ write_desktop_config() {
+     steamos_unlock
+-    mkdir -p "$(rp /etc/modules-load.d)" "$(rp /etc/modprobe.d)" "$(rp /etc/systemd/system)"
++    mkdir -p "$(rp /etc/modules-load.d)" "$(rp /etc/modprobe.d)" "$(rp /etc/systemd/system)" "$(rp /etc/environment.d)"
+     echo "$MODULE_NAME" > "$(rp /etc/modules-load.d/nvkvm.conf)"
+     printf 'options nvkvm_guest privileged_modeset=0\n' > "$(rp /etc/modprobe.d/99-nvkvm.conf)"
+     # Resolve the nvkvm DRM node by DRIVER NAME, never by index. environment.d is
+@@ -620,6 +620,24 @@
+ [Install]
+ WantedBy=multi-user.target
+ UNIT
++    # Cursor latency. MEASURED on SteamOS/Plasma (KWin Wayland) on a real RTX 4070:
++    # pointer motion produced 621 GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT errors per 15s
++    # (idle: 0), and the present rate did NOT rise -- so cursor updates were failing in
++    # GL and never reaching the screen. That is the "mouse lags, keyboard is instant"
++    # report, and it is Wayland-compositor-specific (the Mint/X11 guest never shows it).
++    #
++    # Cause is in nvkvm, not here: nvkvm's virtual KMS is a drm_simple_display_pipe, so
++    # it exposes ONE primary plane and NO cursor plane (GETPLANERESOURCES returns 0).
++    # With no cursor plane KWin drives the cursor through a GL path, and nvkvm_kms.c's
++    # own comment records why that path cannot work -- "NVIDIA cannot use a LINEAR
++    # dma-buf as an EGLImage render target" -- while the accept callback still lets
++    # LINEAR through for cursors. Forcing KWin's software cursor keeps the cursor on the
++    # normal, working block-linear scene path. A/B on the same guest, same session,
++    # variable confirmed in kwin_wayland's /proc/<pid>/environ: 621 -> 0.
++    #
++    # This is a WORKAROUND for a real nvkvm KMS gap; the durable fix is a cursor plane.
++    printf 'KWIN_FORCE_SW_CURSOR=1\n' > "$(rp /etc/environment.d/91-nvkvm-cursor.conf)"
++
+     in_target systemctl enable nvkvm-drm-env.service 2>/dev/null || true
+     log "desktop configuration written"
+ }
