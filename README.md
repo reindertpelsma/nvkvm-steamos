@@ -11,6 +11,21 @@ SteamOS is an interesting target precisely because nothing about it was built
 for this: it is immutable (read-only rootfs, atomic A/B updates), has no usable
 package manager, is AMD-first, and ships **no NVIDIA support at all**.
 
+## Credit
+
+The approach here is built directly on
+**[28allday/steamos-nvidia-installer](https://github.com/28allday/steamos-nvidia-installer)**,
+which solved the hard parts of getting an NVIDIA driver onto SteamOS at all:
+working *offline* on an unmounted rootfs rather than fighting the read-only
+filesystem, fetching exact-version `linux-neptune-*-headers` from Valve's own
+mirror, building in a throwaway overlay chroot, and surviving atomic updates by
+wrapping `steamos-update` itself.
+
+This project is essentially a substitution into that pattern: instead of
+installing NVIDIA's kernel module, install **nvkvm's guest module**, and keep the
+userspace half unchanged. Without that project's groundwork this would have been
+a much longer road.
+
 ## What works
 
 Measured on an RTX 4070 host (driver 595.84), guest booted from Valve's
