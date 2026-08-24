@@ -53,6 +53,16 @@ a much longer road.
 
 Five steps. Everything after step 4 is automatic and re-runnable.
 
+> **There is now a second, better way to get the disk image** —
+> [`install_steamos_vm.sh`](install_steamos_vm.sh), documented in
+> [`docs/vm-installer.md`](docs/vm-installer.md). It boots a throwaway Alpine VM
+> and lets **Valve's own installer** write a **real dual-slot A/B install** to a
+> blank disk, so the host needs no root at all (just `/dev/kvm`) and the result
+> can take SteamOS OTA updates — which is what finally makes the nvkvm update
+> hook testable. The steps below, and `build_steamos_image.sh`, modify Valve's
+> A-slot-only *recovery* image in place and cannot do that. Both paths still
+> work; the VM one is the one to grow.
+
 **If you are starting from a machine with nothing set up, use
 [`TUTORIAL.md`](TUTORIAL.md) instead** — it is the same path with the host
 build, the package lists, and every failure mode written out. What follows is

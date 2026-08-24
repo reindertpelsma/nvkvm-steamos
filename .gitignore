@@ -6,3 +6,6 @@ nbd_dev.txt
 data/authorized_keys
 data/root_authorized_keys
 nvidia/*.run
+
+# Alpine netboot cache for install_steamos_vm.sh
+.alpine-netboot/
