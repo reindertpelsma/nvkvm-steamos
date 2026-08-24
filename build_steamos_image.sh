@@ -23,6 +23,19 @@
 #   --out FILE         work image path (default: <src stem>-nvkvm.img)
 #   --qcow2 FILE       qcow2 path (default: <out stem>.qcow2)
 #   --no-qcow2         stop after the work image; skip the conversion
+# WHAT THIS PRODUCES: a directly bootable SteamOS disk, not an installer.
+# Valve's "recovery" image already carries an installed layout
+# (esp / efi-A / rootfs-A / var-A / home), so this modifies it in place and
+# converts it to qcow2 -- there is no separate install step, you boot the
+# output.
+#
+# WHAT IT CANNOT DO: this image has only the A slot. There is no rootfs-B /
+# efi-B / var-B, so rauc's atomic A/B update semantics are absent and it
+# cannot take SteamOS OTA updates the way a Deck does. The update hook that
+# re-arms nvkvm after a SteamOS update is therefore untestable here and has
+# never been exercised on any rig -- it needs a real installed device. See
+# boot/TESTING.md. Some Valve images do ship both slots; this one does not.
+#
 #   --grow SIZE        disk growth, iec suffixes (default: 60G; 0 to skip).
 #                      This sizes the image you will BOOT AND USE -- it is not
 #                      a build scratch size, so shrinking it shrinks the disk
