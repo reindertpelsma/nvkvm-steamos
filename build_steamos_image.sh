@@ -23,7 +23,26 @@
 #   --out FILE         work image path (default: <src stem>-nvkvm.img)
 #   --qcow2 FILE       qcow2 path (default: <out stem>.qcow2)
 #   --no-qcow2         stop after the work image; skip the conversion
-#   --grow SIZE        disk growth, iec suffixes (default: 60G; 0 to skip)
+#   --grow SIZE        disk growth, iec suffixes (default: 60G; 0 to skip).
+#                      MEASURED: this grows the LAST partition only — SteamOS's
+#                      own growfs unit expands /home into it on the guest's
+#                      first boot (2G -> 62G with +60G), while the 5 GB btrfs
+#                      rootfs is untouched. So it is purely a games budget and
+#                      contributes nothing to provisioning: 0 is fine to just
+#                      build the image, ~8-16G to boot and log into Steam,
+#                      more only if you install games. It is a sparse hole, so
+#                      it costs no host disk until the guest fills it.
+#   --nvidia-run FILE  a local NVIDIA .run to install from, instead of letting
+#                      steamos_boot.sh download it. MEASURED, and the reason
+#                      this option exists: locate_or_fetch_run() only ever tries
+#                      https://us.download.nvidia.com/XFree86/Linux-x86_64/<ver>/,
+#                      and DATACENTER-branch drivers are not published there —
+#                      570.133.20, for instance, is 404 on that path and 200 on
+#                      /tesla/570.133.20/. On such a host Part 1 fails with
+#                      "could not obtain the NVIDIA .run". The file's directory
+#                      is bind-mounted into the image read-only and handed to
+#                      steamos_boot.sh as --old-run-file, so nothing is written
+#                      to your share or to the image.
 #   --profile NAME     steamos (default) | compute — passed to steamos_boot.sh
 #   --no-compat32      set NVKVM_NO_COMPAT32=1 (halves the space the NVIDIA
 #                      userspace needs; drops the 32-bit libs Steam wants)
@@ -124,7 +143,7 @@ step() { STEP="$1"; log "== $1"; }
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
 SRC="" SHARE="" OUT="" QCOW="" BOOT_SCRIPT="" WORKDIR=""
-GROW=60G PROFILE=steamos ROOTFS_PART_NUM="" HOME_PART_NUM=""
+GROW=60G PROFILE=steamos ROOTFS_PART_NUM="" HOME_PART_NUM="" NVIDIA_RUN=""
 MAKE_QCOW2=1 FORCE=0 NO_COMPAT32=0 SCRATCH_TMP=1 BIND_RESOLV=1
 SHARE_MNT="${NVKVM_SHARE_MNT:-/run/nvkvm}"
 STAGE2=0
@@ -138,6 +157,7 @@ while [ $# -gt 0 ]; do
         --qcow2)         QCOW="${2:?--qcow2 needs a path}"; shift 2 ;;
         --no-qcow2)      MAKE_QCOW2=0; shift ;;
         --grow)          GROW="${2:?--grow needs a size}"; shift 2 ;;
+        --nvidia-run)    NVIDIA_RUN="${2:?--nvidia-run needs a path}"; shift 2 ;;
         --profile)       PROFILE="${2:?--profile needs a name}"; shift 2 ;;
         --no-compat32)   NO_COMPAT32=1; shift ;;
         --rootfs-part)   ROOTFS_PART_NUM="${2:?--rootfs-part needs a number}"; shift 2 ;;
@@ -148,7 +168,7 @@ while [ $# -gt 0 ]; do
         --no-scratch-tmp) SCRATCH_TMP=0; shift ;;
         --no-resolv-conf) BIND_RESOLV=0; shift ;;
         --internal-stage2) STAGE2=1; shift ;;   # re-exec marker, not for humans
-        -h|--help)       sed -n '2,140p' "$0" | sed 's/^# \{0,1\}//;s/^#$//'; exit 0 ;;
+        -h|--help)       awk 'NR>1 && !/^#/{exit} NR>1{sub(/^# ?/,""); print}' "$0"; exit 0 ;;
         *)               die "$E_USAGE" "unknown argument: $1 (try --help)" ;;
     esac
 done
@@ -208,6 +228,15 @@ if [ "$STAGE2" -eq 0 ]; then
     HOSTVER="$(awk '{for(i=1;i<=NF;i++) if ($i ~ /^[0-9]+\.[0-9]+/) {print $i; exit}}' /proc/driver/nvidia/version)"
     [ -n "$HOSTVER" ] || die "$E_HOST" "could not parse a driver version out of /proc/driver/nvidia/version"
     log "host NVIDIA driver: $HOSTVER (the image is pinned to this version)"
+    if [ -n "$NVIDIA_RUN" ]; then
+        [ -r "$NVIDIA_RUN" ] || die "$E_USAGE" "--nvidia-run not readable: $NVIDIA_RUN"
+        NVIDIA_RUN="$(readlink -f "$NVIDIA_RUN")"
+        # locate_or_fetch_run() looks the file up BY NAME, so the name has to be
+        # the one it will ask for.
+        [ "$(basename "$NVIDIA_RUN")" = "NVIDIA-Linux-x86_64-${HOSTVER}.run" ] || die "$E_USAGE" \
+            "--nvidia-run must be named NVIDIA-Linux-x86_64-${HOSTVER}.run to match this host's driver; got $(basename "$NVIDIA_RUN")"
+        log "NVIDIA .run supplied locally: $NVIDIA_RUN"
+    fi
 
     [ -n "$OUT" ]  || OUT="${SRC%.img}-nvkvm.img"
     OUT="$(readlink -f -m "$OUT")"
@@ -248,6 +277,15 @@ if [ "$STAGE2" -eq 0 ]; then
     NEED=$((SRC_BYTES + SCRATCH_BYTES))
     [ "$MAKE_QCOW2" -eq 1 ] && NEED=$((NEED + SRC_BYTES))
     AVAIL="$(df -PB1 "$OUTDIR" | awk 'NR==2{print $4}')"
+    # If --workdir is on a different filesystem, the payload extraction and the
+    # shadowed /tmp land there instead — check that one too.
+    WD_PARENT="$WORKDIR"; while [ ! -d "$WD_PARENT" ] && [ "$WD_PARENT" != / ]; do WD_PARENT="$(dirname "$WD_PARENT")"; done
+    if [ "$(stat -c %d "$WD_PARENT")" != "$(stat -c %d "$OUTDIR")" ]; then
+        WD_AVAIL="$(df -PB1 "$WD_PARENT" | awk 'NR==2{print $4}')"
+        [ "$WD_AVAIL" -ge "$SCRATCH_BYTES" ] || die "$E_SPACE" \
+            "--workdir $WORKDIR has only $(numfmt --to=iec "$WD_AVAIL") free; the extracted NVIDIA payload alone is ~1.4 GB."
+        NEED=$((NEED - SCRATCH_BYTES))
+    fi
     log "free in $OUTDIR: $(numfmt --to=iec "$AVAIL"), need at least $(numfmt --to=iec "$NEED")"
     [ "$AVAIL" -ge "$NEED" ] || die "$E_SPACE" \
         "not enough free space in $OUTDIR: have $(numfmt --to=iec "$AVAIL"), need $(numfmt --to=iec "$NEED"). Free space, or use --workdir/--out on a bigger filesystem."
@@ -269,7 +307,7 @@ if [ "$STAGE2" -eq 0 ]; then
     export _BSI_SRC="$SRC" _BSI_SHARE="$SHARE" _BSI_OUT="$OUT" _BSI_QCOW="$QCOW"
     export _BSI_BOOT_SCRIPT="$BOOT_SCRIPT" _BSI_WORKDIR="$WORKDIR" _BSI_GROW="$GROW"
     export _BSI_PROFILE="$PROFILE" _BSI_ROOTFS_PART="$ROOTFS_PART_NUM" _BSI_HOME_PART="$HOME_PART_NUM"
-    export _BSI_QCOW2="$MAKE_QCOW2" _BSI_NO_COMPAT32="$NO_COMPAT32"
+    export _BSI_QCOW2="$MAKE_QCOW2" _BSI_NO_COMPAT32="$NO_COMPAT32" _BSI_NVIDIA_RUN="$NVIDIA_RUN"
     export _BSI_SCRATCH_TMP="$SCRATCH_TMP" _BSI_RESOLV="$BIND_RESOLV" _BSI_SHARE_MNT="$SHARE_MNT"
     log "entering a private mount namespace (mounts cannot leak to the host)"
     exec unshare -m --propagation private -- "$0" --internal-stage2
@@ -283,7 +321,7 @@ SRC="${_BSI_SRC:?stage 2 started without stage 1 — do not call --internal-stag
 SHARE="$_BSI_SHARE"; OUT="$_BSI_OUT"; QCOW="$_BSI_QCOW"
 BOOT_SCRIPT="$_BSI_BOOT_SCRIPT"; WORKDIR="$_BSI_WORKDIR"; GROW="$_BSI_GROW"
 PROFILE="$_BSI_PROFILE"; ROOTFS_PART_NUM="$_BSI_ROOTFS_PART"; HOME_PART_NUM="$_BSI_HOME_PART"
-MAKE_QCOW2="$_BSI_QCOW2"; NO_COMPAT32="$_BSI_NO_COMPAT32"
+MAKE_QCOW2="$_BSI_QCOW2"; NO_COMPAT32="$_BSI_NO_COMPAT32"; NVIDIA_RUN="$_BSI_NVIDIA_RUN"
 SCRATCH_TMP="$_BSI_SCRATCH_TMP"; BIND_RESOLV="$_BSI_RESOLV"; SHARE_MNT="$_BSI_SHARE_MNT"
 
 MNT="$WORKDIR/rootfs"
@@ -291,6 +329,36 @@ LOOPDEV=""
 SUCCESS=0
 SHARE_MNT_MADE=0
 RESOLV_MADE=""
+
+# ── Leftover chroot processes ────────────────────────────────────────────────
+# MEASURED: `ensure_pacman_keyring` runs `pacman-key --init` INSIDE the chroot,
+# which starts a gpg-agent (and dirmngr). Those daemons outlive Part 1 with
+# their root and cwd inside the mounted image, so `umount -R` fails with
+# "target is busy" — and that is exactly the moment someone reaches for
+# `umount -l` and silently corrupts the image. Kill them first.
+#
+# Deliberately NOT `fuser -k`: we resolve /proc/<pid>/root and /proc/<pid>/cwd
+# ourselves and only ever signal a process that is genuinely inside OUR tree.
+kill_chroot_leftovers() {
+    local p pid t signalled=0
+    for sig in TERM KILL; do
+        signalled=0
+        for p in /proc/[0-9]*; do
+            pid="${p#/proc/}"
+            [ "$pid" = "$$" ] && continue
+            t="$(readlink "$p/root" 2>/dev/null || true)"
+            case "$t" in "$MNT"|"$MNT"/*) ;; *)
+                t="$(readlink "$p/cwd" 2>/dev/null || true)"
+                case "$t" in "$MNT"|"$MNT"/*) ;; *) continue ;; esac ;;
+            esac
+            log "killing leftover chroot process $pid ($(cat "$p/comm" 2>/dev/null || echo ?)) with SIG$sig"
+            kill -"$sig" "$pid" 2>/dev/null || true
+            signalled=1
+        done
+        [ "$signalled" = 1 ] || return 0
+        sleep 1
+    done
+}
 
 # ── Cleanup ─────────────────────────────────────────────────────────────────
 # The mount namespace already guarantees the mounts go away. This trap exists
@@ -305,8 +373,10 @@ cleanup() {
     local rc=$?
     set +e
     if mountpoint -q "$MNT" 2>/dev/null; then
+        kill_chroot_leftovers 2>/dev/null
         sync
-        umount -R "$MNT" 2>/dev/null   # never -l: see unmount_everything()
+        # never -l: a lazy unmount returns before writeback finishes.
+        umount -R "$MNT" || err "could not unmount $MNT — leftovers: $(findmnt -rn -o TARGET | grep "^$MNT" | tr '\n' ' ')"
     fi
     mountpoint -q "$SHARE_MNT" 2>/dev/null && umount "$SHARE_MNT" 2>/dev/null
     [ "$SHARE_MNT_MADE" = 1 ] && rmdir "$SHARE_MNT" 2>/dev/null
@@ -362,8 +432,9 @@ step "3/9 attaching a loop device"
 LOOPDEV="$(losetup -Pf --show "$OUT")" || die "$E_SETUP" "losetup failed"
 [ -n "$LOOPDEV" ] || die "$E_SETUP" "losetup printed no device name"
 log "loop device: $LOOPDEV (this run's; the trap detaches exactly this one)"
-command -v udevadm >/dev/null 2>&1 && udevadm settle --timeout=10 >/dev/null 2>&1
-i=0; while [ ! -b "${LOOPDEV}p1" ] && [ "$i" -lt 50 ]; do i=$((i+1)); read -r -t 0.1 <> <(:) || true; done
+settle() { command -v udevadm >/dev/null 2>&1 || return 0; udevadm settle --timeout=10 >/dev/null 2>&1 || true; }
+settle
+i=0; while [ ! -b "${LOOPDEV}p1" ] && [ "$i" -lt 50 ]; do i=$((i+1)); sleep 0.1; done
 [ -b "${LOOPDEV}p1" ] || die "$E_SETUP" "no partitions appeared on $LOOPDEV — is $SRC a partitioned disk image?"
 
 if [ "$GROW" != 0 ]; then
@@ -371,7 +442,7 @@ if [ "$GROW" != 0 ]; then
     sgdisk -e "$LOOPDEV" >/dev/null || die "$E_IMAGE" \
         "sgdisk -e failed on $LOOPDEV. Without it OVMF finds no bootable device and hangs before GRUB with no error."
     partprobe "$LOOPDEV" 2>/dev/null || true
-    command -v udevadm >/dev/null 2>&1 && udevadm settle --timeout=10 >/dev/null 2>&1
+    settle
 fi
 
 # ── 5. Discover the rootfs partition. Never hardcode it. ─────────────────────
@@ -477,12 +548,27 @@ if [ "$BIND_RESOLV" = 1 ]; then
     fi
 fi
 
+# A locally-supplied .run: bind its directory in read-only and point
+# steamos_boot.sh's cache at it. /run inside the image is empty on disk and a
+# tmpfs at boot, so nothing here can end up in the finished image.
+RUN_CACHE_IN_IMAGE=/run/nvkvm-runs
+if [ -n "$NVIDIA_RUN" ]; then
+    mkdir -p "$MNT$RUN_CACHE_IN_IMAGE"
+    mount --bind "$(dirname "$NVIDIA_RUN")" "$MNT$RUN_CACHE_IN_IMAGE" \
+        || die "$E_SETUP" "could not bind the .run directory into the image"
+    mount -o remount,bind,ro "$MNT$RUN_CACHE_IN_IMAGE" || warn "could not make the .run bind read-only"
+    log "NVIDIA .run directory bound at $RUN_CACHE_IN_IMAGE (read-only)"
+fi
+
 # The bind mount stands in for the 9p share the guest gets at runtime
 # (-virtfs ... mount_tag=nvkvm,readonly=on). Mounted read-only for the same
 # reason the real share is: nothing in the image build may write to the
 # operator's nvkvm-pv checkout.
-mkdir -p "$SHARE_MNT" 2>/dev/null && SHARE_MNT_MADE=1
-mountpoint -q "$SHARE_MNT" && umount "$SHARE_MNT"
+[ -d "$SHARE_MNT" ] || SHARE_MNT_MADE=1     # only rmdir it later if it was ours
+mkdir -p "$SHARE_MNT" || die "$E_SETUP" "could not create $SHARE_MNT"
+if mountpoint -q "$SHARE_MNT"; then
+    umount "$SHARE_MNT" || die "$E_SETUP" "$SHARE_MNT is already a mountpoint and will not release"
+fi
 mount --bind "$SHARE" "$SHARE_MNT" || die "$E_SETUP" "could not bind $SHARE at $SHARE_MNT"
 mount -o remount,bind,ro "$SHARE_MNT" || warn "could not make $SHARE_MNT read-only"
 log "share bound at $SHARE_MNT (namespace-local; the host's $SHARE_MNT is untouched)"
@@ -491,8 +577,10 @@ log "share bound at $SHARE_MNT (namespace-local; the host's $SHARE_MNT is untouc
 step "8/9 running $(basename "$BOOT_SCRIPT") --install-only --root $MNT"
 BOOT_ENV=(NVKVM_SHARE_MNT="$SHARE_MNT")
 [ "$NO_COMPAT32" = 1 ] && BOOT_ENV+=(NVKVM_NO_COMPAT32=1)
+BOOT_ARGS=(--install-only --root "$MNT" --profile "$PROFILE")
+[ -n "$NVIDIA_RUN" ] && BOOT_ARGS+=(--old-run-file "$RUN_CACHE_IN_IMAGE")
 set +e
-env "${BOOT_ENV[@]}" "$BOOT_SCRIPT" --install-only --root "$MNT" --profile "$PROFILE"
+env "${BOOT_ENV[@]}" "$BOOT_SCRIPT" "${BOOT_ARGS[@]}"
 prc=$?
 set -e
 [ "$prc" -eq 0 ] || die "$E_PROVISION" \
@@ -515,10 +603,12 @@ done
 if [ -n "$(find "$MNT/usr/lib" -maxdepth 1 -name 'libnvidia-*.so.*' -size 0 -print -quit 2>/dev/null)" ]; then
     vfail="$vfail\n  - zero-length libnvidia-*.so.* in /usr/lib (incomplete install)"
 fi
+# -s, not -e: install_stub()'s failures are swallowed with `|| true`, and a
+# zero-length nvkvm-recovery.sh is a working-looking unit that does nothing.
 for u in etc/systemd/system/nvkvm-boot.service etc/systemd/system/nvkvm-plant-stub.path \
          etc/systemd/system/nvkvm-plant-stub.service usr/local/sbin/nvkvm-recovery.sh \
          etc/modules-load.d/nvkvm.conf etc/modprobe.d/99-nvkvm.conf; do
-    [ -e "$MNT/$u" ] || vfail="$vfail\n  - /$u not installed"
+    [ -s "$MNT/$u" ] || vfail="$vfail\n  - /$u not installed (or empty)"
 done
 [ -z "$vfail" ] || die "$E_PROVISION" "$(printf 'the image is NOT provisioned correctly:%b' "$vfail")"
 log "verified: module for $kver, NVIDIA userspace, units and modprobe config all present"
@@ -531,6 +621,7 @@ log "verified: module for $kver, NVIDIA userspace, units and modprobe config all
 # just been "released", and it presented as a driver bug for hours. `sync`
 # first, then a real unmount, and only then touch the file.
 unmount_everything() {
+    kill_chroot_leftovers
     sync
     sync -f "$MNT" 2>/dev/null || true
     umount -R "$MNT" || return 1
@@ -551,7 +642,8 @@ if ! unmount_everything; then
     findmnt -rn -o TARGET,SOURCE | grep "^$MNT" >&2 || true
     die "$E_UNMOUNT" "refusing to image a filesystem that is still mounted — a lazy unmount would return before writeback finished and produce a silently corrupt image. Close whatever holds it (fuser -vm $MNT), then re-run this script from the start."
 fi
-losetup -d "$LOOPDEV" && LOOPDEV=""
+losetup -d "$LOOPDEV" || die "$E_UNMOUNT" "could not detach $LOOPDEV — do not use $OUT until it is released"
+LOOPDEV=""
 
 if [ "$MAKE_QCOW2" = 1 ]; then
     step "9b/9 converting to qcow2"

@@ -70,6 +70,11 @@ the at-a-glance version for someone who already has nvkvm-pv built.
 > builds the guest module from `<share>/src/guest`, so a share pointed at
 > *this* repo fails with `nvkvm guest source not found`. `boot/` here is a copy
 > of nvkvm-pv's `boot/`, published so the mechanism can be read on its own.
+>
+> **The share needs both halves.** The public `nvkvm-pv` does not currently ship
+> `boot/` (checked at `252bd44`, 2026-08-24), and `install_stub` needs
+> `<share>/boot/image/` for the systemd units — so copy this repo's `boot/` into
+> the checkout you share: `cp -r nvkvm-steamos/boot nvkvm-pv/`.
 
 > **Steps 1 and 2 are one command if you want them to be:**
 > ```sh
@@ -86,10 +91,13 @@ the at-a-glance version for someone who already has nvkvm-pv built.
 The image needs room for a persistent `/home` — Steam's runtime and its library
 live there, and on the recovery image `/home` is 2 GB and full. Growing the disk
 is enough: `/home` is the **last** partition and this image expands it into the
-new space by itself on first boot. (It does **not** grow the ~5 GB btrfs rootfs,
-which is not last on disk — see
-[`docs/manual-install.md`](docs/manual-install.md#space-traps-the-three-that-actually-bite)
-for what the rootfs pressure actually is and what to do about it.)
+new space by itself on first boot (measured: 2 G → 62 G with `+60G`). It does
+**not** grow the ~5 GB btrfs rootfs, which is not last on disk.
+
+**60 GB is a games budget, not a requirement.** It buys nothing at provisioning
+time; `0` is enough to build the image, ~8–16 GB to boot and sign into Steam,
+and more only if you install games — see
+[`docs/manual-install.md`](docs/manual-install.md#so-how-much-do-you-actually-need).
 
 ```sh
 cp steamdeck-repair.img work.img
@@ -364,6 +372,7 @@ For anything new, use `boot/steamos_boot.sh --install-only`.
 | `boot/TESTING.md` | what was tested, on which machine, and what failed |
 | `NOTES.md` | the investigation log — **historical**, predates the boot script |
 | `evidence-pc-20260823/` | raw logs from the bare-metal RTX 4070 run |
+| `evidence-vast-20260824/` | the scripted image build, run end to end, and the guest booting and converging by itself |
 | `evidence/` | screendumps from inside the guest (earlier, rented boxes) |
 | `patches/` | `0001-steamos-force-sw-cursor.patch` — the cursor workaround as a patch |
 | `diagnostics/vk_probe.py` | ctypes-only Vulkan probe — the recovery image has no compiler |

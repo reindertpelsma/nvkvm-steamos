@@ -1,0 +1,100 @@
+[   55.303161] BUG: kernel NULL pointer dereference, address: 0000000000000000
+[   55.305491] #PF: supervisor read access in kernel mode
+[   55.307179] #PF: error_code(0x0000) - not-present page
+[   55.308856] PGD 0 P4D 0 
+[   55.309736] Oops: Oops: 0000 [#1] SMP NOPTI
+[   55.311120] CPU: 6 UID: 1000 PID: 1837 Comm: ksplashqml Tainted: G           OE       6.16.12-valve24.4-1-neptune-616-gfe145653a794 #1 PREEMPT(full)  27aaaa974e72dc494d5225cda134473ec231356d
+[   55.317218] Tainted: [O]=OOT_MODULE, [E]=UNSIGNED_MODULE
+[   55.318947] Hardware name: QEMU Standard PC (Q35 + ICH9, 2009), BIOS 0.0.0 02/06/2015
+[   55.321576] RIP: 0010:nvkvm_send_sync+0xeb/0x240 [nvkvm_guest]
+[   55.323643] Code: ba 00 02 00 00 4c 89 ef e8 72 ea 04 d8 48 8d bd 38 09 00 00 e8 66 8b 82 d8 48 8b b5 48 09 00 00 48 8d 95 40 09 00 00 49 89 c5 <48> 3b 16 0f 85 a8 79 00 00 48 39 f3 0f 84 9f 79 00 00 48 39 da 0f
+[   55.330281] RSP: 0018:ffffcd8a445df980 EFLAGS: 00010046
+[   55.332013] RAX: 0000000000000286 RBX: ffff8d5c61baa000 RCX: 0000000000000286
+[   55.334412] RDX: ffffffffc096abc0 RSI: 0000000000000000 RDI: ffffffffc096abb8
+[   55.336578] RBP: ffffffffc096a280 R08: 0000000000000200 R09: 0000000000000000
+[   55.338755] R10: ffffcd8a445df9b0 R11: 00000000ffffffff R12: 0000000000000010
+[   55.340923] R13: 0000000000000286 R14: ffff8d5c6666ce10 R15: ffffcd8a445df990
+[   55.343131] FS:  00007f831dd03440(0000) GS:ffff8d5ddbf38000(0000) knlGS:0000000000000000
+[   55.345703] CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+[   55.347486] CR2: 0000000000000000 CR3: 00000001034ff000 CR4: 0000000000350ef0
+[   55.349698] Call Trace:
+[   55.350505]  <TASK>
+[   55.351221]  simple_req+0xb1/0x120 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.354020]  nvkvm_virtio_create_isolate+0x53/0x80 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.357186]  nvkvm_fd_ctx_open_dev+0x124/0x290 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.360184]  ? srso_return_thunk+0x5/0x5f
+[   55.361729]  ? exact_lock+0x26/0x50
+[   55.363058]  ? kobj_lookup+0xf5/0x170
+[   55.364220]  nvkvm_open+0xb1/0x1e0 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.366949]  ? srso_return_thunk+0x5/0x5f
+[   55.368337]  chrdev_open+0xad/0x240
+[   55.317218] Tainted: [O]=OOT_MODULE, [E]=UNSIGNED_MODULE
+[   55.318947] Hardware name: QEMU Standard PC (Q35 + ICH9, 2009), BIOS 0.0.0 02/06/2015
+[   55.321576] RIP: 0010:nvkvm_send_sync+0xeb/0x240 [nvkvm_guest]
+[   55.323643] Code: ba 00 02 00 00 4c 89 ef e8 72 ea 04 d8 48 8d bd 38 09 00 00 e8 66 8b 82 d8 48 8b b5 48 09 00 00 48 8d 95 40 09 00 00 49 89 c5 <48> 3b 16 0f 85 a8 79 00 00 48 39 f3 0f 84 9f 79 00 00 48 39 da 0f
+[   55.330281] RSP: 0018:ffffcd8a445df980 EFLAGS: 00010046
+[   55.332013] RAX: 0000000000000286 RBX: ffff8d5c61baa000 RCX: 0000000000000286
+[   55.334412] RDX: ffffffffc096abc0 RSI: 0000000000000000 RDI: ffffffffc096abb8
+[   55.336578] RBP: ffffffffc096a280 R08: 0000000000000200 R09: 0000000000000000
+[   55.338755] R10: ffffcd8a445df9b0 R11: 00000000ffffffff R12: 0000000000000010
+[   55.340923] R13: 0000000000000286 R14: ffff8d5c6666ce10 R15: ffffcd8a445df990
+[   55.343131] FS:  00007f831dd03440(0000) GS:ffff8d5ddbf38000(0000) knlGS:0000000000000000
+[   55.345703] CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+[   55.347486] CR2: 0000000000000000 CR3: 00000001034ff000 CR4: 0000000000350ef0
+[   55.349698] Call Trace:
+[   55.350505]  <TASK>
+[   55.351221]  simple_req+0xb1/0x120 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.354020]  nvkvm_virtio_create_isolate+0x53/0x80 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.357186]  nvkvm_fd_ctx_open_dev+0x124/0x290 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.360184]  ? srso_return_thunk+0x5/0x5f
+[   55.361729]  ? exact_lock+0x26/0x50
+[   55.363058]  ? kobj_lookup+0xf5/0x170
+[   55.364220]  nvkvm_open+0xb1/0x1e0 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.366949]  ? srso_return_thunk+0x5/0x5f
+[   55.368337]  chrdev_open+0xad/0x240
+[   55.369670]  ? __pfx_chrdev_open+0x10/0x10
+[   55.371283]  do_dentry_open+0x170/0x5d0
+[   55.372686]  vfs_open+0x30/0x100
+[   55.373733]  ? srso_return_thunk+0x5/0x5f
+[   55.375109]  path_openat+0x7ea/0x12e0
+[   55.376267]  do_filp_open+0xd8/0x180
+[   55.377629]  ? alloc_fd+0x12e/0x190
+[   55.378848]  do_sys_openat2+0x88/0xe0
+[   55.380209]  __x64_sys_openat+0x61/0xa0
+--
+[   55.456413] CR2: 0000000000000000
+[   55.457474] ---[ end trace 0000000000000000 ]---
+[   55.458893] RIP: 0010:nvkvm_send_sync+0xeb/0x240 [nvkvm_guest]
+[   55.460680] Code: ba 00 02 00 00 4c 89 ef e8 72 ea 04 d8 48 8d bd 38 09 00 00 e8 66 8b 82 d8 48 8b b5 48 09 00 00 48 8d 95 40 09 00 00 49 89 c5 <48> 3b 16 0f 85 a8 79 00 00 48 39 f3 0f 84 9f 79 00 00 48 39 da 0f
+[   55.466221] RSP: 0018:ffffcd8a445df980 EFLAGS: 00010046
+[   55.467808] RAX: 0000000000000286 RBX: ffff8d5c61baa000 RCX: 0000000000000286
+[   55.469989] RDX: ffffffffc096abc0 RSI: 0000000000000000 RDI: ffffffffc096abb8
+[   55.472149] RBP: ffffffffc096a280 R08: 0000000000000200 R09: 0000000000000000
+[   55.474437] R10: ffffcd8a445df9b0 R11: 00000000ffffffff R12: 0000000000000010
+[   55.476599] R13: 0000000000000286 R14: ffff8d5c6666ce10 R15: ffffcd8a445df990
+[   55.478785] FS:  00007f831dd03440(0000) GS:ffff8d5ddbf38000(0000) knlGS:0000000000000000
+[   55.481252] CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+[   55.482997] CR2: 0000000000000000 CR3: 00000001034ff000 CR4: 0000000000350ef0
+[   55.485175] Kernel panic - not syncing: Fatal exception
+[   55.486755] NMI backtrace for cpu 6
+[   55.486758] CPU: 6 UID: 1000 PID: 1837 Comm: ksplashqml Tainted: G      D    OE       6.16.12-valve24.4-1-neptune-616-gfe145653a794 #1 PREEMPT(full)  27aaaa974e72dc494d5225cda134473ec231356d
+[   55.486763] Tainted: [D]=DIE, [O]=OOT_MODULE, [E]=UNSIGNED_MODULE
+[   55.486764] Hardware name: QEMU Standard PC (Q35 + ICH9, 2009), BIOS 0.0.0 02/06/2015
+[   55.486766] Call Trace:
+[   55.486768]  <TASK>
+[   55.486770]  dump_stack_lvl+0x4d/0x70
+[   55.486776]  nmi_cpu_backtrace.cold+0x18/0x60
+[   55.486780]  ? __pfx_nmi_raise_cpu_backtrace+0x10/0x10
+[   55.486785]  nmi_trigger_cpumask_backtrace+0xf4/0x110
+[   55.486791]  panic+0x139/0x2cd
+[   55.486797]  oops_end.cold+0x18/0x26
+[   55.486801]  page_fault_oops+0x184/0x300
+[   55.486805]  ? inode_permission+0x3a/0x1b0
+[   55.486810]  ? srso_return_thunk+0x5/0x5f
+[   55.486815]  exc_page_fault+0x71/0x150
+[   55.486819]  asm_exc_page_fault+0x26/0x30
+[   55.486821] RIP: 0010:nvkvm_send_sync+0xeb/0x240 [nvkvm_guest]
+[   55.486827] Code: ba 00 02 00 00 4c 89 ef e8 72 ea 04 d8 48 8d bd 38 09 00 00 e8 66 8b 82 d8 48 8b b5 48 09 00 00 48 8d 95 40 09 00 00 49 89 c5 <48> 3b 16 0f 85 a8 79 00 00 48 39 f3 0f 84 9f 79 00 00 48 39 da 0f
+[   55.486829] RSP: 0018:ffffcd8a445df980 EFLAGS: 00010046
+[   55.486831] RAX: 0000000000000286 RBX: ffff8d5c61baa000 RCX: 0000000000000286
+[   55.486833] RDX: ffffffffc096abc0 RSI: 0000000000000000 RDI: ffffffffc096abb8

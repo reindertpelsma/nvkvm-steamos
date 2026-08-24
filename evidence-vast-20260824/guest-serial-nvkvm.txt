@@ -1,0 +1,40 @@
+BdsDxe: loading Boot0002 "UEFI QEMU NVMe Ctrl nvkvmsteamos 1" from PciRoot(0x0)/Pci(0x2,0x0)/NVMe(0x1,00-00-00-00-00-00-00-00)
+BdsDxe: starting Boot0002 "UEFI QEMU NVMe Ctrl nvkvmsteamos 1" from PciRoot(0x0)/Pci(0x2,0x0)/NVMe(0x1,00-00-00-00-00-00-00-00)
+[    5.005081] nvkvm_guest: loading out-of-tree module taints kernel.
+[    5.024949] nvkvm: host GPU discovery failed (-12); assuming 1
+[[0;32m  OK  [0m] Started [0;1;39mWatch for a staged SteamOS… nvkvm can provision the new image[0m.
+         Starting [0;1;39mnvkvm guest provisioning and validation[0m...
+[   15.784554] nvkvm-recovery.sh[1201]: [nvkvm-recovery] share mounted -- handing over to /run/nvkvm/boot/steamos_boot.sh
+[   15.807717] nvkvm-recovery.sh[1201]: [nvkvm] === Part 2: boot ===
+[   15.812169] nvkvm-recovery.sh[1201]: [nvkvm] === Part 1: converge (ROOT=/, profile=steamos) ===
+[   15.851185] nvkvm-recovery.sh[1201]: [nvkvm] rootfs was rw on entry
+[   16.316968] nvkvm-recovery.sh[1201]: [nvkvm] module up to date at 252bd44a25c70519e8429b9c34e24ecb532fcb11
+[   16.388789] nvkvm-recovery.sh[1201]: [nvkvm] no packages to remove
+[   16.431449] nvkvm-recovery.sh[1201]: [nvkvm] WARNING: could not read the host driver version from /proc/driver/nvidia/version
+[0;1;39mReload requested from client PID 1389 ('systemctl') (unit nvkvm-boot.service)...[0m
+[   17.114524] nvkvm-recovery.sh[1201]: [nvkvm] desktop configuration written
+[   17.153620] nvkvm-recovery.sh[1201]: [nvkvm] ssh: openssh already present in the image
+[   17.161324] nvkvm-recovery.sh[1201]: [nvkvm] ssh: host keys already present, keeping them
+[   17.248941] nvkvm-recovery.sh[1201]: [nvkvm] ssh: installed authorized_keys for 'deck' (1 key line(s))
+[0;1;39mReload requested from client PID 1469 ('systemctl') (unit nvkvm-boot.service)...[0m
+[   17.707119] nvkvm-recovery.sh[1201]: [nvkvm] ssh: enabled. Reachable only once QEMU also has a hostfwd, e.g.
+[   17.709175] nvkvm-recovery.sh[1201]: [nvkvm] ssh:   -netdev user,id=net0,hostfwd=tcp::15022-:22
+[0;1;39mReload requested from client PID 1533 ('systemctl') (unit nvkvm-boot.service)...[0m
+[   18.195518] nvkvm-recovery.sh[1201]: [nvkvm] in-image stub + recovery installed
+[   18.207264] nvkvm-recovery.sh[1201]: [nvkvm] === Part 1 finished (rc=0) ===
+[   18.262741] nvkvm-recovery.sh[1201]: [nvkvm] validation OK -- handing over to the desktop
+[[0;32m  OK  [0m] Finished [0;1;39mnvkvm guest provisioning and validation[0m.
+         Starting [0;1;39mResolve the nvkvm DRM node and publish it to user sessions[0m...
+[   55.321576] RIP: 0010:nvkvm_send_sync+0xeb/0x240 [nvkvm_guest]
+[   55.351221]  simple_req+0xb1/0x120 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.354020]  nvkvm_virtio_create_isolate+0x53/0x80 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.357186]  nvkvm_fd_ctx_open_dev+0x124/0x290 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.364220]  nvkvm_open+0xb1/0x1e0 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.424267] Modules linked in: uinput cfg80211 snd_seq_dummy snd_hrtimer snd_seq snd_seq_device snd_timer snd soundcore 9p rfkill nft_fib_inet nft_fib_ipv4 nft_fib_ipv6 nft_fib nft_reject_inet nf_reject_ipv4 nf_reject_ipv6 nft_reject nft_ct nft_chain_nat ip6table_nat ip6table_mangle ip6table_raw ip6table_security iptable_nat nf_nat nf_conntrack nf_defrag_ipv6 nf_defrag_ipv4 iptable_mangle iptable_raw iptable_security nf_tables ip6table_filter ip6_tables iptable_filter mousedev intel_rapl_msr intel_rapl_common kvm_amd ccp kvm irqbypass ppdev 9pnet_virtio polyval_clmulni iTCO_wdt ghash_clmulni_intel sha512_ssse3 9pnet i2c_i801 intel_pmc_bxt sha1_ssse3 virtio_net i2c_smbus iTCO_vendor_support psmouse aesni_intel pcspkr i2c_mux parport_pc netfs net_failover parport intel_agp failover intel_gtt bochs lpc_ich mac_hid pkcs8_key_parser nvkvm_guest(OE) ntsync hid_playstation led_class_multicolor hid_nintendo ff_memless i2c_dev crypto_user loop dm_mod nfnetlink zram vsock_loopback vmw_vsock_virtio_transport_common
+[   55.458893] RIP: 0010:nvkvm_send_sync+0xeb/0x240 [nvkvm_guest]
+[   55.486821] RIP: 0010:nvkvm_send_sync+0xeb/0x240 [nvkvm_guest]
+[   55.486848]  simple_req+0xb1/0x120 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.486855]  nvkvm_virtio_create_isolate+0x53/0x80 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.486862]  nvkvm_fd_ctx_open_dev+0x124/0x290 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   55.486878]  nvkvm_open+0xb1/0x1e0 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+[   66.662218] RIP: 0010:nvkvm_send_sync+0xeb/0x240 [nvkvm_guest]

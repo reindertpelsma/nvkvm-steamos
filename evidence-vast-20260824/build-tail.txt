@@ -1,0 +1,60 @@
+
+WARNING: The symbolic link '/usr/lib/libnvidia-sandboxutils.so.1' does not exist.  This is necessary for correct operation of the NVIDIA Accelerated Graphics Driver for Linux-x86_64.  You can create this symbolic link manually by executing `ln -sf libnvidia-sandboxutils.so.570.133.20 /usr/lib/libnvidia-sandboxutils.so.1`.
+
+
+ERROR: Unable to get file properties for '/usr/lib32/libcuda.so.1' (No such file or directory).
+
+
+WARNING: The symbolic link '/usr/lib32/libcuda.so.1' does not exist.  This is necessary for correct operation of the NVIDIA Accelerated Graphics Driver for Linux-x86_64.  You can create this symbolic link manually by executing `ln -sf libcuda.so.570.133.20 /usr/lib32/libcuda.so.1`.
+
+
+ERROR: Unable to get file properties for '/usr/lib32/libnvidia-ptxjitcompiler.so.1' (No such file or directory).
+
+
+WARNING: The symbolic link '/usr/lib32/libnvidia-ptxjitcompiler.so.1' does not exist.  This is necessary for correct operation of the NVIDIA Accelerated Graphics Driver for Linux-x86_64.  You can create this symbolic link manually by executing `ln -sf libnvidia-ptxjitcompiler.so.570.133.20 /usr/lib32/libnvidia-ptxjitcompiler.so.1`.
+
+
+ERROR: Unable to get file properties for '/usr/lib32/libnvidia-ml.so.1' (No such file or directory).
+
+
+WARNING: The symbolic link '/usr/lib32/libnvidia-ml.so.1' does not exist.  This is necessary for correct operation of the NVIDIA Accelerated Graphics Driver for Linux-x86_64.  You can create this symbolic link manually by executing `ln -sf libnvidia-ml.so.570.133.20 /usr/lib32/libnvidia-ml.so.1`.
+
+
+ERROR: Unable to get file properties for '/usr/lib32/libnvidia-opencl.so.1' (No such file or directory).
+
+
+WARNING: The symbolic link '/usr/lib32/libnvidia-opencl.so.1' does not exist.  This is necessary for correct operation of the NVIDIA Accelerated Graphics Driver for Linux-x86_64.  You can create this symbolic link manually by executing `ln -sf libnvidia-opencl.so.570.133.20 /usr/lib32/libnvidia-opencl.so.1`.
+
+
+ERROR: Unable to get file properties for '/usr/lib32/libnvidia-nvvm.so.4' (No such file or directory).
+
+
+WARNING: The symbolic link '/usr/lib32/libnvidia-nvvm.so.4' does not exist.  This is necessary for correct operation of the NVIDIA Accelerated Graphics Driver for Linux-x86_64.  You can create this symbolic link manually by executing `ln -sf libnvidia-nvvm.so.570.133.20 /usr/lib32/libnvidia-nvvm.so.4`.
+
+[nvkvm] restored 5 library file(s) that the diverted types contain but the trim list keeps
+[nvkvm] removing GSP firmware (41M) -- no guest module requests it
+[nvkvm] profile 'steamos': trimming CUDA/OpenCL/NVVM/OptiX (GPU PhysX is the casualty;
+[nvkvm] Vulkan, GL, DXVK, VKD3D, gamescope and DLSS/libnvidia-ngx are unaffected)
+[nvkvm] trimmed 19 CUDA/OpenCL paths
+[nvkvm] desktop configuration written
+[nvkvm] ssh: openssh already present in the image
+[nvkvm] ssh: generating host keys
+[nvkvm] ssh: installed authorized_keys for 'deck' (1 key line(s))
+[nvkvm] ssh: enabled. Reachable only once QEMU also has a hostfwd, e.g.
+[nvkvm] ssh:   -netdev user,id=net0,hostfwd=tcp::15022-:22
+[nvkvm] in-image stub + recovery installed
+[nvkvm] === Part 1 finished (rc=0) ===
+[build] == 8b/9 verifying the provisioned image
+[build] verified: module for 6.16.12-valve24.4-1-neptune-616-gfe145653a794, NVIDIA userspace, units and modprobe config all present
+[build] == 9/9 syncing and unmounting
+[build] killing leftover chroot process 38717 (gpg-agent) with SIGTERM
+[build] == 9b/9 converting to qcow2
+[build] done.
+[build]   work image : /root/steamos/work.img
+[build]   qcow2      : /root/steamos/work.qcow2
+[build] 
+[build] Boot it with:
+[build]   QCOW=/root/steamos/work.qcow2 \
+[build]   SHARE=/root/nvkvm-pv \
+[build]   QEMU=/opt/qemu-nvkvm/bin/qemu-system-x86_64 \
+[build]     boot/run_steamos_nvkvm.sh

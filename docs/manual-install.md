@@ -27,7 +27,7 @@ understands them can debug a failure, one who copies them cannot.
 | | |
 |---|---|
 | **A SteamOS recovery image** | see below |
-| **An `nvkvm-pv` checkout** | **not this repo.** The guest module is built from `<share>/src/guest`; a share pointed at `nvkvm-steamos` fails with `nvkvm guest source not found`. |
+| **An `nvkvm-pv` checkout** | **not this repo.** The guest module is built from `<share>/src/guest`; a share pointed at `nvkvm-steamos` fails with `nvkvm guest source not found`. **But** the public `nvkvm-pv` does not ship `boot/` (checked at `252bd44`, 2026-08-24), and the share needs `boot/image/` for the systemd units — so copy this repo's `boot/` into that checkout: `cp -r nvkvm-steamos/boot nvkvm-pv/`. |
 | **The NVIDIA driver loaded on the host** | `/proc/driver/nvidia/version` must be readable. The image is pinned to *this host's* driver version. |
 | **root** | losetup, mount, chroot |
 | **Host tools** | `losetup`, `sgdisk` (gptfdisk), `btrfs` (btrfs-progs), `blkid`, `findmnt`, `chroot`, `modinfo` (kmod), `mkfs.ext4`, `qemu-img` |
@@ -39,9 +39,7 @@ recovery image dated 2026-07-07:
 
 ```sh
 curl -O https://steamdeck-images.steamos.cloud/recovery/steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2
-# 3,357,999,306 bytes compressed; check it before you spend an hour on a bad copy
-ls -l steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2
-bunzip2 -k steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2
+bunzip2 -k steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2      # -k: keep the .bz2
 ```
 
 That URL is a **pin, not the only option** — Valve publishes newer recovery
@@ -52,6 +50,24 @@ refuses, correctly, if Valve's package pool no longer carries kernel headers for
 the exact kernel in your image, and that is the single most common reason to
 need a fresher one. Note the version you used — results are not comparable
 across SteamOS versions.
+
+Verify it before spending an hour on a bad copy (measured 2026-08-24):
+
+| | bytes | sha256 |
+|---|---|---|
+| `…img.bz2` | 3,357,999,306 | `4254ee02ec34ae8add9aceef1881a2ce675a9d0176171df92e0eaa1bf014c594` |
+| `…img` | 8,120,172,544 | `f9aa0fa2dd618febf28a5e2a583d1e2b5a8ca3f1205be965da584602ac962f40` |
+
+What is inside it, so you know what to expect from the steps below:
+
+```
+p1 esp      vfat    64M
+p2 efi-A    vfat   128M
+p3 rootfs-A btrfs    5G     ro=true, 3.5G used, 867M free
+p4 var-A    ext4   256M
+p5 home     ext4     2G     <- the last partition; this is what +60G grows
+kernel: 6.16.12-valve24.4-1-neptune-616-gfe145653a794
+```
 
 **Never provision the downloaded image itself.** It is the input, it is a 3.4 GB
 download, and you will want to start over at least once.
@@ -67,6 +83,22 @@ image that has no driver in it. Check before you start:
 ```sh
 cat /proc/driver/nvidia/version
 ```
+
+And check that a matching `.run` is actually downloadable, because provisioning
+fetches one:
+
+```sh
+V=$(awk '{for(i=1;i<=NF;i++) if ($i ~ /^[0-9]+\.[0-9]+/) {print $i; exit}}' /proc/driver/nvidia/version)
+curl -sIL "https://us.download.nvidia.com/XFree86/Linux-x86_64/$V/NVIDIA-Linux-x86_64-$V.run" -o /dev/null -w "%{http_code}\n"
+```
+
+`locate_or_fetch_run()` only ever tries that one URL, and **datacenter-branch
+drivers are not published there.** Measured 2026-08-24: 570.133.20 is `404` on
+that path and `200` under `https://us.download.nvidia.com/tesla/570.133.20/`.
+If you get a 404, download the `.run` yourself and put it where the script
+looks first — `<share>/nvidia/NVIDIA-Linux-x86_64-<ver>.run` — or pass
+`build_steamos_image.sh --nvidia-run <file>`. Otherwise Part 1 ends `rc=1` with
+`could not obtain the NVIDIA .run`.
 
 ---
 
@@ -92,17 +124,37 @@ recovery image's btrfs **rootfs is ~5 GB and this does not grow it** — the
 rootfs is partition 3, and only the *last* partition can absorb space appended
 to the end of a disk. What grows is `/home` (the last partition), and it grows
 by itself: this SteamOS image ships a boot-time grow-last-partition unit, so on
-the guest's first boot partition 5 expands to fill the new space with no action
-from you. Measured: `/home` went from 2.0 G / 100 % used to **61 G with 60 G
-free**, and `resize2fs` reported there was nothing left to do.
+the guest's **first boot** partition 5 expands to fill the new space with no
+action from you.
 
-That is worth doing because `/home` is where Steam's library, its runtime and
-every game live — without it Steam cannot even bootstrap. It does **not**
-relieve the rootfs pressure during provisioning; see
+Measured end to end (2026-08-24, +60G): `home` went from **2 G to 62 G** on the
+first boot of the produced image, while `rootfs-A` stayed at 5 G, 89 % used,
+518 M free. So the growth is **entirely a `/home` budget** — and because it
+happens at the guest's first boot, it contributes *nothing* to the offline
+provisioning in the steps below. Provisioning succeeds with no growth at all.
+
+### So how much do you actually need?
+
+`+60G` is not a technical requirement; it is a games budget. Pick from what you
+intend to do:
+
+| you want | `--grow` | why |
+|---|---|---|
+| just build and provision the image | `0` | provisioning never touches the grown space; the 1 GB build area and the `.run` cache fit in the stock 2 GB `/home` |
+| boot to the desktop, log into Steam | `8G` – `16G` | Steam's own bootstrap and runtime need a few GB, and on the stock 2 GB `/home` (already ~full) Steam cannot even extract itself — that was measured, and the workaround at the time was a tmpfs `HOME`, which cannot hold a game |
+| install and play a game | `+ the game` | Portal 2 is ~10 GB; modern titles are 50–150 GB |
+
+The number in the README, 60 GB, is simply what the sessions in this repository
+used so a couple of games would fit. `truncate` writes a **hole**, so it costs
+nothing on the host today — but the work image and the qcow2 grow for real as
+the guest fills `/home`, so the host must eventually have the space. If you are
+tight on host disk, grow less now; you can always
+`qemu-img resize <qcow2> +NG` later on a **stopped** guest (live `block_resize`
+fails with `Failed to grow the L1 table`) and the same growfs unit will pick it
+up on the next boot.
+
+It does **not** relieve the rootfs pressure during provisioning; see
 [Space traps](#space-traps-the-three-that-actually-bite) for what does.
-
-`truncate` writes a hole, so the file does not consume 60 GB today. It will as
-the guest fills it.
 
 ## 3. Attach a loop device — and note which one you got
 
@@ -339,6 +391,7 @@ A healthy run ends with:
 | version-pin error on `linux-neptune-*-headers` | Valve's pool no longer carries headers for this image's exact kernel. **This is correct behaviour**, not a bug: building against a newer neptune point release silently produces a module that loads nowhere. Use a newer recovery image. |
 | `nvkvm guest source not found` | step 10 — the bind mount points at the wrong repo |
 | `free=634M vs needed=768M` | out of rootfs space; see below |
+| `could not obtain the NVIDIA .run for <ver>` | the host runs a datacenter-branch driver, which is not on the `/XFree86/` path this script tries. Supply the `.run` yourself — step 0. |
 | finishes `rc=0` but no NVIDIA libraries in the image | step 0 — the host driver was not loaded, and this only *warns* |
 
 ## 12. Verify before you unmount
@@ -389,7 +442,23 @@ and the resulting qcow2 contained a **0-byte `libnvidia-ml.so`** while the very
 same file was 2.2 MB on the mount that had just been "released". It presented as
 an NVIDIA driver bug and cost hours.
 
-So: if `umount -R` says busy, **find what is holding it** —
+**The thing that will actually hold it busy.** `ensure_pacman_keyring()` runs
+`pacman-key --init` *inside the chroot*, and that starts a **`gpg-agent`** (and
+`dirmngr`). They keep running after Part 1 returns, with their root and cwd
+inside your mounted image, and `umount -R` fails with `target is busy` because
+of them. Measured — it happens on every run that installs anything. Kill them
+first:
+
+```sh
+# only processes whose root is genuinely inside the tree
+for p in /proc/[0-9]*; do
+  case "$(readlink "$p/root" 2>/dev/null)" in /mnt/steamos|/mnt/steamos/*)
+    echo "killing ${p#/proc/} ($(cat "$p/comm"))"; kill "${p#/proc/}" ;;
+  esac
+done
+```
+
+If it is still busy, **find what is holding it** —
 
 ```sh
 findmnt -R /mnt/steamos
@@ -504,6 +573,13 @@ what was *run* and this is about what the code *does*:
 5. **The bare `sudo mount --bind … /run/nvkvm` leaves the share writable.** The
    real 9p share is exported `readonly=on`; the bind should be remounted `ro` to
    match (step 10).
-6. **A `rc=0` with no NVIDIA driver installed is possible** when
+6. **`sudo /path/to/nvkvm-pv/boot/steamos_boot.sh` cannot be run from a fresh
+   public `nvkvm-pv` clone** — that repository has no `boot/` directory
+   (`252bd44`, and `integration-2026-08-23`). The only published copy is this
+   repo's; copy it into the checkout you share (step 0).
+7. **The NVIDIA `.run` download works for GeForce-branch drivers only.**
+   `locate_or_fetch_run()` hardcodes the `/XFree86/Linux-x86_64/` path;
+   datacenter-branch drivers live under `/tesla/` and 404 there (step 0).
+8. **A `rc=0` with no NVIDIA driver installed is possible** when
    `/proc/driver/nvidia/version` is unreadable — worth checking before you
    start, since nothing downstream complains until the guest boots (step 0).

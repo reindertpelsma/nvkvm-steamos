@@ -73,6 +73,83 @@ by way of bug 2 above — and printed its guidance correctly.
 
 ---
 
+## AMENDMENT — 2026-08-24: the offline path, run end to end by a script
+
+Rig: **vast.ai desktop-VM KVM instance, RTX 4090, host driver 570.133.20**,
+nested but with real `/dev/kvm`. Ran
+[`../build_steamos_image.sh`](../build_steamos_image.sh) — which wraps
+`steamos_boot.sh --install-only` — against a freshly downloaded
+`steamdeck-oobe-repair-20260707.10-3.8.14`, then booted the result under
+**stock** QEMU 6.2 + OVMF. Logs: [`../evidence-vast-20260824/`](../evidence-vast-20260824/).
+
+**Newly proven, and it closes this file's oldest open item:**
+
+- **The module builds, installs and LOADS.** `module compile took 12s`,
+  `module built and installed for 6.16.12-valve24.4-1-neptune-616-…`, and on the
+  next boot `nvkvm_guest: loading out-of-tree module taints kernel`. The
+  *"module was never actually built"* blocker was a property of an older image
+  against Valve's pool: as of 2026-08-24 the exact-match headers for this
+  image's kernel are back to **HTTP 200**, and `ensure_kernel_headers` fetches
+  them.
+- **The whole offline sequence works on the repair image**, which had never been
+  taken past the pre-flight here: keyring init, `gcc`+`make` in the chroot,
+  exact-match headers, the build area on `/home`, `nvidia-installer` with the
+  type diversion, `restore_diverted_keepers`, the trim, the units. Part 1
+  `rc=0`, wall time **1m48s** for the whole image.
+- **The produced image boots and converges by itself.** OVMF loads from the
+  NVMe (so `sgdisk -e` did its job), `nvkvm-boot.service` runs the planted
+  `nvkvm-recovery.sh`, which mounts the **real 9p share** and hands over:
+  `module up to date at 252bd44…`, `Part 1 finished (rc=0)`, `validation OK`.
+- **`+60G` grows `/home`, not the rootfs** — measured on the booted guest:
+  `home` 2 G → **62 G** on first boot, `rootfs-A` unchanged at 5 G / 89 % used /
+  518 M free. The claim above that growing the image relieves rootfs pressure is
+  wrong; it is a games budget. See
+  [`../docs/manual-install.md`](../docs/manual-install.md#so-how-much-do-you-actually-need).
+
+**Three defects this run found:**
+
+1. **`locate_or_fetch_run` only knows one URL.** It builds
+   `https://us.download.nvidia.com/XFree86/Linux-x86_64/<ver>/…`, and
+   **datacenter-branch drivers are not published there**: 570.133.20 is `404`
+   on that path and `200` under `/tesla/570.133.20/`. On any host running such a
+   driver — which is most rented GPU boxes — Part 1 ends `rc=1` with
+   `could not obtain the NVIDIA .run`, with the payload one URL away. Worked
+   around here with `--nvidia-run`, which bind-mounts a local `.run` in and
+   passes `--old-run-file`.
+2. **`nvkvm-guest` NULL-derefs when it loads without an nvkvm device.**
+   `nvkvm: host GPU discovery failed (-12); assuming 1`, then
+   `BUG: kernel NULL pointer dereference … nvkvm_send_sync … nvkvm_open`, with
+   `ksplashqml` as the caller. `/etc/modules-load.d/nvkvm.conf` force-loads the
+   module, so *any* boot on a QEMU without the devices takes this — presenting
+   as a black screen with a live cursor, then sshd dying. Guest-module bug, not
+   an image bug, but it is what an unsupported QEMU looks like.
+3. **`validate()` printed `validation OK` on that same boot**, because
+   `/dev/nvidiactl`, `libGLX_nvidia` and the Vulkan ICD are all present while the
+   device oopses on every open. The mirror image of the false CLASS 4 recorded
+   in the 2026-08-23 amendment: the validator is again the thing that is wrong.
+
+**Two things about the tooling around it, both measured:**
+
+- **`pacman-key --init` leaves a `gpg-agent` running inside the chroot.** It
+  outlives Part 1, holds the mounted image, and `umount -R` then fails with
+  *target is busy* — which is precisely the moment someone reaches for
+  `umount -l` and captures an unflushed filesystem.
+  `build_steamos_image.sh` kills processes whose `/proc/<pid>/root` is inside the
+  tree before unmounting.
+- **The public `nvkvm-pv` does not contain `boot/`.** As of `252bd44` (and
+  `integration-2026-08-23`) there is no `boot/steamos_boot.sh` and no
+  `boot/image/` in that repository, so the README's
+  `sudo /path/to/nvkvm-pv/boot/steamos_boot.sh` cannot be followed from a fresh
+  public clone. This repo's `boot/` is the only published copy; copy it into the
+  checkout you share.
+
+**Still not exercised here:** anything to do with presentation. No nvkvm-patched
+QEMU was built on this box, so no `virtio-nvgpu`, no `nvkvm-gpu`, no GL
+zero-copy, no game — and therefore nothing in this amendment revises the
+display findings below.
+
+---
+
 ## Verified working (MEASURED)
 
 - `ensure_pacman_keyring` — a freshly-mounted SteamOS rootfs has no initialised
