@@ -24,6 +24,10 @@
 #   --qcow2 FILE       qcow2 path (default: <out stem>.qcow2)
 #   --no-qcow2         stop after the work image; skip the conversion
 #   --grow SIZE        disk growth, iec suffixes (default: 60G; 0 to skip).
+#                      This sizes the image you will BOOT AND USE -- it is not
+#                      a build scratch size, so shrinking it shrinks the disk
+#                      the guest ends up living on. Generous by default
+#                      precisely because it is free (see the sparse note).
 #                      MEASURED: this grows the LAST partition only — SteamOS's
 #                      own growfs unit expands /home into it on the guest's
 #                      first boot (2G -> 62G with +60G), while the 5 GB btrfs
