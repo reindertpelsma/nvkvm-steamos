@@ -410,7 +410,29 @@ ls /mnt/steamos/etc/systemd/system/nvkvm-boot.service \
    /mnt/steamos/usr/local/sbin/nvkvm-recovery.sh
 ```
 
-The zero-length check is not paranoia — see step 13.
+The zero-length check is not paranoia — see step 13. And `ls` is not enough for
+the four files copied off the share: `install(1)` opens the destination
+`O_CREAT|O_TRUNC` *before* it writes anything, so a full rootfs or a short read
+leaves a file that exists, has the right name, and is empty or truncated. A
+zero-length `/usr/local/sbin/nvkvm-recovery.sh` makes `nvkvm-boot.service` fail
+`203/EXEC` on every boot while every `ls` says it is installed. Compare the
+bytes:
+
+```sh
+for f in usr/local/sbin/nvkvm-recovery.sh etc/systemd/system/nvkvm-boot.service \
+         etc/systemd/system/nvkvm-plant-stub.path etc/systemd/system/nvkvm-plant-stub.service; do
+  cmp /run/nvkvm/boot/image/"$(basename "$f")" /mnt/steamos/"$f" || echo "BAD: $f"
+done
+test -x /mnt/steamos/usr/local/sbin/nvkvm-recovery.sh || echo "BAD: not executable"
+```
+
+or let the standalone verifier do exactly that for you, against the same mount.
+It is the same check `build_steamos_image.sh` gates on at step 8b, and it takes
+two paths and nothing else, so it works for any builder:
+
+```sh
+boot/verify_image.sh /mnt/steamos /path/to/nvkvm-pv
+```
 
 ## 13. Flush, and unmount **for real**
 

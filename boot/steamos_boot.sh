@@ -642,16 +642,70 @@ UNIT
     log "desktop configuration written"
 }
 
+# Copy ONE file from the share into the image, then PROVE it landed intact.
+#
+# install(1) and cp(1) create the destination with O_CREAT|O_TRUNC before they
+# have written a single byte, so ANY failure after that point leaves a
+# destination that exists, has the right name, and is EMPTY. MEASURED, on a
+# deliberately-full ext2 image with /usr/local/sbin already present:
+#
+#   $ install -m 0755 src dst
+#   install: cannot install 'src' to 'dst': No space left on device
+#   $ ls -l dst
+#   -rw------- 1 root root 0 ... dst
+#
+# and the SteamOS rootfs is the ~5 GB partition this whole script fights for
+# room on. The same shape comes out of a short/failed read off the 9p share, and
+# out of a source file on the share that is itself zero-length.
+#
+# A 0-byte /usr/local/sbin/nvkvm-recovery.sh is the worst outcome this script
+# can produce: execve() on an empty file returns ENOEXEC, so nvkvm-boot.service
+# fails 203/EXEC on EVERY boot; every `[ -e ]`/`ls` check says it is installed;
+# and nothing anywhere says why. So verify against the source, and delete
+# whatever does not match rather than leaving the remains in place -- an absent
+# file is at least honest, and the next converge run re-plants it.
+plant_file() {   # <src> <dst> <mode>
+    local src="$1" dst="$2" mode="$3" ssz dsz
+    [ -r "$src" ] || { err "plant: source not readable: $src"; return 1; }
+    if [ ! -s "$src" ]; then
+        err "plant: source is ZERO-LENGTH: $src"
+        err "plant: the 9p share is broken; refusing to plant an empty $(basename "$dst")."
+        return 1
+    fi
+    mkdir -p "$(dirname "$dst")" || { err "plant: could not create $(dirname "$dst")"; return 1; }
+    if ! install -m "$mode" "$src" "$dst"; then
+        err "plant: install failed for $dst -- removing the truncated remains."
+        err "plant: usual cause is no room left on the target rootfs."
+        rm -f "$dst"
+        return 1
+    fi
+    # cmp, not just a size test: a short read off 9p can leave a file that is
+    # non-empty and still wrong.
+    if ! cmp -s "$src" "$dst"; then
+        ssz="$(wc -c <"$src" 2>/dev/null)"; dsz="$(wc -c <"$dst" 2>/dev/null)"
+        err "plant: $dst does not match its source (${dsz:-?} bytes planted, ${ssz:-?} expected) -- removing it."
+        rm -f "$dst"
+        return 1
+    fi
+    return 0
+}
+
 install_stub() {
     local img_dir="$NVKVM_SHARE_MNT/boot/image"
-    [ -d "$img_dir" ] || { warn "in-image sources not found at $img_dir"; return 1; }
+    [ -d "$img_dir" ] || { err "in-image sources not found at $img_dir"; return 1; }
     steamos_unlock
-    install -D -m 0755 "$img_dir/nvkvm-recovery.sh"      "$(rp /usr/local/sbin/nvkvm-recovery.sh)"
-    install -D -m 0644 "$img_dir/nvkvm-boot.service"      "$(rp /etc/systemd/system/nvkvm-boot.service)"
-    install -D -m 0644 "$img_dir/nvkvm-plant-stub.path"   "$(rp /etc/systemd/system/nvkvm-plant-stub.path)"
-    install -D -m 0644 "$img_dir/nvkvm-plant-stub.service" "$(rp /etc/systemd/system/nvkvm-plant-stub.service)"
+    local rc=0
+    plant_file "$img_dir/nvkvm-recovery.sh"       "$(rp /usr/local/sbin/nvkvm-recovery.sh)"             0755 || rc=1
+    plant_file "$img_dir/nvkvm-boot.service"      "$(rp /etc/systemd/system/nvkvm-boot.service)"        0644 || rc=1
+    plant_file "$img_dir/nvkvm-plant-stub.path"   "$(rp /etc/systemd/system/nvkvm-plant-stub.path)"     0644 || rc=1
+    plant_file "$img_dir/nvkvm-plant-stub.service" "$(rp /etc/systemd/system/nvkvm-plant-stub.service)" 0644 || rc=1
+    if [ "$rc" != 0 ]; then
+        err "in-image stub NOT installed. Until this is fixed nvkvm-boot.service"
+        err "cannot run, and a provisioned image will not converge on its own."
+        return 1
+    fi
     in_target systemctl enable nvkvm-boot.service nvkvm-plant-stub.path 2>/dev/null || true
-    log "in-image stub + recovery installed"
+    log "in-image stub + recovery installed (verified byte-for-byte against the share)"
 }
 
 # ── Part 1 ───────────────────────────────────────────────────────────────────
@@ -715,7 +769,12 @@ do_install() {
 
     write_desktop_config || rc=1
     configure_ssh || rc=1
-    install_stub || true
+    # NOT `|| true`. A silently-failed plant is how a 0-byte
+    # /usr/local/sbin/nvkvm-recovery.sh ships: 203/EXEC on every boot, from a run
+    # that reported rc=0. This does not endanger the update path -- the plant
+    # unit declares SuccessExitStatus=0 1 and nvkvm-recovery.sh's own `plant`
+    # subcommand still always exits 0 (design note 3).
+    install_stub || rc=1
     prune_run_cache
     log "=== Part 1 finished (rc=$rc) ==="
     return $rc

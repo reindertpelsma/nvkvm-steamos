@@ -158,6 +158,10 @@ err()  { printf '[build] ERROR: %s\n' "$*" >&2; }
 die()  { local c="$1"; shift; err "$*"; exit "$c"; }
 step() { STEP="$1"; log "== $1"; }
 
+# This repo's own directory. Captured before the re-exec, because $0 there is
+# this same script and the verifier we call lives next to it, not on the share.
+SELF_DIR="${_BSI_SELF_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+
 # ── Defaults ─────────────────────────────────────────────────────────────────
 SRC="" SHARE="" OUT="" QCOW="" BOOT_SCRIPT="" WORKDIR=""
 GROW=60G PROFILE=steamos ROOTFS_PART_NUM="" HOME_PART_NUM="" NVIDIA_RUN=""
@@ -205,7 +209,7 @@ if [ "$STAGE2" -eq 0 ]; then
     # Tools. Fail naming everything that is missing, in one message, before
     # anything has been created — the whole point of a preflight.
     NEEDED=(losetup sgdisk btrfs unshare blkid findmnt chroot modinfo
-            mkfs.ext4 mount umount cp truncate stat awk sed numfmt)
+            mkfs.ext4 mount umount cp cmp truncate stat awk sed numfmt)
     [ "$MAKE_QCOW2" -eq 1 ] && NEEDED+=(qemu-img)
     MISSING=()
     for t in "${NEEDED[@]}"; do command -v "$t" >/dev/null 2>&1 || MISSING+=("$t"); done
@@ -229,6 +233,16 @@ if [ "$STAGE2" -eq 0 ]; then
     [ -x "$BOOT_SCRIPT" ] || die "$E_SHARE" "boot script not found or not executable: $BOOT_SCRIPT"
     [ -d "$SHARE/boot/image" ] || die "$E_SHARE" \
         "$SHARE/boot/image is missing — install_stub() would skip the systemd units and the guest would never converge on its own."
+    # Each of these is copied verbatim into the image. A zero-length source
+    # produces a zero-length PLANT that every `[ -e ]` check calls installed and
+    # that systemd fails with 203/EXEC on every boot. Catch it here, before the
+    # ~2 minute module build and NVIDIA install, not after.
+    for f in nvkvm-recovery.sh nvkvm-boot.service nvkvm-plant-stub.path nvkvm-plant-stub.service; do
+        [ -r "$SHARE/boot/image/$f" ] || die "$E_SHARE" \
+            "$SHARE/boot/image/$f is missing or unreadable. The share must carry a complete boot/image/ — copy this repo's boot/ into the nvkvm-pv checkout again."
+        [ -s "$SHARE/boot/image/$f" ] || die "$E_SHARE" \
+            "$SHARE/boot/image/$f is ZERO-LENGTH on the share. It would be planted into the image as a zero-length file; /usr/local/sbin/nvkvm-recovery.sh in that state makes nvkvm-boot.service fail 203/EXEC on every boot. Re-copy boot/image/ onto the share."
+    done
     # repo_commit() runs `git -C <share> rev-parse HEAD` as root. If git refuses
     # the checkout it returns empty, the .commit stamp is written empty, and the
     # guest then rebuilds the module on EVERY boot without ever saying why.
@@ -326,6 +340,7 @@ if [ "$STAGE2" -eq 0 ]; then
     export _BSI_PROFILE="$PROFILE" _BSI_ROOTFS_PART="$ROOTFS_PART_NUM" _BSI_HOME_PART="$HOME_PART_NUM"
     export _BSI_QCOW2="$MAKE_QCOW2" _BSI_NO_COMPAT32="$NO_COMPAT32" _BSI_NVIDIA_RUN="$NVIDIA_RUN"
     export _BSI_SCRATCH_TMP="$SCRATCH_TMP" _BSI_RESOLV="$BIND_RESOLV" _BSI_SHARE_MNT="$SHARE_MNT"
+    export _BSI_SELF_DIR="$SELF_DIR"
     log "entering a private mount namespace (mounts cannot leak to the host)"
     exec unshare -m --propagation private -- "$0" --internal-stage2
 fi
@@ -605,30 +620,15 @@ set -e
 
 # Verify the image rather than trusting rc=0. Part 1 returns 0 in states that
 # are not usable — most notably it only WARNS when it cannot read the host
-# driver version, and install_stub failures are swallowed with `|| true`.
+# driver version.
+#
+# The check itself lives in boot/verify_image.sh, on purpose: it is two paths in
+# and an exit status out, so any other builder — or an operator, by hand, on an
+# image that already exists — applies exactly the gate this build applies, and
+# the check outlives this script.
 step "8b/9 verifying the provisioned image"
-vfail=""
-kver="$(for d in "$MNT"/usr/lib/modules/*; do [ -e "$d/vmlinuz" ] && basename "$d" && break; done)"
-[ -n "$kver" ] || vfail="$vfail\n  - no kernel with a vmlinuz under /usr/lib/modules"
-[ -n "$kver" ] && [ -s "$MNT/usr/lib/modules/$kver/updates/nvkvm-guest.ko" ] \
-    || vfail="$vfail\n  - nvkvm-guest.ko missing (or empty) for kernel ${kver:-?}"
-for lib in libnvidia-glcore libnvidia-glsi libnvidia-tls libGLX_nvidia; do
-    ls "$MNT"/usr/lib/"$lib".so.* >/dev/null 2>&1 || vfail="$vfail\n  - $lib missing from /usr/lib"
-done
-# The 0-byte-libnvidia-ml class of failure, caught on the mount rather than
-# after conversion: any zero-length .so means the install did not complete.
-if [ -n "$(find "$MNT/usr/lib" -maxdepth 1 -name 'libnvidia-*.so.*' -size 0 -print -quit 2>/dev/null)" ]; then
-    vfail="$vfail\n  - zero-length libnvidia-*.so.* in /usr/lib (incomplete install)"
-fi
-# -s, not -e: install_stub()'s failures are swallowed with `|| true`, and a
-# zero-length nvkvm-recovery.sh is a working-looking unit that does nothing.
-for u in etc/systemd/system/nvkvm-boot.service etc/systemd/system/nvkvm-plant-stub.path \
-         etc/systemd/system/nvkvm-plant-stub.service usr/local/sbin/nvkvm-recovery.sh \
-         etc/modules-load.d/nvkvm.conf etc/modprobe.d/99-nvkvm.conf; do
-    [ -s "$MNT/$u" ] || vfail="$vfail\n  - /$u not installed (or empty)"
-done
-[ -z "$vfail" ] || die "$E_PROVISION" "$(printf 'the image is NOT provisioned correctly:%b' "$vfail")"
-log "verified: module for $kver, NVIDIA userspace, units and modprobe config all present"
+"$SELF_DIR/boot/verify_image.sh" "$MNT" "$SHARE" || die "$E_PROVISION" \
+    "the produced image would not work — see the list above. Nothing was kept."
 
 # ── 9. Flush, unmount for real, detach, convert ──────────────────────────────
 # NEVER `umount -l` here. A lazy unmount detaches the tree from the namespace
