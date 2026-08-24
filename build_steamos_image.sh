@@ -23,7 +23,7 @@
 #   --out FILE         work image path (default: <src stem>-nvkvm.img)
 #   --qcow2 FILE       qcow2 path (default: <out stem>.qcow2)
 #   --no-qcow2         stop after the work image; skip the conversion
-#   --grow SIZE        disk growth, iec suffixes (default: 10G; 0 to skip).
+#   --grow SIZE        disk growth, iec suffixes (default: 60G; 0 to skip).
 #                      MEASURED: this grows the LAST partition only — SteamOS's
 #                      own growfs unit expands /home into it on the guest's
 #                      first boot (2G -> 62G with +60G), while the 5 GB btrfs
@@ -143,7 +143,7 @@ step() { STEP="$1"; log "== $1"; }
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
 SRC="" SHARE="" OUT="" QCOW="" BOOT_SCRIPT="" WORKDIR=""
-GROW=10G PROFILE=steamos ROOTFS_PART_NUM="" HOME_PART_NUM="" NVIDIA_RUN=""
+GROW=60G PROFILE=steamos ROOTFS_PART_NUM="" HOME_PART_NUM="" NVIDIA_RUN=""
 MAKE_QCOW2=1 FORCE=0 NO_COMPAT32=0 SCRATCH_TMP=1 BIND_RESOLV=1
 SHARE_MNT="${NVKVM_SHARE_MNT:-/run/nvkvm}"
 STAGE2=0

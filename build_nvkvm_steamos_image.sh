@@ -35,7 +35,7 @@
 #     --ko /root/steamos-nvkvm/nvkvm-guest-neptune616.ko \
 #     --nvidia-run-extracted /root/steamos-nvkvm/nvidia-run/extracted \
 #     [--driver-version 595.84]   # default: auto-detect from the HOST via nvidia-smi
-#     [--grow +10G]               # default: +10G
+#     [--grow +60G]               # default: +60G
 #     [--kwin-drm-device /dev/dri/card0]   # default: card0, see caveat #2 above
 #
 # Must be run as root (nbd, chroot, mount). Requires: qemu-img, qemu-nbd,
@@ -47,7 +47,7 @@ log() { echo "[build] $*" >&2; }
 die() { echo "[build] ERROR: $*" >&2; exit 1; }
 
 # ---- defaults ----
-GROW="+10G"
+GROW="+60G"
 KWIN_DRM_DEVICE="/dev/dri/card0"
 DRIVER_VERSION=""
 NBD_DEV="/dev/nbd0"
