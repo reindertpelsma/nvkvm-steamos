@@ -122,7 +122,16 @@ You want to see both `virtio-nvgpu-pci` and `nvkvm-gpu` in that second listing.
 
 Download Valve's **SteamOS recovery image** (the "Steam Deck Recovery
 Instructions" download). Everything documented in this repository was done with
-`steamdeck-oobe-repair-20260707.10-3.8.14`.
+`steamdeck-oobe-repair-20260707.10-3.8.14`, which is still downloadable directly:
+
+```sh
+curl -O https://steamdeck-images.steamos.cloud/recovery/steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2
+```
+
+That URL is a **pin, not the only option** — newer recovery images appear under
+the same `recovery/` prefix, and a newer one is often what you want, because
+provisioning refuses (correctly) if Valve's pool no longer carries kernel headers
+for the exact kernel in your image.
 
 ```sh
 cd ~/nvkvm
@@ -132,10 +141,26 @@ cp steamdeck-repair-*.img work.img        # keep the pristine one
 
 Keep the original. You will want to start over at least once.
 
+> **Steps 4 and 5 are one command if you want them to be.**
+> ```sh
+> sudo ~/nvkvm/nvkvm-steamos/build_steamos_image.sh \
+>   --src ~/nvkvm/steamdeck-oobe-repair-20260707.10-3.8.14.img \
+>   --share ~/nvkvm/nvkvm-pv
+> ```
+> [`build_steamos_image.sh`](build_steamos_image.sh) mechanises everything from
+> here to the end of step 5, including two bind mounts the text below omits, and
+> cleans up after itself when it fails. Read
+> [`docs/manual-install.md`](docs/manual-install.md) for the by-hand version with
+> the reason for every step; the rest of this section is the short form.
+
 ## Step 4 — Grow the image, and repair the GPT
 
-The recovery image's 5 GB rootfs cannot hold a compiler, kernel headers and the
-NVIDIA userspace at the same time. Grow it before doing anything else.
+Grow the disk before doing anything else. This is what gives the guest a
+persistent, disk-backed `/home` — `/home` is the **last** partition and this
+image expands it into the new space by itself on first boot, which is where
+Steam's runtime and every game live. It does *not* grow the 5 GB btrfs rootfs
+(not last on disk); that constraint is handled by the `steamos` trim profile and
+the pre-flight check in step 5.
 
 ```sh
 truncate -s +60G work.img
@@ -391,6 +416,7 @@ against each slot you care about.
 | you want | read |
 |---|---|
 | what is true now, in brief | [`README.md`](README.md) |
+| steps 4-5 by hand, with the reason for every step | [`docs/manual-install.md`](docs/manual-install.md) |
 | what has been tested, on which machine, and what failed | [`boot/TESTING.md`](boot/TESTING.md) |
 | how any of this was originally worked out (historical) | [`NOTES.md`](NOTES.md) |
 | why the old scripts are gone | [`archive/README.md`](archive/README.md) |

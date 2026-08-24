@@ -24,6 +24,11 @@ package manager, is AMD-first, and ships **no NVIDIA support at all**.
 > - **Reproducing it from scratch:** [`TUTORIAL.md`](TUTORIAL.md) — every
 >   command from a bare Debian host, including building nvkvm's QEMU, through
 >   to launching a game.
+> - **Just the image, in one command:**
+>   [`build_steamos_image.sh`](build_steamos_image.sh) — steps 1 and 2 below,
+>   mechanised, with the pre-flight checks and the cleanup.
+>   [`docs/manual-install.md`](docs/manual-install.md) is the same sequence by
+>   hand, with the reason for every step.
 > - **How any of it was found out:** [`NOTES.md`](NOTES.md) (the investigation
 >   log, historical) and [`boot/TESTING.md`](boot/TESTING.md) (what was tested,
 >   and on which machine).
@@ -66,10 +71,25 @@ the at-a-glance version for someone who already has nvkvm-pv built.
 > *this* repo fails with `nvkvm guest source not found`. `boot/` here is a copy
 > of nvkvm-pv's `boot/`, published so the mechanism can be read on its own.
 
+> **Steps 1 and 2 are one command if you want them to be:**
+> ```sh
+> sudo ./build_steamos_image.sh --src steamdeck-repair.img --share /path/to/nvkvm-pv
+> ```
+> [`build_steamos_image.sh`](build_steamos_image.sh) does exactly what the next
+> two sections do, plus the pre-flight checks, the loop-device cleanup and two
+> bind mounts the text below omits. The by-hand version, with the reason for
+> every step and the traps around it, is
+> [`docs/manual-install.md`](docs/manual-install.md).
+
 ### 1. Grow the image, and fix the GPT
 
-The repair image's rootfs is too small to hold a toolchain, kernel headers and
-the NVIDIA userspace at once.
+The image needs room for a persistent `/home` — Steam's runtime and its library
+live there, and on the recovery image `/home` is 2 GB and full. Growing the disk
+is enough: `/home` is the **last** partition and this image expands it into the
+new space by itself on first boot. (It does **not** grow the ~5 GB btrfs rootfs,
+which is not last on disk — see
+[`docs/manual-install.md`](docs/manual-install.md#space-traps-the-three-that-actually-bite)
+for what the rootfs pressure actually is and what to do about it.)
 
 ```sh
 cp steamdeck-repair.img work.img
@@ -303,7 +323,15 @@ A/B measurement: [`evidence-pc-20260823/cursor-latency-ab.txt`](evidence-pc-2026
 
 ## Build
 
-The image builder [`build_nvkvm_steamos_image.sh`](build_nvkvm_steamos_image.sh)
+**[`build_steamos_image.sh`](build_steamos_image.sh) is the supported image
+builder**: pristine `.img` in, provisioned qcow2 out, by wrapping
+`steamos_boot.sh --install-only` rather than reimplementing it. It never touches
+the input image, discovers the rootfs partition instead of assuming one, and runs
+the whole loop-device + chroot phase inside a private mount namespace so a
+crashed run cannot leave a half-unmounted tree behind. See
+[`docs/manual-install.md`](docs/manual-install.md) for the same thing by hand.
+
+The older image builder [`build_nvkvm_steamos_image.sh`](build_nvkvm_steamos_image.sh)
 predates `steamos_boot.sh` and is **not** the supported path — it takes a
 prebuilt `.ko` and hardcodes `KWIN_DRM_DEVICES=/dev/dri/card0` from observation
 rather than a sysfs lookup. It is kept because it was run end to end and its
@@ -340,6 +368,8 @@ For anything new, use `boot/steamos_boot.sh --install-only`.
 | `patches/` | `0001-steamos-force-sw-cursor.patch` — the cursor workaround as a patch |
 | `diagnostics/vk_probe.py` | ctypes-only Vulkan probe — the recovery image has no compiler |
 | `nv2081_fix.diff` | adds the `NV2081_BINAPI` alloc-param size row to nvkvm |
+| `build_steamos_image.sh` | **the image builder** — pristine `.img` → provisioned qcow2, wrapping `steamos_boot.sh --install-only` |
+| `docs/manual-install.md` | the same provisioning by hand, and why each step exists |
 | `build_nvkvm_steamos_image.sh` | the older image builder; see [Build](#build) |
 | `TUTORIAL.md` | the full walkthrough: bare Debian host → built nvkvm → provisioned image → a game |
 | `archive/` | superseded scripts, kept for reference — see [`archive/README.md`](archive/README.md) |
