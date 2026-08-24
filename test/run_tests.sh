@@ -572,6 +572,108 @@ t_validate_unreadable_dmesg
 t_do_boot_claim
 
 echo
+echo "== validation probes are built while a compiler still exists ==========="
+
+probes_supported() { grep -q '^build_validation_probes()' "$BOOT_LIB"; }
+
+# The ordering IS the fix. remove_added_packages() strips gcc and make; anything
+# needing a compiler has to happen before it, and nothing in the file enforces
+# that except the order of two calls. Record the order and assert it.
+t_probe_order() {
+    local n=probes_are_built_before_the_toolchain_is_removed
+    if ! probes_supported; then skip "$n" "this tree does not build validation probes"; return; fi
+    local d; d="$(mktemp -d)"
+    ( set +e
+      # shellcheck disable=SC1090
+      . "$BOOT_LIB"
+      log() { :; }; warn() { :; }; err() { :; }
+      capture_ro_state() { :; };  restore_ro_state() { :; }
+      pkgs_snapshot() { :; };     mount_9p_share() { return 0; }
+      target_kver() { echo k; };  repo_commit() { echo c; }
+      built_commit() { echo c; }
+      host_driver_version() { echo 1.0; }
+      installed_userspace_version() { echo 1.0; }
+      in_target() { :; };         prune_run_cache() { :; }
+      write_desktop_config() { return 0; }
+      configure_ssh() { return 0; }
+      install_stub() { return 0; }
+      build_validation_probes() { echo probes >> "$d/order"; }
+      remove_added_packages()   { echo toolchain-removed >> "$d/order"; }
+      do_install >/dev/null 2>&1 )
+    local order; order="$(tr '\n' ' ' < "$d/order" 2>/dev/null)"
+    rm -rf "$d"
+    case "$order" in
+        "probes toolchain-removed ") ok "$n" ;;
+        "") bad "$n" "neither call happened — do_install did not reach them" ;;
+        *)  bad "$n" "wrong order: '$order' (probes must be built before gcc is removed)" ;;
+    esac
+}
+
+# And that it actually asks validate.sh for the probes, into the directory the
+# image will look in. The share's validate.sh is stubbed so this needs no GPU
+# and no compiler; what is asserted is the request that gets made.
+t_probe_invocation() {
+    local n=build_validation_probes_asks_validate_sh_for_a_prebuilt_set
+    if ! probes_supported; then skip "$n" "this tree does not build validation probes"; return; fi
+    local d; d="$(mktemp -d)"
+    mkdir -p "$d/share/tests"
+    cat > "$d/share/tests/validate.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$ARGLOG"
+[ "$1" = "--build-probes" ] || exit 3
+mkdir -p "$2" && : > "$2/cuda_probe" && chmod 0755 "$2/cuda_probe"
+STUB
+    chmod +x "$d/share/tests/validate.sh"
+    local rc
+    ( set +e
+      # shellcheck disable=SC1090
+      . "$BOOT_LIB"
+      log() { :; }; warn() { :; }; err() { :; }
+      steamos_unlock() { :; }
+      # ROOT=/ so in_target is a passthrough; the probe dir is redirected so
+      # nothing is written outside the scratch directory.
+      ROOT=/
+      NVKVM_SHARE_MNT="$d/share"
+      NVKVM_PROBE_DIR_IN_IMAGE="$d/probes"
+      ARGLOG="$d/args"; export ARGLOG
+      build_validation_probes )
+    rc=$?
+    local args; args="$(tr '\n' ' ' < "$d/args" 2>/dev/null)"
+    local built=no; [ -x "$d/probes/cuda_probe" ] && built=yes
+    rm -rf "$d"
+    if [ -z "$args" ]; then
+        bad "$n" "validate.sh was never invoked"
+    elif [ "$args" != "--build-probes $d/probes " ] && [ "$built" != yes ]; then
+        bad "$n" "validate.sh was called with '$args' and no probe landed"
+    elif [ "$built" != yes ]; then
+        bad "$n" "validate.sh was called ('$args') but no probe landed in the image"
+    else
+        ok "$n"
+    fi
+}
+
+# A share with no validate.sh must not fail provisioning: a missing probe set
+# makes validation honest-but-limited, it does not make the image broken.
+t_probe_missing_share() {
+    local n=a_share_without_validate_sh_does_not_fail_provisioning
+    if ! probes_supported; then skip "$n" "this tree does not build validation probes"; return; fi
+    local d; d="$(mktemp -d)"; mkdir -p "$d/share"
+    ( set +e
+      # shellcheck disable=SC1090
+      . "$BOOT_LIB"
+      log() { :; }; warn() { :; }; err() { :; }; steamos_unlock() { :; }
+      ROOT=/; NVKVM_SHARE_MNT="$d/share"; NVKVM_PROBE_DIR_IN_IMAGE="$d/probes"
+      build_validation_probes )
+    local rc=$?
+    rm -rf "$d"
+    [ "$rc" -eq 0 ] && ok "$n" || bad "$n" "returned $rc with no validate.sh on the share"
+}
+
+t_probe_order
+t_probe_invocation
+t_probe_missing_share
+
+echo
 printf 'TOTAL %d   PASS %d   FAIL %d   SKIP %d\n' "$((PASS+FAIL+SKIP))" "$PASS" "$FAIL" "$SKIP"
 if [ "$FAIL" -gt 0 ]; then
     printf 'FAILED:%s\n' "$FAILED_NAMES"

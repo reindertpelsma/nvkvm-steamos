@@ -703,6 +703,63 @@ plant_file() {   # <src> <dst> <mode>
     return 0
 }
 
+# ── Validation probes ────────────────────────────────────────────────────────
+# nvkvm-pv's tests/validate.sh runs 30 checks and 24 of them are C probes it
+# compiles at run time. This image has no compiler: remove_added_packages()
+# strips gcc and make immediately below, because the toolchain and the NVIDIA
+# userspace do not both fit on a 5 GB rootfs. MEASURED on the produced image --
+# "30 total: 5 PASS, 1 FAIL, 24 SKIP", every skip "no C compiler on PATH". On
+# the shipped artifact the validator could only ever check bring-up; it could
+# never test CUDA, Vulkan, EGL or GL, and the result read as basically fine.
+#
+# So build the probes here, while gcc is still installed, and ship the binaries.
+# They dlopen() libcuda/libvulkan/libEGL and link only -ldl and -lm, so at run
+# time they need nothing but libc -- and building them IN the target root means
+# that is the IMAGE's libc, which a host-side build could not promise.
+#
+# The placement is the point and is deliberately builder-agnostic: do_install()
+# is what every path into an image runs -- the offline image builder,
+# `nvkvm-recovery.sh plant` into a freshly staged slot, a live guest converging
+# at boot, and whatever builder replaces the current one. Nothing here depends
+# on any one builder's structure.
+#
+# Non-fatal by design. Without the probes validate.sh reports CANNOT VALIDATE
+# rather than a false pass -- a bad outcome, but not a broken image, and not
+# worth failing a provisioning run over.
+NVKVM_PROBE_DIR_IN_IMAGE=/usr/local/lib/nvkvm/probes
+build_validation_probes() {
+    local src="$NVKVM_SHARE_MNT/tests/validate.sh"
+    if [ ! -r "$src" ]; then
+        warn "no tests/validate.sh on the share -- the image will ship with no validation"
+        warn "probes, and validate.sh on it will report CANNOT VALIDATE."
+        return 0
+    fi
+    if ! in_target sh -c 'command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1'; then
+        warn "no compiler in the target root; shipping without validation probes"
+        return 0
+    fi
+    steamos_unlock
+    # The share is NOT visible inside the chroot on the offline path (the bind
+    # lives at the HOST's /run/nvkvm, and chroot resolves that path inside the
+    # image). Stage the script in first, exactly as build_and_install_module()
+    # stages the module sources, then run it from a path the chroot can see.
+    local staged=/tmp/nvkvm-validate.sh
+    mkdir -p "$(rp /tmp)" "$(rp "$NVKVM_PROBE_DIR_IN_IMAGE")"
+    if ! cp -f "$src" "$(rp "$staged")"; then
+        warn "could not stage validate.sh into the target root; no probes built"
+        return 0
+    fi
+    chmod 0755 "$(rp "$staged")"
+    if in_target bash "$staged" --build-probes "$NVKVM_PROBE_DIR_IN_IMAGE"; then
+        log "validation probes built into $NVKVM_PROBE_DIR_IN_IMAGE (validate.sh needs no compiler on this image)"
+    else
+        warn "could not build the validation probes. validate.sh on this image will report"
+        warn "CANNOT VALIDATE instead of testing CUDA/Vulkan/GL. Needs an nvkvm-pv whose"
+        warn "tests/validate.sh understands --build-probes."
+    fi
+    rm -f "$(rp "$staged")"
+}
+
 install_stub() {
     local img_dir="$NVKVM_SHARE_MNT/boot/image"
     [ -d "$img_dir" ] || { err "in-image sources not found at $img_dir"; return 1; }
@@ -750,6 +807,10 @@ do_install() {
     else
         log "module up to date at $want"
     fi
+
+    # LAST CHANCE TO USE A COMPILER. Everything below this line, and everything
+    # on the finished image, runs without one.
+    build_validation_probes
 
     # Free the toolchain before the driver install -- they do not both fit.
     remove_added_packages
