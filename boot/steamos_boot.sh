@@ -13,9 +13,11 @@
 #                                 inside a chroot of a DIFFERENT image -- which is
 #                                 exactly what the update hook does. Give it the
 #                                 new image's root and it provisions that image.
-#   boot                          Part 2. Part 1, then load nvkvm, validate, hand
-#                                 over to the desktop.
-#   validate                      Health check only.
+#   boot                          Part 2. Part 1, then load nvkvm, check it, and
+#                                 return so the desktop can start. It does NOT
+#                                 verify the desktop -- see validate() below for
+#                                 exactly what is and is not established.
+#   validate                      nvkvm health check only. Never a desktop check.
 #
 # Options
 #   --root DIR              operate on this root instead of /
@@ -44,6 +46,17 @@ NVKVM_SHARE_TAG="${NVKVM_SHARE_TAG:-nvkvm}"
 NVKVM_SHARE_MNT="${NVKVM_SHARE_MNT:-/run/nvkvm}"
 MODULE_NAME=nvkvm-guest
 MODULE_MOD=nvkvm_guest
+
+# The kernel-supplied paths validate() reads, named once. Overridable only so
+# test/run_tests.sh can point them at a fake /proc and /sys and exercise the
+# failure classes on a machine with no nvkvm at all; nothing on any real path
+# sets these.
+PROC_MODULES="${NVKVM_PROC_MODULES:-/proc/modules}"
+DEV_NVIDIACTL="${NVKVM_DEV_NVIDIACTL:-/dev/nvidiactl}"
+DRM_CLASS_DIR="${NVKVM_DRM_CLASS_DIR:-/sys/class/drm}"
+# The Vulkan loader searches BOTH of these and nvidia-installer writes to /etc.
+# MEASURED -- checking only /usr/share reports a healthy install as broken.
+VULKAN_ICD_PATHS="${NVKVM_VULKAN_ICD_PATHS:-/etc/vulkan/icd.d/nvidia_icd.json /usr/share/vulkan/icd.d/nvidia_icd.json}"
 
 # Upstream steamos-nvidia-installer's tested trim set, reused verbatim
 # (steamos-nvidia-installer.sh:479). libnvidia-ngx is deliberately NOT here --
@@ -780,26 +793,110 @@ do_install() {
     return $rc
 }
 
-# ── Validation: three distinct failure classes ───────────────────────────────
-# 0 ok | 2 protocol mismatch | 3 module will not load | 4 userspace broken
+# ── Validation ───────────────────────────────────────────────────────────────
+# WHAT THIS FUNCTION CAN SEE, AND WHAT IT CANNOT. Read this before adding a
+# caller that prints anything cheerful on the strength of a 0 from here.
+#
+# IT CHECKS
+#   - the kernel log carries no nvkvm protocol-version mismatch      (CLASS 2)
+#   - the guest module is loaded                                     (CLASS 3)
+#   - the kernel has not faulted inside the guest module             (CLASS 5)
+#   - /dev/nvidiactl exists AND can actually be OPENED               (CLASS 5)
+#   - the NVIDIA userspace the chosen profile needs is installed     (CLASS 4)
+#   - a DRM node bound to the nvidia driver exists (graphics only)   (CLASS 6)
+#
+# IT DOES NOT CHECK THE DESKTOP, AND IT STRUCTURALLY CANNOT.
+# This runs from nvkvm-boot.service, which is ordered
+# `Before=display-manager.service sddm.service`. At the moment it returns, no
+# compositor has been started. It cannot know whether one comes up, whether it
+# crash-loops, or whether the session lands on nvkvm's DRM node or the emulated
+# VGA. MEASURED, twice in one week: this printed
+# `validation OK -- handing over to the desktop` while kwin was crash-looping
+# and no desktop existed, and on another boot while the guest module was
+# oopsing on every open. Both times the message stopped people looking.
+#
+# So the rule for callers: report what was verified, name what was not, and
+# never let the word "desktop" appear next to a 0 from this function.
+#
+# Return: 0 ok | 2 protocol mismatch | 3 module will not load
+#         4 userspace broken | 5 module loaded but not usable
+#         6 no DRM node bound to the nvidia driver
+#
+# VALIDATE_UNVERIFIED collects things this run could not observe at all (a
+# restricted kernel log, say). It is NOT a failure — it is the part of the
+# verdict that has no evidence behind it, and callers print it so a pass is
+# never mistaken for a complete pass.
+VALIDATE_UNVERIFIED=""
+
+# The one operation the desktop is about to perform. `[ -e ]` proves a device
+# node exists; it proves nothing about whether opening it works, and "the node
+# is there" is exactly what was true on the boot where every open oopsed.
+# Runs in a subshell so a failed redirection cannot take this script with it.
+can_open_device() {   # <path>
+    ( exec 9<"$1" ) 2>/dev/null
+}
+
 validate() {
-    local dmesgtxt; dmesgtxt="$(dmesg 2>/dev/null | tail -400)"
-    if printf '%s' "$dmesgtxt" | grep -q 'protocol version mismatch'; then
+    VALIDATE_UNVERIFIED=""
+    local dmesgtxt dmesg_ok=1
+    dmesgtxt="$(dmesg 2>/dev/null)" || dmesg_ok=0
+    [ -n "$dmesgtxt" ] || dmesg_ok=0
+    if [ "$dmesg_ok" = 0 ]; then
+        # Silently finding nothing in a log you cannot read is indistinguishable
+        # from finding nothing in a clean one. Say which it was.
+        VALIDATE_UNVERIFIED="$VALIDATE_UNVERIFIED
+  - the kernel log is unreadable (kernel.dmesg_restrict?), so the protocol-mismatch
+    and module-fault checks below did not actually run"
+    fi
+
+    # Deliberately searches the WHOLE log, not `tail -400`: on a boot that logs
+    # a lot the mismatch line scrolls out of a 400-line window and the check
+    # silently passes.
+    if printf '%s\n' "$dmesgtxt" | grep -q 'protocol version mismatch'; then
         err "CLASS 2: nvkvm PROTOCOL VERSION MISMATCH."
-        printf '%s' "$dmesgtxt" | grep 'protocol version mismatch' | tail -2 >&2
+        printf '%s\n' "$dmesgtxt" | grep 'protocol version mismatch' | tail -2 >&2
         err "The guest module and the host QEMU were built from different commits."
         err "Rebuild BOTH from the same nvkvm-pv checkout (the 9p share is that checkout)."
         return 2
     fi
-    if ! grep -qw "$MODULE_MOD" /proc/modules 2>/dev/null; then
+    if ! grep -qw "$MODULE_MOD" "$PROC_MODULES" 2>/dev/null; then
         err "CLASS 3: $MODULE_NAME is NOT LOADED."
-        printf '%s' "$dmesgtxt" | grep -i nvkvm | tail -3 >&2
+        printf '%s\n' "$dmesgtxt" | grep -i nvkvm | tail -3 >&2
         err "Built, but the kernel refused it. Usually a vermagic/kernel mismatch"
         err "(check 'modinfo -F vermagic' against 'uname -r'), or nvkvm's virtio"
         err "device is absent from the QEMU command line."
         return 3
     fi
-    [ -e /dev/nvidiactl ] || { err "CLASS 4: module loaded but /dev/nvidiactl is missing"; return 4; }
+
+    # Loaded is not the same as working. An oops or WARN inside the module
+    # annotates its frames with `[nvkvm_guest]`, which nothing else prints --
+    # `Modules linked in:` lists the bare name, without brackets. Require a
+    # fault marker as well, so a stray annotation cannot invent a failure.
+    if [ "$dmesg_ok" = 1 ] \
+       && printf '%s\n' "$dmesgtxt" | grep -qE '\[nvkvm_guest[] ]' \
+       && printf '%s\n' "$dmesgtxt" | grep -qE 'BUG:|Oops:|kernel BUG at|general protection fault|WARNING: CPU'; then
+        err "CLASS 5: the kernel FAULTED inside $MODULE_NAME. It is loaded and it is broken."
+        printf '%s\n' "$dmesgtxt" | grep -E '\[nvkvm_guest[] ]|BUG:|Oops:' | tail -6 >&2
+        err "Anything that opens the device may take the machine down. Do not treat"
+        err "this system as working because the module is listed in /proc/modules."
+        return 5
+    fi
+
+    [ -e "$DEV_NVIDIACTL" ] || { err "CLASS 4: module loaded but $DEV_NVIDIACTL is missing"; return 4; }
+
+    # THE check that the desktop's first move actually works. This is the exact
+    # operation that NULL-deref'd on a guest with no nvkvm virtio device, from
+    # ksplashqml, seconds after this function had returned 0.
+    log "opening $DEV_NVIDIACTL to check the module actually works"
+    if ! can_open_device "$DEV_NVIDIACTL"; then
+        err "CLASS 5: $DEV_NVIDIACTL exists but cannot be OPENED."
+        printf '%s\n' "$dmesgtxt" | grep -i nvkvm | tail -5 >&2
+        err "The module is loaded and its device node is there, but the thing every"
+        err "GL/CUDA client does first fails. Usually nvkvm's virtio device is absent"
+        err "from the QEMU command line (look for 'host GPU discovery failed')."
+        return 5
+    fi
+
     # Profile-aware. A trimmed profile HAS no libcuda, so checking for it would
     # report a healthy system as broken.
     if [ "$PROFILE" = compute ]; then
@@ -810,13 +907,41 @@ validate() {
     else
         ldconfig -p 2>/dev/null | grep -q libGLX_nvidia \
             || { err "CLASS 4: libGLX_nvidia missing (Vulkan/GL stack incomplete)"; return 4; }
-        # The loader searches BOTH /etc/vulkan/icd.d and /usr/share/vulkan/icd.d,
-        # and nvidia-installer writes to /etc. MEASURED -- checking only
-        # /usr/share reports a perfectly healthy install as broken.
-        [ -e /etc/vulkan/icd.d/nvidia_icd.json ] || [ -e /usr/share/vulkan/icd.d/nvidia_icd.json ] \
-            || { err "CLASS 4: NVIDIA Vulkan ICD manifest missing from both loader paths"; return 4; }
+        local icd icd_found=0
+        for icd in $VULKAN_ICD_PATHS; do [ -e "$icd" ] && { icd_found=1; break; }; done
+        [ "$icd_found" = 1 ] \
+            || { err "CLASS 4: NVIDIA Vulkan ICD manifest missing from every loader path ($VULKAN_ICD_PATHS)"; return 4; }
+
+        # The compositor opens a DRM node, not /dev/nvidiactl -- and
+        # write_desktop_config()'s whole job is to point KWIN_DRM_DEVICES at the
+        # one whose driver is "nvidia". If no such node exists, the session
+        # cannot be on nvkvm no matter how healthy everything above looks. This
+        # is a prerequisite for the desktop, not a check OF the desktop.
+        local c drv found=0
+        for c in "$DRM_CLASS_DIR"/card[0-9]*; do
+            [ -e "$c/device/driver" ] || continue
+            drv="$(basename "$(readlink -f "$c/device/driver")" 2>/dev/null)"
+            [ "$drv" = nvidia ] && { found=1; break; }
+        done
+        if [ "$found" = 0 ]; then
+            err "CLASS 6: no /dev/dri node is bound to the nvidia driver."
+            err "Everything above passed, but a compositor has nothing of ours to open,"
+            err "so the session would land on the emulated VGA. Check that the guest"
+            err "module registered a DRM device (dmesg | grep -i drm)."
+            return 6
+        fi
     fi
     return 0
+}
+
+# What validate() actually established, in words, for a caller to print. Kept
+# next to validate() so the two cannot drift: if you add a check up there, say
+# so down here, and if you remove one, stop claiming it.
+validate_verified_summary() {
+    printf 'module loaded and not faulting, %s opens' "$DEV_NVIDIACTL"
+    [ "$PROFILE" = compute ] && printf ', libcuda present, nvidia-smi enumerates a GPU' \
+                             || printf ', GL/Vulkan userspace installed, a DRM node is bound to nvidia'
+    printf '\n'
 }
 
 # ── Part 2 ───────────────────────────────────────────────────────────────────
@@ -829,13 +954,30 @@ do_boot() {
 
     # If this run rebuilt the module, a stale copy may already be resident from an
     # earlier boot; force it out so the new one is what actually loads.
-    if [ "$MODULE_REBUILT" = 1 ] && grep -qw "$MODULE_MOD" /proc/modules 2>/dev/null; then
+    if [ "$MODULE_REBUILT" = 1 ] && grep -qw "$MODULE_MOD" "$PROC_MODULES" 2>/dev/null; then
         log "module was rebuilt this run -- unloading the resident copy first"
         rmmod "$MODULE_NAME" 2>/dev/null || warn "could not unload the running module; a reboot may be needed"
     fi
     modprobe "$MODULE_NAME" 2>/dev/null || warn "modprobe $MODULE_NAME failed"
 
-    validate && { log "validation OK -- handing over to the desktop"; return 0; }
+    if validate; then
+        # Say what was actually established, and say -- every time, not only
+        # when something looks wrong -- what this check is incapable of seeing.
+        # The previous wording was "validation OK -- handing over to the
+        # desktop", and it printed that while kwin was crash-looping and no
+        # desktop existed. A validator that over-claims is worse than none,
+        # because it stops people looking.
+        log "nvkvm checks passed: $(validate_verified_summary)"
+        if [ -n "$VALIDATE_UNVERIFIED" ]; then
+            warn "...but this run could NOT verify:$VALIDATE_UNVERIFIED"
+        fi
+        log "NOT CHECKED: whether the desktop starts. This unit is ordered before"
+        log "display-manager.service, so no compositor has run yet. If the screen"
+        log "stays black, check the session, not nvkvm:"
+        log "  systemctl status display-manager; journalctl -b -u display-manager"
+        log "  journalctl -b --user-unit plasma-kwin_wayland   # as the desktop user"
+        return 0
+    fi
 
     err "nvkvm validation FAILED (class above). The desktop will start on the emulated VGA."
     err "Run 'nvkvm-recovery.sh menu', or boot with nvkvm.skip=1 to skip this entirely."

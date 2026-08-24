@@ -388,6 +388,190 @@ t_verify_truncated
 t_verify_not_executable
 
 echo
+echo "== validate(): its claims must match its evidence ====================="
+
+# A fake machine that validate() should be perfectly happy with. Every negative
+# test below turns exactly one thing off, so if this one ever stops passing the
+# rest prove nothing — which is why it is asserted first.
+#
+# The failures being pinned here were both REAL and both reported success:
+#   - the guest module oopsing in nvkvm_send_sync on every open of the device,
+#     while validate() returned 0 because the module was in /proc/modules;
+#   - kwin crash-looping with no desktop at all, while the caller printed
+#     "validation OK -- handing over to the desktop".
+make_healthy_fake() {   # <dir>  -> echoes the env prefix to use
+    local d="$1"
+    mkdir -p "$d/proc" "$d/dev" "$d/sys/class/drm/card0/device" "$d/bin" "$d/etc/vulkan/icd.d"
+    printf 'nvkvm_guest 262144 0 - Live 0x0000000000000000 (OE)\n' > "$d/proc/modules"
+    : > "$d/dev/nvidiactl"                     # openable regular file
+    mkdir -p "$d/drivers/nvidia"
+    ln -sfn "$d/drivers/nvidia" "$d/sys/class/drm/card0/device/driver"
+    : > "$d/etc/vulkan/icd.d/nvidia_icd.json"
+    # dmesg: a clean boot, and ldconfig: a complete GL stack.
+    printf '#!/bin/sh\necho "[    1.0] nvkvm: NVIDIA GPU passthrough guest module loaded"\n' > "$d/bin/dmesg"
+    printf '#!/bin/sh\necho "\tlibGLX_nvidia.so.0 (libc6,x86-64) => /usr/lib/libGLX_nvidia.so.0"\n' > "$d/bin/ldconfig"
+    chmod +x "$d/bin/dmesg" "$d/bin/ldconfig"
+}
+
+# Run validate() out of $TREE against a fake machine. The ICD path is absolute
+# in the script, so the fake supplies one of the two real locations by way of a
+# temporary override only where the script allows it; everything else is
+# redirected through the script's own path variables.
+run_validate() {   # <fakedir> [extra shell to eval after sourcing]
+    local d="$1" extra="${2:-}"
+    ( set +e
+      PATH="$d/bin:$PATH"
+      export NVKVM_PROC_MODULES="$d/proc/modules"
+      export NVKVM_DEV_NVIDIACTL="$d/dev/nvidiactl"
+      export NVKVM_DRM_CLASS_DIR="$d/sys/class/drm"
+      export NVKVM_VULKAN_ICD_PATHS="$d/etc/vulkan/icd.d/nvidia_icd.json"
+      # shellcheck disable=SC1090
+      . "$BOOT_LIB"
+      log() { :; }; warn() { :; }; err() { :; }
+      [ -n "$extra" ] && eval "$extra"
+      validate
+      printf 'RC=%d UNVERIFIED=%s\n' "$?" "$([ -n "$VALIDATE_UNVERIFIED" ] && echo yes || echo no)" >&3
+    ) 3>&1 >/dev/null 2>&1
+}
+
+validate_testable() {
+    grep -q '^PROC_MODULES=' "$BOOT_LIB" && grep -q '^DEV_NVIDIACTL=' "$BOOT_LIB"
+}
+
+t_validate_healthy() {
+    local n=validate_passes_a_healthy_fake_machine
+    if ! validate_testable; then skip "$n" "this tree's validate() reads hardcoded paths; use test/revert_validate.sh to make an old validate() testable"; return; fi
+    local d; d="$(mktemp -d)"; make_healthy_fake "$d"
+    local out; out="$(run_validate "$d")"
+    rm -rf "$d"
+    case "$out" in
+        "RC=0 "*) ok "$n" ;;
+        *) bad "$n" "a healthy fake machine did not pass: $out — every case below would be vacuous" ;;
+    esac
+}
+
+# THE regression. Module loaded, device node present, userspace complete, DRM
+# node bound to nvidia — and the kernel has already oopsed inside the module.
+# The old validate() returned 0 for this, and the caller announced the desktop.
+t_validate_oops() {
+    local n=validate_fails_when_the_kernel_has_faulted_inside_the_module
+    if ! validate_testable; then skip "$n" "this tree's validate() reads hardcoded paths; use test/revert_validate.sh to make an old validate() testable"; return; fi
+    local d; d="$(mktemp -d)"; make_healthy_fake "$d"
+    cat > "$d/bin/dmesg" <<'EOF'
+#!/bin/sh
+cat <<'DM'
+[   55.303161] BUG: kernel NULL pointer dereference, address: 0000000000000000
+[   55.309736] Oops: Oops: 0000 [#1] SMP NOPTI
+[   55.321576] RIP: 0010:nvkvm_send_sync+0xeb/0x240 [nvkvm_guest]
+[   55.349698] Call Trace:
+[   55.364220]  nvkvm_open+0xb1/0x1e0 [nvkvm_guest 657351842df4c49ea6eec8e0fec6848fe1867552]
+DM
+EOF
+    chmod +x "$d/bin/dmesg"
+    local out; out="$(run_validate "$d")"
+    rm -rf "$d"
+    case "$out" in
+        "RC=0 "*) bad "$n" "validate() reported success on a system that had already oopsed in nvkvm_send_sync" ;;
+        *)        ok "$n" ;;
+    esac
+}
+
+# The other half of the same false pass: the node exists, and opening it — the
+# first thing every GL/CUDA client does — fails.
+t_validate_unopenable() {
+    local n=validate_fails_when_the_device_node_exists_but_cannot_be_opened
+    if ! validate_testable; then skip "$n" "this tree's validate() reads hardcoded paths; use test/revert_validate.sh to make an old validate() testable"; return; fi
+    local d; d="$(mktemp -d)"; make_healthy_fake "$d"
+    chmod 000 "$d/dev/nvidiactl"
+    local out
+    if [ "$(id -u)" = 0 ]; then
+        # root ignores mode bits, so make the open fail for a reason it cannot
+        # override: replace the node with a dangling symlink.
+        rm -f "$d/dev/nvidiactl"; ln -s "$d/dev/does-not-exist" "$d/dev/nvidiactl"
+        # ...but [ -e ] follows symlinks, so ALSO prove the CLASS-4 branch is not
+        # what is firing: use a real file whose open is refused by a stub.
+        rm -f "$d/dev/nvidiactl"; : > "$d/dev/nvidiactl"
+        out="$(run_validate "$d" 'can_open_device() { return 1; }')"
+    else
+        out="$(run_validate "$d")"
+    fi
+    rm -rf "$d"
+    case "$out" in
+        "RC=0 "*) bad "$n" "validate() reported success although the device node could not be opened" ;;
+        *)        ok "$n" ;;
+    esac
+}
+
+# A compositor opens a DRM node, not /dev/nvidiactl. With none bound to the
+# nvidia driver the session lands on the emulated VGA — everything else green.
+t_validate_no_drm() {
+    local n=validate_fails_when_no_drm_node_is_bound_to_the_nvidia_driver
+    if ! validate_testable; then skip "$n" "this tree's validate() reads hardcoded paths; use test/revert_validate.sh to make an old validate() testable"; return; fi
+    local d; d="$(mktemp -d)"; make_healthy_fake "$d"
+    mkdir -p "$d/drivers/bochs-drm"
+    ln -sfn "$d/drivers/bochs-drm" "$d/sys/class/drm/card0/device/driver"
+    local out; out="$(run_validate "$d")"
+    rm -rf "$d"
+    case "$out" in
+        "RC=0 "*) bad "$n" "validate() reported success with no nvidia DRM node — the desktop could not be on nvkvm" ;;
+        *)        ok "$n" ;;
+    esac
+}
+
+# Finding nothing in a log you cannot read is not the same as finding nothing in
+# a clean one. The run may still pass, but it must not pretend it checked.
+t_validate_unreadable_dmesg() {
+    local n=validate_records_that_it_could_not_read_the_kernel_log
+    if ! validate_testable; then skip "$n" "this tree's validate() reads hardcoded paths; use test/revert_validate.sh to make an old validate() testable"; return; fi
+    local d; d="$(mktemp -d)"; make_healthy_fake "$d"
+    printf '#!/bin/sh\nexit 1\n' > "$d/bin/dmesg"; chmod +x "$d/bin/dmesg"
+    local out; out="$(run_validate "$d")"
+    rm -rf "$d"
+    case "$out" in
+        *"UNVERIFIED=yes") ok "$n" ;;
+        *) bad "$n" "the kernel log was unreadable and the run did not record it as unverified: $out" ;;
+    esac
+}
+
+# This one asserts on the wording, deliberately: the defect IS the claim. The
+# success path must state what it did not check, and must not assert that the
+# desktop is fine — it is ordered before display-manager.service and cannot know.
+t_do_boot_claim() {
+    local n=the_success_message_does_not_claim_the_desktop
+    if ! validate_testable; then skip "$n" "this tree's validate() reads hardcoded paths; use test/revert_validate.sh to make an old validate() testable"; return; fi
+    local d; d="$(mktemp -d)"; make_healthy_fake "$d"
+    local out
+    out="$( ( set +e
+        PATH="$d/bin:$PATH"
+        export NVKVM_PROC_MODULES="$d/proc/modules" NVKVM_DEV_NVIDIACTL="$d/dev/nvidiactl" \
+               NVKVM_DRM_CLASS_DIR="$d/sys/class/drm" \
+               NVKVM_VULKAN_ICD_PATHS="$d/etc/vulkan/icd.d/nvidia_icd.json"
+        # shellcheck disable=SC1090
+        . "$BOOT_LIB"
+        do_install() { return 0; }
+        modprobe()   { return 0; }
+        validate()   { return 0; }
+        do_boot ) 2>&1 )"
+    rm -rf "$d"
+    local why=""
+    case "$out" in
+        *"handing over to the desktop"*) why="it still says 'handing over to the desktop'" ;;
+    esac
+    case "$out" in
+        *"NOT CHECKED"*) : ;;
+        *) why="${why:+$why; }it does not say what it did not check" ;;
+    esac
+    [ -z "$why" ] && ok "$n" || bad "$n" "$why"
+}
+
+t_validate_healthy
+t_validate_oops
+t_validate_unopenable
+t_validate_no_drm
+t_validate_unreadable_dmesg
+t_do_boot_claim
+
+echo
 printf 'TOTAL %d   PASS %d   FAIL %d   SKIP %d\n' "$((PASS+FAIL+SKIP))" "$PASS" "$FAIL" "$SKIP"
 if [ "$FAIL" -gt 0 ]; then
     printf 'FAILED:%s\n' "$FAILED_NAMES"

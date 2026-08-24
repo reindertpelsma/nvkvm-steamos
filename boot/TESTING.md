@@ -709,3 +709,84 @@ Verified end to end:
 
 The key used for this test is a **throwaway** generated for the test box; its
 private half never left the local machine.
+
+---
+
+## AMENDMENT — 2026-08-24: what `validate()` claims, and what it can see
+
+The 2026-08-23 note above records a validator reporting a **hard failure on a
+green system**. This is the mirror image, and it happened twice more in the same
+week — three instances of one class:
+
+| # | what was printed | what was actually true |
+|---|---|---|
+| 1 | `validation FAILED … the desktop will start on the emulated VGA` | the desktop was on nvkvm at 60 fps; the *cache* the check read was stale (fixed 2026-08-23) |
+| 2 | `Part 1 finished (rc=0)` / `validation OK -- handing over to the desktop` | kwin was crash-looping and there was no desktop at all |
+| 3 | `validation OK -- handing over to the desktop` | the guest module was oopsing in `nvkvm_send_sync` on **every** open of `/dev/nvidiactl` (`../evidence-vast-20260824/guest-oops.txt`) |
+
+### The audit: what it checked, versus what it said
+
+`validate()` before this amendment ran four checks — no `protocol version
+mismatch` in the last 400 dmesg lines, the module name in `/proc/modules`,
+`/dev/nvidiactl` **exists**, and `libGLX_nvidia` plus a Vulkan ICD manifest
+**exist**. Every one is a *presence* test. None of them opens anything, runs
+anything, or looks at a compositor. The caller then printed **"handing over to
+the desktop"**, which asserts something the function had no evidence for
+whatsoever.
+
+Both instances 2 and 3 pass all four checks. That is not bad luck: the checks
+and the claim were about different things.
+
+### What changed
+
+The claim was narrowed to the evidence, **and** the evidence was widened to
+cover the two failures that had slipped through:
+
+- **CLASS 5 — faulted.** An oops or WARN inside the module annotates its frames
+  `[nvkvm_guest]`, which nothing else in dmesg prints (`Modules linked in:`
+  uses the bare name). Loaded is not the same as working.
+- **CLASS 5 — will not open.** `/dev/nvidiactl` is now actually **opened**. That
+  is the operation every GL/CUDA client performs first, and it is exactly the
+  one that took the kernel down in instance 3 while `[ -e ]` said everything was
+  fine.
+- **CLASS 6 — no DRM node bound to `nvidia`.** A compositor opens a DRM node,
+  not `/dev/nvidiactl`. With none, the session lands on the emulated VGA however
+  green the rest looks. A prerequisite for the desktop — still not a check *of*
+  the desktop.
+- **The whole kernel log is searched**, not `tail -400`: on a chatty boot the
+  mismatch line scrolls out of a 400-line window and the check silently passes.
+- **An unreadable kernel log is reported as unverified.** Finding nothing in a
+  log you cannot read is not the same as finding nothing in a clean one.
+
+The in-image `nvkvm-recovery.sh` carries its own copy of `validate()` (it must
+work when the share is the broken thing), and it had all the same defects and
+the same over-claim — `status: HEALTHY`, and `nvkvm is already provisioned and
+healthy`. Both copies were changed together; they are meant to agree.
+
+### What it still cannot do, and must therefore stop implying
+
+`nvkvm-boot.service` is ordered `Before=display-manager.service sddm.service`.
+When `validate()` returns, **no compositor has started**. It is structurally
+incapable of knowing whether one comes up, whether it crash-loops, or which DRM
+node the session lands on. So the success path now names what it verified and
+then says, every time:
+
+```
+[nvkvm] NOT CHECKED: whether the desktop starts. This unit is ordered before
+[nvkvm] display-manager.service, so no compositor has run yet.
+```
+
+**Still not verified by anything, on any rig:** that a desktop session comes up
+and stays up. Nothing in this repository observes that today. If that guarantee
+is wanted it needs a *second* check, ordered after `display-manager.service`,
+and it should be written as one — not folded into this one, which cannot see it.
+
+### Running the host-side tests
+
+No GPU, image or VM needed:
+
+```sh
+./test/run_tests.sh                             # 17 checks
+./test/revert_validate.sh <base-commit> /tmp/old   # the OLD validate(), same harness
+./test/run_tests.sh --tree /tmp/old             # must FAIL, or the tests prove nothing
+```
