@@ -39,16 +39,6 @@ require_mount() {
     mountpoint -q "$1" || die "$1 is not a mount point. Refusing to put durable VM state in the container layer."
 }
 
-[ -c /dev/kvm ] || die "/dev/kvm is absent (Compose must grant the device)."
-[ -r /dev/kvm ] && [ -w /dev/kvm ] \
-    || die "/dev/kvm is not usable. Set NVKVM_KVM_GID to: stat -c %g /dev/kvm"
-require_mount "$STATE_DIR"
-require_mount "$DATA_DIR"
-require_mount "$BROKER_DIR"
-mkdir -p "$STATE_DIR/recovery" "$STATE_DIR/alpine" "$STATE_DIR/ssh"
-chmod 0700 "$STATE_DIR/ssh"
-chmod 0777 "$DATA_DIR" 2>/dev/null || true
-
 # Keep the private key off the guest-visible share. Only its public half crosses
 # 9p; nvkvm-steamos-ssh reads the private half from the state volume. The same
 # key is installed for both the interactive user and root: anyone controlling
@@ -94,7 +84,11 @@ record_or_verify_checksum() {
     local archive="$1" dir base sumfile
     dir="$(dirname "$archive")"; base="$(basename "$archive")"; sumfile="$archive.sha256"
     if [ -s "$sumfile" ]; then
-        (cd "$dir" && sha256sum -c "$(basename "$sumfile")") \
+        # prepare_recovery is used in a command substitution. sha256sum -c
+        # normally prints "<archive>: OK" on stdout; suppress that diagnostic
+        # so the substitution contains exactly the raw image path on both the
+        # first run and every restart.
+        (cd "$dir" && sha256sum -c "$(basename "$sumfile")" >/dev/null) \
             || die "checksum mismatch for $archive; it was not re-fetched automatically"
     else
         (cd "$dir" && sha256sum "$base" > "$(basename "$sumfile").tmp")
@@ -134,13 +128,29 @@ prepare_recovery() {
     printf '%s\n' "$raw"
 }
 
-ensure_ssh_key
-export PATH="/opt/qemu-nvkvm/bin:$PATH"
-
 container_driver_version() {
     awk '{for(i=1;i<=NF;i++) if ($i ~ /^[0-9]+\.[0-9]+/) {print $i; exit}}' \
         /proc/driver/nvidia/version 2>/dev/null
 }
+
+# Tests source the functions above without requiring KVM or mounted Compose
+# volumes. Production execution never sets this variable.
+if [ "${NVKVM_STEAMOS_ENTRYPOINT_SOURCE_ONLY:-0}" = 1 ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
+[ -c /dev/kvm ] || die "/dev/kvm is absent (Compose must grant the device)."
+[ -r /dev/kvm ] && [ -w /dev/kvm ] \
+    || die "/dev/kvm is not usable. Set NVKVM_KVM_GID to: stat -c %g /dev/kvm"
+require_mount "$STATE_DIR"
+require_mount "$DATA_DIR"
+require_mount "$BROKER_DIR"
+mkdir -p "$STATE_DIR/recovery" "$STATE_DIR/alpine" "$STATE_DIR/ssh"
+chmod 0700 "$STATE_DIR/ssh"
+chmod 0777 "$DATA_DIR" 2>/dev/null || true
+
+ensure_ssh_key
+export PATH="/opt/qemu-nvkvm/bin:$PATH"
 
 if [ "$INSTALL_SHELL" = 1 ]; then
     RECOVERY_IMG="$(prepare_recovery)"

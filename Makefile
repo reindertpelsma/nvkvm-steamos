@@ -20,5 +20,6 @@ ssh:
 
 check:
 	bash tests/steamos_boot_config_test.sh
+	bash tests/container_entrypoint_test.sh
 	bash tests/compose_policy_test.sh
 	shellcheck -S warning boot/*.sh install_steamos_vm.sh scripts/*.sh docker/*.sh tests/*.sh steamos-ssh

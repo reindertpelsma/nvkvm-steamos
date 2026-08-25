@@ -195,7 +195,12 @@ if [ ! -f "$ALPINE_DIR/boot/vmlinuz-virt" ] \
             || die $E_FETCH "checksum mismatch on $TARBALL"
         log "checksum ok"
     fi
-    tar -xzf "$ALPINE_DIR/$TARBALL" -C "$ALPINE_DIR" \
+    # The VMM container intentionally has no CAP_CHOWN. GNU tar otherwise
+    # notices euid 0 and tries to restore the archive's uid/gid (currently
+    # 1000:1000), turning an otherwise successful extraction into EPERM.
+    # Ownership is irrelevant for these read-only boot artifacts: keep them
+    # owned by the extracting container user.
+    tar --no-same-owner -xzf "$ALPINE_DIR/$TARBALL" -C "$ALPINE_DIR" \
         boot/vmlinuz-virt boot/initramfs-virt boot/modloop-virt \
         || die $E_FETCH "could not unpack $TARBALL"
 fi
