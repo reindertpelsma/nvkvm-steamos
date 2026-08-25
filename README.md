@@ -11,7 +11,8 @@ nvkvm-pv remains the GPU paravirtualization implementation.
 
 ## Current status
 
-The supported path is the two-container Docker Compose deployment:
+For running the full SteamOS-on-nvkvm stack, the supported path is the
+two-container Docker Compose deployment:
 
 - `vmm`: patched nvkvm/QEMU plus the SteamOS VM. It receives `/dev/kvm` and the
   NVIDIA devices, but no host Wayland or X11 socket.
@@ -23,6 +24,12 @@ On first start the VMM downloads the SteamOS recovery image, boots a disposable
 Alpine installer VM, lets Valve's own installer create a real dual-slot A/B
 SteamOS qcow2, provisions that image with nvkvm's guest module and NVIDIA
 userspace matching the host driver, then boots Plasma.
+
+Outside Docker, the preferred image path is
+[`install_steamos_vm.sh`](install_steamos_vm.sh). It uses the same disposable-VM
+installer directly and does not require host root. The manual loop/chroot path
+is still kept, but it does require root and is mainly useful when debugging the
+image surgery itself.
 
 The default build context fetches `reindertpelsma/nvkvm-pv#main`. To test a
 local or review checkout explicitly:
@@ -46,6 +53,36 @@ docker compose logs -f broker vmm
 For persistent state, security boundaries, Wayland/X11 selection, published
 images, and configuration knobs, read
 [`docs/container-compose.md`](docs/container-compose.md).
+
+## Build an image outside Docker
+
+Use this when you want a SteamOS qcow2 on the host instead of the full Compose
+deployment:
+
+```sh
+./install_steamos_vm.sh \
+  --repair steamdeck-oobe-repair-*.img \
+  --out steamos.qcow2
+```
+
+To provision that image for nvkvm in the same run, use an nvkvm-pv checkout as
+the read-only share:
+
+```sh
+./install_steamos_vm.sh \
+  --repair steamdeck-oobe-repair-*.img \
+  --out steamos.qcow2 \
+  --stages repair,provision \
+  --share /path/to/nvkvm-pv
+```
+
+This path needs `qemu-system-x86_64`, `qemu-img`, an OVMF package, common
+archive tools, `/dev/kvm`, and a loaded NVIDIA driver for the provisioning
+stage. It does not need `sudo`, `losetup`, host mounts, or a host chroot.
+
+For the full explanation and verified output, read
+[`docs/vm-installer.md`](docs/vm-installer.md). For the root-requiring manual
+recovery-image path, read [`docs/manual-install.md`](docs/manual-install.md).
 
 ## What is proven
 
@@ -81,9 +118,9 @@ in [`docs/status.md`](docs/status.md).
 | read | for |
 |---|---|
 | [`docs/container-compose.md`](docs/container-compose.md) | the supported runtime/deployment path |
-| [`docs/vm-installer.md`](docs/vm-installer.md) | the disposable-VM installer and why it replaced loop/chroot as the preferred image path |
+| [`docs/vm-installer.md`](docs/vm-installer.md) | the preferred non-Docker image builder and why it replaced loop/chroot for normal image creation |
 | [`docs/status.md`](docs/status.md) | measured results, display backend matrix, open gaps, and evidence links |
-| [`docs/manual-install.md`](docs/manual-install.md) | the legacy recovery-image provisioning path by hand; useful for debugging |
+| [`docs/manual-install.md`](docs/manual-install.md) | the root-requiring recovery-image provisioning path by hand; useful for debugging |
 | [`TUTORIAL.md`](TUTORIAL.md) | a full source-build walkthrough, kept as a low-level reference rather than the README path |
 | [`boot/TESTING.md`](boot/TESTING.md) | chronological validation notes and regressions found on real rigs |
 | [`NOTES.md`](NOTES.md) | historical investigation log |

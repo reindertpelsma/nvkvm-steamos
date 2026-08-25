@@ -4,9 +4,10 @@ This is the long-hand recovery-image path behind
 [`build_steamos_image.sh`](../build_steamos_image.sh): take a pristine SteamOS
 recovery image and turn it into a provisioned nvkvm-ready guest disk, entirely
 offline. It is useful for debugging and for understanding the filesystem
-operations, but it is no longer the README path. For normal use, start with the
+operations, but it is no longer the README path. It requires root on the host
+for loop devices, mounts, and chroot. For normal use, start with the
 two-container deployment in [`../README.md`](../README.md); for the preferred
-image builder, read [`vm-installer.md`](vm-installer.md).
+non-Docker image builder, read [`vm-installer.md`](vm-installer.md).
 
 **If you specifically want the recovery-image path, run the script instead:**
 

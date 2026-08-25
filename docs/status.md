@@ -31,8 +31,8 @@ There are two image paths:
 
 | path | status |
 |---|---|
-| `install_steamos_vm.sh` | Preferred. Boots a disposable Alpine VM and lets Valve's own installer create a real dual-slot A/B SteamOS install. Host root is not required; `/dev/kvm` is enough. See [`vm-installer.md`](vm-installer.md). |
-| `build_steamos_image.sh` | Legacy/debugging path. Edits Valve's recovery image offline through loop devices and chroot. It works, but produces a recovery-image based result rather than a real A/B install. See [`manual-install.md`](manual-install.md). |
+| `install_steamos_vm.sh` | Preferred outside Docker. Boots a disposable Alpine VM and lets Valve's own installer create a real dual-slot A/B SteamOS install. Host root is not required; `/dev/kvm` is enough. See [`vm-installer.md`](vm-installer.md). |
+| `build_steamos_image.sh` | Legacy/debugging path. Edits Valve's recovery image offline through loop devices and chroot. It requires root, and produces a recovery-image based result rather than a real A/B install. See [`manual-install.md`](manual-install.md). |
 
 The VM installer was verified on 2026-08-24 with
 `steamdeck-oobe-repair-20260707.10-3.8.14.img`. The good run produced
