@@ -92,10 +92,12 @@ SHELL_ONLY=
 SHELL_ON_FAIL=
 PROFILE=steamos
 NO_COMPAT32=
+DRIVER_VERSION=
 for arg in $(cat /proc/cmdline); do
     case "$arg" in
         nvkvm.stages=*)        STAGES="${arg#nvkvm.stages=}" ;;
         nvkvm.profile=*)       PROFILE="${arg#nvkvm.profile=}" ;;
+        nvkvm.driver_version=*) DRIVER_VERSION="${arg#nvkvm.driver_version=}" ;;
         nvkvm.no_compat32=1)   NO_COMPAT32=1 ;;
         nvkvm.shell=1)         SHELL_ONLY=1 ;;
         nvkvm.shell_on_fail=1) SHELL_ON_FAIL=1 ;;
@@ -274,16 +276,66 @@ run_in_chroot() {
 TARGET_MNT=/run/nvkvm-target
 SHARE_MNT=/run/nvkvm
 
+grow_home_partition() {
+    gh_disk_sectors="$(cat /sys/class/block/nvme0n1/size 2>/dev/null)"
+    gh_start_sectors="$(cat /sys/class/block/nvme0n1p8/start 2>/dev/null)"
+    gh_size_sectors="$(cat /sys/class/block/nvme0n1p8/size 2>/dev/null)"
+    for gh_value in "$gh_disk_sectors" "$gh_start_sectors" "$gh_size_sectors"; do
+        case "$gh_value" in
+            ''|*[!0-9]*) log "FATAL: could not read the SteamOS home-partition geometry"; return 1 ;;
+        esac
+    done
+    gh_end_sectors=$((gh_start_sectors + gh_size_sectors))
+    # Valve deliberately creates a 100 MiB home and leaves the rest of the
+    # target unallocated for first-boot expansion. Provisioning happens before
+    # that boot and needs room for the module build area and NVIDIA .run, so do
+    # the same expansion offline. Leave a MiB of tolerance for the backup GPT.
+    if [ $((gh_end_sectors + 2048)) -ge "$gh_disk_sectors" ]; then
+        log "home partition already fills the install disk"
+        return 0
+    fi
+    log "growing Valve's ${gh_size_sectors}-sector home partition to the end of the install disk"
+    run_in_chroot parted --script /dev/nvme0n1 resizepart 8 100% \
+        || { log "FATAL: could not grow /dev/nvme0n1p8"; return 1; }
+    run_in_chroot partprobe /dev/nvme0n1 \
+        || { log "FATAL: kernel did not accept the expanded partition table"; return 1; }
+    chroot "$CHROOT" /usr/bin/udevadm settle --timeout=10 2>/dev/null
+    run_in_chroot resize2fs /dev/nvme0n1p8 \
+        || { log "FATAL: could not expand the home filesystem"; return 1; }
+    gh_new_bytes="$(run_in_chroot blockdev --getsize64 /dev/nvme0n1p8 2>/dev/null)"
+    log "home partition expanded to ${gh_new_bytes:-unknown} bytes"
+}
+
 provision_setup() {
     log "bringing up user-mode networking (pacman + the NVIDIA .run need it)"
     modprobe virtio_net 2>/dev/null
     ip link set lo up 2>/dev/null
-    for n in /sys/class/net/eth*; do
+
+    # systemd-udevd is already running for Valve's disk tooling. Loading
+    # virtio_net therefore races its predictable-name rename: the interface can
+    # become enp0s6 between `ip link set eth0 up` and udhcpc's lease script.
+    # Bringing the link up is what triggered that rename in the measured VM, so
+    # do it as a separate pass, settle, and only then run DHCP by final name.
+    for n in /sys/class/net/*; do
         [ -e "$n" ] || continue
         ifname="${n##*/}"
+        [ "$ifname" != lo ] || continue
         ip link set "$ifname" up 2>/dev/null
+    done
+    chroot "$CHROOT" /usr/bin/udevadm settle --timeout=10 2>/dev/null
+    sleep 1
+    for n in /sys/class/net/*; do
+        [ -e "$n" ] || continue
+        ifname="${n##*/}"
+        [ "$ifname" != lo ] || continue
         udhcpc -i "$ifname" -q -n -t 5 >/dev/null 2>&1 && log "$ifname configured by DHCP"
     done
+    log "IPv4: $(ip -4 -o addr show 2>/dev/null | tr '\n' ' ')"
+    log "routes: $(ip -4 route show 2>/dev/null | tr '\n' ' ')"
+    ip -4 route show 2>/dev/null | grep -q '^default ' \
+        || { log "ERROR: DHCP did not install a default route"; return 1; }
+
+    grow_home_partition || return 1
 
     # The read-only 9p share stands in for the one the guest gets at runtime.
     # It is mounted at $CHROOT/run/nvkvm rather than /run/nvkvm and then
@@ -312,37 +364,21 @@ provision_setup() {
     mount -o bind /sys  "$CHROOT$TARGET_MNT/sys"  2>/dev/null
     mount -o bind /dev  "$CHROOT$TARGET_MNT/dev"  2>/dev/null
 
-    # A resolver for both chroots. Both /etc trees are read-only, so bind a
-    # file from tmpfs over them rather than writing into either image.
-    if [ -s /etc/resolv.conf ]; then
-        cp /etc/resolv.conf /run/resolv.conf
-    else
-        printf 'nameserver 10.0.2.3\n' > /run/resolv.conf   # QEMU user-mode DNS
-    fi
+    # A resolver for both chroots. The installer always uses QEMU user-mode
+    # networking, whose DNS forwarder is 10.0.2.3. Do not copy the initramfs'
+    # /etc/resolv.conf: it can contain the build host's stub or LAN resolver,
+    # neither of which is necessarily reachable through slirp. Both /etc trees
+    # are read-only, so bind a file from tmpfs over them instead.
+    printf 'nameserver 10.0.2.3\n' > /run/resolv.conf
     mount -o bind /run/resolv.conf "$CHROOT/etc/resolv.conf" 2>/dev/null \
         || log "WARNING: no resolver in the repair chroot"
     mount -o bind /run/resolv.conf "$CHROOT$TARGET_MNT/etc/resolv.conf" 2>/dev/null \
         || log "WARNING: no resolver in the target chroot; pacman will fail to resolve"
 
-    # host_driver_version() reads /proc/driver/nvidia/version from the RUNNING
-    # system. There is no NVIDIA driver in this VM, so the host script stashes
-    # the build host's copy in the initramfs and we present it at that path.
-    # Without it steamos_boot.sh only warns and installs no NVIDIA userspace at
-    # all — a silently driver-less image, which is worse than a hard failure.
-    if [ -s /nvkvm/nvidia-version ]; then
-        mount -t tmpfs none "$CHROOT/proc/driver" 2>/dev/null \
-            && mkdir -p "$CHROOT/proc/driver/nvidia" \
-            && cp /nvkvm/nvidia-version "$CHROOT/proc/driver/nvidia/version" \
-            && log "presented the build host's /proc/driver/nvidia/version to the chroot"
-    else
-        log "WARNING: no host NVIDIA version was stashed in the initramfs;"
-        log "WARNING: steamos_boot.sh will skip the NVIDIA userspace install."
-    fi
     return 0
 }
 
 provision_teardown() {
-    umount "$CHROOT/proc/driver" 2>/dev/null
     umount "$CHROOT$TARGET_MNT/etc/resolv.conf" 2>/dev/null
     umount "$CHROOT/etc/resolv.conf" 2>/dev/null
     umount "$CHROOT$TARGET_MNT/dev"  2>/dev/null
@@ -429,7 +465,8 @@ for stage in $(echo "$STAGES" | tr ',' ' '); do
         run_in_chroot \
             NVKVM_PROFILE="$PROFILE" \
             ${NO_COMPAT32:+NVKVM_NO_COMPAT32=1} \
-            /run/nvkvm/boot/steamos_boot.sh --install-only --root "$TARGET_MNT" --profile "$PROFILE"
+            /run/nvkvm/boot/steamos_boot.sh --install-only --root "$TARGET_MNT" \
+                --profile "$PROFILE" --driver-version "$DRIVER_VERSION"
         rc=$?
         log "steamos_boot.sh --install-only exited $rc"
         provision_teardown

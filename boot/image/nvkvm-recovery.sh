@@ -10,7 +10,8 @@
 #   boot      Fallback entry point when /mnt/nvkvm/boot/steamos_boot.sh is absent.
 #             Diagnoses WHY the share is missing, then continues degraded.
 #   plant     Provision nvkvm into the newly staged SteamOS image (update hook).
-#   validate  Local health check; no share required.
+#   validate  Local nvkvm health check; no share required. NOT a desktop check
+#             -- see the comment above validate() for what it can and cannot see.
 #   menu      Interactive recovery menu.
 
 set -uo pipefail
@@ -96,7 +97,10 @@ do_boot() {
     # Degrade gracefully: try what we can locally, then continue (design note 4).
     modprobe "$MODULE_NAME" 2>/dev/null
     if validate; then
-        log "nvkvm is already provisioned and healthy; the share is only needed to UPDATE it."
+        log "nvkvm itself checks out: module loaded and not faulting, /dev/nvidiactl"
+        log "opens, userspace installed. The share is only needed to UPDATE it."
+        [ -n "$VALIDATE_UNVERIFIED" ] && err "could NOT verify:$VALIDATE_UNVERIFIED"
+        log "NOT CHECKED: whether the desktop starts -- nothing here can see a compositor."
         exit 0
     fi
     err "Continuing WITHOUT nvkvm -- the desktop will start on the emulated VGA."
@@ -109,13 +113,42 @@ do_boot() {
     exit 0
 }
 
-# Three distinct failure classes, because they have three different fixes.
+# WHAT THIS CHECKS, AND WHAT IT CANNOT.
+#
+# It checks that nvkvm is loaded, is not faulting, that its device node can
+# actually be OPENED, and that the userspace the machine needs is installed.
+#
+# It does NOT check the desktop, and it cannot: nothing here starts, watches or
+# can even see a compositor. MEASURED, and the reason this comment is here: a
+# validator in this project printed a success line while kwin was crash-looping
+# and no desktop existed, and on another boot while the guest module was oopsing
+# on every open of the device. Callers must report what was verified and name
+# what was not.
+#
 # 0 ok | 2 protocol mismatch | 3 module will not load | 4 userspace broken
+# 5 loaded but not usable | 6 no DRM node bound to the nvidia driver
+VALIDATE_UNVERIFIED=""
+
+# The one operation every GL/CUDA client performs first. `[ -e ]` proves a node
+# exists; it proves nothing about opening it, and "the node is there" was true
+# on the boot where every open took the kernel down. Subshell, so a failed
+# redirection cannot take this script with it.
+can_open_device() { ( exec 9<"$1" ) 2>/dev/null; }
+
 validate() {
-    local d; d="$(dmesg 2>/dev/null | tail -400)"
-    if printf '%s' "$d" | grep -q 'protocol version mismatch'; then
+    VALIDATE_UNVERIFIED=""
+    local d dmesg_ok=1
+    d="$(dmesg 2>/dev/null)" || dmesg_ok=0
+    [ -n "$d" ] || dmesg_ok=0
+    if [ "$dmesg_ok" = 0 ]; then
+        VALIDATE_UNVERIFIED="$VALIDATE_UNVERIFIED
+  - the kernel log is unreadable, so the protocol-mismatch and module-fault
+    checks did not actually run"
+    fi
+
+    if printf '%s\n' "$d" | grep -q 'protocol version mismatch'; then
         err "CLASS 2: nvkvm PROTOCOL VERSION MISMATCH"
-        printf '%s' "$d" | grep 'protocol version mismatch' | tail -2 >&2
+        printf '%s\n' "$d" | grep 'protocol version mismatch' | tail -2 >&2
         err "guest module and host QEMU came from different nvkvm-pv commits;"
         err "rebuild both from the same checkout (that is what the 9p share is)."
         return 2
@@ -123,10 +156,27 @@ validate() {
     if ! grep -qw "${MODULE_NAME//-/_}" /proc/modules 2>/dev/null; then
         err "CLASS 3: $MODULE_NAME is not loaded (built, but the kernel refused it,"
         err "or nvkvm's virtio device is missing from the QEMU command line)."
-        printf '%s' "$d" | grep -i nvkvm | tail -3 >&2
+        printf '%s\n' "$d" | grep -i nvkvm | tail -3 >&2
         return 3
     fi
+    # An oops or WARN inside the module annotates its frames `[nvkvm_guest]`;
+    # `Modules linked in:` prints the bare name, so this does not match a
+    # bystander. A fault marker is required as well.
+    if [ "$dmesg_ok" = 1 ] \
+       && printf '%s\n' "$d" | grep -qE '\[nvkvm_guest[] ]' \
+       && printf '%s\n' "$d" | grep -qE 'BUG:|Oops:|kernel BUG at|general protection fault|WARNING: CPU'; then
+        err "CLASS 5: the kernel FAULTED inside $MODULE_NAME -- loaded, and broken."
+        printf '%s\n' "$d" | grep -E '\[nvkvm_guest[] ]|BUG:|Oops:' | tail -6 >&2
+        return 5
+    fi
     [ -e /dev/nvidiactl ] || { err "CLASS 4: loaded but /dev/nvidiactl missing"; return 4; }
+    if ! can_open_device /dev/nvidiactl; then
+        err "CLASS 5: /dev/nvidiactl exists but cannot be OPENED -- the first thing"
+        err "every GL/CUDA client does fails. Usually nvkvm's virtio device is absent"
+        err "from the QEMU command line (look for 'host GPU discovery failed')."
+        printf '%s\n' "$d" | grep -i nvkvm | tail -5 >&2
+        return 5
+    fi
     # Profile-aware: a trimmed (steamos) profile has no libcuda by design, so
     # checking for it would report a healthy machine as broken. Check the
     # Vulkan/GL stack instead.
@@ -138,6 +188,16 @@ validate() {
         # Loader searches /etc AND /usr/share; nvidia-installer writes to /etc.
         [ -e /etc/vulkan/icd.d/nvidia_icd.json ] || [ -e /usr/share/vulkan/icd.d/nvidia_icd.json ] \
             || { err "CLASS 4: NVIDIA Vulkan ICD manifest missing from both loader paths"; return 4; }
+        # A compositor opens a DRM node, not /dev/nvidiactl. If none is bound to
+        # the nvidia driver, the session cannot be on nvkvm however healthy the
+        # rest looks. A prerequisite for the desktop -- not a check OF it.
+        local c drv found=0
+        for c in /sys/class/drm/card[0-9]*; do
+            [ -e "$c/device/driver" ] || continue
+            drv="$(basename "$(readlink -f "$c/device/driver")" 2>/dev/null)"
+            [ "$drv" = nvidia ] && { found=1; break; }
+        done
+        [ "$found" = 1 ] || { err "CLASS 6: no /dev/dri node bound to the nvidia driver"; return 6; }
     fi
     return 0
 }
@@ -183,7 +243,10 @@ do_menu() {
         echo
         echo "  nvkvm recovery"
         echo "  =============="
-        validate && echo "  status: HEALTHY" || echo "  status: NOT WORKING"
+        # "HEALTHY" used to be printed here for a 0 from validate(), which
+        # says nothing at all about the desktop. Say what was checked.
+        if validate; then echo "  nvkvm: OK (module + device + userspace; the DESKTOP is NOT checked)"
+        else                   echo "  nvkvm: NOT WORKING (class above)"; fi
         echo "   1) show diagnosis for the 9p share"
         echo "   2) re-run provisioning now"
         echo "   3) show nvkvm kernel log"
@@ -195,7 +258,14 @@ do_menu() {
             1) diagnose_9p ;;
             2) [ -x "$SHARE_MNT/boot/steamos_boot.sh" ] && "$SHARE_MNT/boot/steamos_boot.sh" --install-only || err "share unavailable" ;;
             3) journalctl -k -g nvkvm --no-pager | tail -40 ;;
-            4) validate; case $? in 0) echo "  OK";; 2) echo "  FAILED: protocol mismatch";; 3) echo "  FAILED: module will not load";; 4) echo "  FAILED: userspace broken";; esac ;;
+            4) validate; case $? in
+                 0) echo "  nvkvm OK -- and the desktop was NOT checked";;
+                 2) echo "  FAILED: protocol mismatch";;
+                 3) echo "  FAILED: module will not load";;
+                 4) echo "  FAILED: userspace broken";;
+                 5) echo "  FAILED: module loaded but not usable (faulted, or the device will not open)";;
+                 6) echo "  FAILED: no DRM node bound to the nvidia driver";;
+               esac ;;
             5) dmesg 2>/dev/null | grep -iE "nvkvm.*(protocol|negotiat)" | tail -5 ;;
             q|Q) return 0 ;;
         esac

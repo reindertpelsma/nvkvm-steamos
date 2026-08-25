@@ -237,11 +237,11 @@ if [ "$STAGE2" -eq 0 ]; then
     [ -r "$SHARE/data/authorized_keys" ] || log \
         "no $SHARE/data/authorized_keys — sshd will be left disabled in the image (drop a key there and re-run to enable it)"
 
-    # host_driver_version() reads this. If it is unreadable steamos_boot.sh only
-    # WARNS and still returns rc=0 — you would get a finished image with no
-    # NVIDIA userspace in it at all. Refuse here instead.
+    # host_driver_version() reads this. --install-only also refuses to proceed
+    # without a version; fail here first so the operator gets a host-side
+    # preflight error rather than a later chroot error.
     [ -r /proc/driver/nvidia/version ] || die "$E_HOST" \
-        "/proc/driver/nvidia/version is not readable — the NVIDIA driver is not loaded on this host. steamos_boot.sh would skip the NVIDIA userspace install with only a warning and still report success, producing an image with no driver in it."
+        "/proc/driver/nvidia/version is not readable — the NVIDIA driver is not loaded on this host, so no matching userspace version can be selected."
     HOSTVER="$(awk '{for(i=1;i<=NF;i++) if ($i ~ /^[0-9]+\.[0-9]+/) {print $i; exit}}' /proc/driver/nvidia/version)"
     [ -n "$HOSTVER" ] || die "$E_HOST" "could not parse a driver version out of /proc/driver/nvidia/version"
     log "host NVIDIA driver: $HOSTVER (the image is pinned to this version)"

@@ -231,7 +231,7 @@ by then) plus two `btrfs check` passes. The output is ~10 GiB of allocated qcow2
 Runs 2-6 in `evidence-vm-install-20260824/` are the iterations to that point, in
 case a future repair image regresses one of them; run 7 is the good one.
 
-## The `provision` stage, and its one real limitation
+## The `provision` stage and driver-version handoff
 
 `steamos_boot.sh --install-only --root DIR` is documented as safe inside a
 chroot of a *different* image (it is exactly what the update hook does), so the
@@ -244,21 +244,22 @@ read-only 9p at `/run/nvkvm` with the same tag the guest gets at runtime, QEMU
 user-mode networking, and a resolver bound over both chroots' read-only
 `/etc/resolv.conf`.
 
-**The limitation:** `host_driver_version()` reads `/proc/driver/nvidia/version`
-from the *running* system, and there is no NVIDIA driver inside the VM. The host
-script therefore stashes the build host's copy of that file in the initramfs and
-the guest presents it at that path inside the chroot. This means **the build
-host still has to be an NVIDIA machine with the driver loaded** — the same
-requirement `build_steamos_image.sh` has (it fails preflight with exit code 11
-otherwise). If the file is missing, `steamos_boot.sh` only *warns* and installs
-no NVIDIA userspace at all, so the host script warns loudly in that case too.
+There is no NVIDIA kernel driver inside the disposable Alpine VM, so it cannot
+discover the host version from its own procfs. `install_steamos_vm.sh` reads the
+version supplied to the outer host/container through
+`/proc/driver/nvidia/version` (or accepts `--driver-version VERSION`) and passes
+that value on the kernel command line. `guest-init.sh` then supplies it to
+`steamos_boot.sh --install-only --root ... --driver-version VERSION`.
 
-**NOT VERIFIED.** The machine this was built on has no NVIDIA driver
-(`/proc/driver/nvidia/version` does not exist) and no built `nvkvm-guest.ko`, so
-the `provision` stage has never been run end to end — only the `repair` stage
-has. The plumbing it needs is written and reviewed but not exercised: treat the
-first run of `--stages repair,provision` on a real build host as a bring-up, not
-a regression test, and expect to iterate on it the way runs 2-7 iterated on the
-repair stage. `--shell` is the tool for that: it boots the guest with the share,
-the network and the installed target all attached and drops you at a busybox
-prompt.
+No version is hardcoded. Provisioning fails before QEMU starts if neither an
+explicit version nor a parseable procfs value is available, and
+`steamos_boot.sh --install-only` likewise fails instead of producing a silently
+driver-less image. Normal SteamOS boot and the A/B update path need no explicit
+argument: after nvkvm is loaded, its procfs bridge exposes the running host
+version.
+
+The complete `repair,provision` path is verified on the physical RTX 4070 host,
+including a genuine dual-slot image, first boot, module rebuild, matching
+userspace, Plasma, Vulkan compute, and EGL pixel verification. `--shell`
+remains the recovery tool: it boots the installer VM with the share, network,
+and installed target attached and drops to a BusyBox prompt.

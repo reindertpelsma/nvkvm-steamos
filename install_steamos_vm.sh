@@ -46,8 +46,9 @@
 #   --repair FILE     pristine SteamOS repair/recovery .img (required)
 #   --out FILE        output qcow2 (default: steamos-installed.qcow2)
 #   --size SIZE       size of the install target (default: 64G). Valve's layout
-#                     needs ~11 GiB; the rest is the games budget /home grows
-#                     into. qcow2 is sparse, so this costs nothing up front.
+#                     needs ~11 GiB; the installer expands Valve's initial
+#                     100 MiB /home into the remaining games budget before
+#                     provisioning. qcow2 is sparse, so this costs nothing up front.
 #   --alpine-dir DIR  cache for the Alpine netboot files (default: ./.alpine-netboot)
 #   --alpine-ver VER  Alpine release to fetch (default: 3.24.1)
 #   --stages LIST     guest stages, comma separated (default: repair)
@@ -60,6 +61,8 @@
 #                     tag `nvkvm` — the same tag and mount point (/run/nvkvm)
 #                     the guest gets at runtime. Required by `provision`.
 #   --profile NAME    steamos (default) | compute, passed to steamos_boot.sh
+#   --driver-version VERSION  NVIDIA host/container driver to provision. If
+#                     omitted, read dynamically from /proc/driver/nvidia/version.
 #   --no-compat32     set NVKVM_NO_COMPAT32=1 for steamos_boot.sh
 #   --memory MB       guest RAM (default: 4096)
 #   --cpus N          guest vCPUs (default: min(4, nproc))
@@ -91,6 +94,7 @@ ALPINE_DIR="" ALPINE_VER="3.24.1"
 STAGES="repair" MEMORY=4096 CPUS="" LOGFILE=""
 SHELL_MODE=0 SHELL_ON_FAIL=0 KEEP_TARGET=0
 SHARE="" PROFILE="steamos" NO_COMPAT32=0
+DRIVER_VERSION="${NVKVM_DRIVER_VERSION:-}"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -102,6 +106,7 @@ while [ $# -gt 0 ]; do
         --stages)        STAGES="${2:?--stages needs a list}"; shift 2 ;;
         --share)         SHARE="${2:?--share needs a path}"; shift 2 ;;
         --profile)       PROFILE="${2:?--profile needs a name}"; shift 2 ;;
+        --driver-version) DRIVER_VERSION="${2:?--driver-version needs a value}"; shift 2 ;;
         --no-compat32)   NO_COMPAT32=1; shift ;;
         --memory)        MEMORY="${2:?--memory needs MB}"; shift 2 ;;
         --cpus)          CPUS="${2:?--cpus needs a number}"; shift 2 ;;
@@ -123,6 +128,14 @@ REPAIR="$(cd -- "$(dirname -- "$REPAIR")" && pwd)/$(basename -- "$REPAIR")"
 case "$PROFILE" in steamos|compute) ;; *) die $E_USAGE "unknown profile '$PROFILE' (steamos|compute)" ;; esac
 if [[ ",$STAGES," == *,provision,* ]] && [ -z "$SHARE" ]; then
     die $E_USAGE "--stages provision needs --share <nvkvm-pv checkout>"
+fi
+if [[ ",$STAGES," == *,provision,* ]]; then
+    if [ -z "$DRIVER_VERSION" ] && [ -r /proc/driver/nvidia/version ]; then
+        DRIVER_VERSION="$(awk '{for(i=1;i<=NF;i++) if ($i ~ /^[0-9]+\.[0-9]+/) {print $i; exit}}' /proc/driver/nvidia/version)"
+    fi
+    [[ "$DRIVER_VERSION" =~ ^[0-9]+([.][0-9]+)+$ ]] \
+        || die $E_INPUT "provisioning needs a valid NVIDIA driver version; pass --driver-version or expose /proc/driver/nvidia/version"
+    log "host NVIDIA: $DRIVER_VERSION"
 fi
 
 # ── preflight: tools, KVM, firmware ─────────────────────────────────────────
@@ -198,22 +211,6 @@ GUEST_INIT="$HERE/vm/guest-init.sh"
 mkdir -p "$WORK/cpio/nvkvm"
 cp "$GUEST_INIT" "$WORK/cpio/nvkvm/guest-init.sh"
 chmod +x "$WORK/cpio/nvkvm/guest-init.sh"
-# steamos_boot.sh's host_driver_version() reads /proc/driver/nvidia/version from
-# the RUNNING system, and there is no NVIDIA driver inside this VM. Stash the
-# build host's copy in the initramfs; the guest presents it at that path inside
-# the chroot. Without it steamos_boot.sh only WARNS and installs no NVIDIA
-# userspace at all, producing a silently driver-less image — which is exactly
-# the failure build_steamos_image.sh calls out in its own preflight.
-if [[ ",$STAGES," == *,provision,* ]]; then
-    if [ -r /proc/driver/nvidia/version ]; then
-        cp /proc/driver/nvidia/version "$WORK/cpio/nvkvm/nvidia-version"
-        log "host NVIDIA: $(awk '{for(i=1;i<=NF;i++) if ($i ~ /^[0-9]+\.[0-9]+/) {print $i; exit}}' /proc/driver/nvidia/version)"
-    else
-        warn "/proc/driver/nvidia/version is not readable — the NVIDIA driver is not loaded on this host."
-        warn "steamos_boot.sh will skip the NVIDIA userspace install and still report success."
-    fi
-fi
-
 ( cd "$WORK/cpio" && find . -print0 | cpio --null -o -H newc --owner root:root 2>/dev/null | gzip -9 ) \
     > "$WORK/custom.cpio.gz" || die $E_TOOL "could not build the custom cpio"
 cat "$ALPINE_DIR/boot/initramfs-virt" "$WORK/custom.cpio.gz" > "$WORK/combined.img" \
@@ -234,6 +231,7 @@ fi
 
 # ── kernel command line ─────────────────────────────────────────────────────
 CMDLINE="console=ttyS0,115200 rdinit=/nvkvm/guest-init.sh nvkvm.stages=$STAGES nvkvm.profile=$PROFILE"
+[ -n "$DRIVER_VERSION" ] && CMDLINE="$CMDLINE nvkvm.driver_version=$DRIVER_VERSION"
 [ "$NO_COMPAT32" = 1 ]   && CMDLINE="$CMDLINE nvkvm.no_compat32=1"
 [ "$SHELL_MODE" = 1 ]    && CMDLINE="$CMDLINE nvkvm.shell=1"
 [ "$SHELL_ON_FAIL" = 1 ] && CMDLINE="$CMDLINE nvkvm.shell_on_fail=1"
@@ -252,12 +250,12 @@ fi
 if [[ ",$STAGES," == *,provision,* ]] || [ "$SHELL_MODE" = 1 ]; then
     # User-mode networking: no bridge, no tap, no root. pacman (kernel headers)
     # and the NVIDIA .run download both need it.
-    EXTRA+=( -netdev user,id=net0 -device virtio-net-pci,netdev=net0 )
+    EXTRA+=( -netdev "user,id=net0" -device "virtio-net-pci,netdev=net0" )
 fi
 
 QEMU=(
     qemu-system-x86_64
-    -machine q35,accel=kvm -cpu host -smp "$CPUS" -m "$MEMORY"
+    -machine "q35,accel=kvm" -cpu host -smp "$CPUS" -m "$MEMORY"
     -drive "if=pflash,format=raw,unit=0,readonly=on,file=$OVMF_CODE"
     -drive "if=pflash,format=raw,unit=1,file=$WORK/ovmf_vars.fd"
     -kernel "$ALPINE_DIR/boot/vmlinuz-virt"
@@ -265,17 +263,17 @@ QEMU=(
     -append "$CMDLINE"
     # modloop: the kernel module tree, read-only
     -drive "file=$ALPINE_DIR/boot/modloop-virt,format=raw,if=none,id=modloop,readonly=on"
-    -device virtio-blk-pci,drive=modloop
+    -device "virtio-blk-pci,drive=modloop"
     # the repair image. snapshot=on -> backing file opened read-only, all guest
     # writes land in a throwaway overlay. The input is NEVER modified.
     -drive "file=$REPAIR,format=raw,if=none,id=repair,snapshot=on"
-    -device virtio-blk-pci,drive=repair
+    -device "virtio-blk-pci,drive=repair"
     # the install target, attached as NVMe *specifically* because
     # repair_device.sh hardcodes DISK=/dev/nvme0n1 (a plain assignment at line
     # 17, not env-overridable). As NVMe it lands at exactly that path with no
     # ambiguity and no patching of Valve's script.
     -drive "file=$OUT,format=qcow2,if=none,id=target,cache=unsafe"
-    -device nvme,drive=target,serial=nvkvmtarget
+    -device "nvme,drive=target,serial=nvkvmtarget"
     -display none -monitor none -no-reboot
     "${EXTRA[@]+"${EXTRA[@]}"}"
 )
