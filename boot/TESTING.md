@@ -12,8 +12,8 @@ This exercises everything except the 9p transport itself and an actual guest boo
 
 Rig: the physical RTX 4070 workstation, host driver 595.84, Docker Compose,
 GNOME/Wayland on the host, and the persisted genuine SteamOS A/B qcow2 from the
-earlier run. The Docker build had no local `./nvkvm`, so it cloned public
-`nvkvm-pv` main at `24b13f7d6f2b8773ef841309a691c98a777e065f` and built both
+earlier run. The Docker build used the public named context and fetched
+`nvkvm-pv` main at `24b13f7d6f2b8773ef841309a691c98a777e065f`, then built both
 patched QEMU and the broker from that checkout.
 
 **Proven in the published two-container layout:**

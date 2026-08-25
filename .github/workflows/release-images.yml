@@ -1,0 +1,144 @@
+# Build both runtime images on a clean GitHub-hosted runner. A release must not
+# inherit a developer's ignored ./nvkvm checkout: the named context below is
+# explicitly public main. The resulting source commit is recorded inside the
+# VMM image at /opt/nvkvm/.nvkvm-upstream-commit; the broker stays binary-only.
+name: release images
+
+on:
+  push:
+    tags: ['v*']
+
+# Do not cancel a tag release after one image has reached GHCR.
+concurrency:
+  group: release-images-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: build, push, and attest vmm + broker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+
+      - name: repository checks
+        run: make check
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: image names and tags
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="ghcr.io/${GITHUB_REPOSITORY,,}"
+          version="$GITHUB_REF_NAME"
+          for target in vmm broker; do
+            image="$base-$target"
+            tags="$image:$version"
+            case "$version" in
+              *-*) ;;
+              *) tags="$tags,$image:latest" ;;
+            esac
+            echo "${target}_image=$image" >> "$GITHUB_OUTPUT"
+            echo "${target}_tags=$tags" >> "$GITHUB_OUTPUT"
+          done
+
+      # Buildx also has a native provenance mode. Disable it here so each image
+      # has one provenance mechanism with one documented verification command:
+      # GitHub's OIDC-signed attestation emitted after the registry smoke test.
+      - name: build and push VMM image
+        id: push_vmm
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: ./Dockerfile
+          target: vmm
+          platforms: linux/amd64
+          build-contexts: |
+            nvkvm-source=https://github.com/reindertpelsma/nvkvm-pv.git#main
+          build-args: |
+            NVKVM_SOURCE_LABEL=https://github.com/reindertpelsma/nvkvm-pv.git#main
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.vmm_tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.description=Sandboxed nvkvm QEMU VMM for SteamOS
+
+      - name: smoke-test pushed VMM image
+        env:
+          REF: ${{ steps.meta.outputs.vmm_image }}@${{ steps.push_vmm.outputs.digest }}
+        run: |
+          set -euo pipefail
+          qemu=/opt/qemu-nvkvm/bin/qemu-system-x86_64
+          docker run --rm --entrypoint "$qemu" "$REF" --version
+          docker run --rm --entrypoint "$qemu" "$REF" -device help > devices.txt 2>&1
+          grep -q virtio-nvgpu devices.txt || {
+            echo "pushed VMM image has no virtio-nvgpu device" >&2
+            exit 1
+          }
+
+      - name: attest VMM image provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: ${{ steps.meta.outputs.vmm_image }}
+          subject-digest: ${{ steps.push_vmm.outputs.digest }}
+          push-to-registry: true
+
+      # Same builder and source context as VMM, so the expensive common QEMU
+      # stage is reused within this clean runner without a cross-run cache.
+      - name: build and push broker image
+        id: push_broker
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: ./Dockerfile
+          target: broker
+          platforms: linux/amd64
+          build-contexts: |
+            nvkvm-source=https://github.com/reindertpelsma/nvkvm-pv.git#main
+          build-args: |
+            NVKVM_SOURCE_LABEL=https://github.com/reindertpelsma/nvkvm-pv.git#main
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.broker_tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.description=Wayland and X11 display broker for nvkvm SteamOS
+
+      - name: smoke-test pushed broker image
+        env:
+          REF: ${{ steps.meta.outputs.broker_image }}@${{ steps.push_broker.outputs.digest }}
+        run: |
+          docker run --rm --entrypoint /usr/local/bin/nvkvm-display-broker \
+            "$REF" --help
+
+      - name: attest broker image provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: ${{ steps.meta.outputs.broker_image }}
+          subject-digest: ${{ steps.push_broker.outputs.digest }}
+          push-to-registry: true

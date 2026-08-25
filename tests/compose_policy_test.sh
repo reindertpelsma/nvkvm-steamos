@@ -7,7 +7,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG="$(mktemp)"
 BIND_CONFIG="$(mktemp)"
-trap 'rm -f "$CONFIG" "$BIND_CONFIG"' EXIT
+LOCAL_CONTEXT_CONFIG="$(mktemp)"
+trap 'rm -f "$CONFIG" "$BIND_CONFIG" "$LOCAL_CONTEXT_CONFIG"' EXIT
 
 docker compose -f "$ROOT/docker-compose.yml" config --format json > "$CONFIG"
 
@@ -39,6 +40,10 @@ assert broker["read_only"] is True
 assert not broker.get("devices")
 assert not broker.get("deploy")
 
+remote_context = "https://github.com/reindertpelsma/nvkvm-pv.git#main"
+assert broker["build"]["additional_contexts"]["nvkvm-source"] == remote_context
+assert vmm["build"]["additional_contexts"]["nvkvm-source"] == remote_context
+
 def mounts(service):
     return {v["target"]: (v["type"], v["source"]) for v in service["volumes"]}
 
@@ -64,6 +69,19 @@ assert ports[0]["target"] == 15022
 print("compose_policy_test: PASS")
 PY
 
+NVKVM_CONTEXT="$ROOT/nvkvm" \
+    docker compose -f "$ROOT/docker-compose.yml" config --format json > "$LOCAL_CONTEXT_CONFIG"
+python3 - "$LOCAL_CONTEXT_CONFIG" "$ROOT/nvkvm" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    cfg = json.load(fh)
+for name in ("broker", "vmm"):
+    actual = cfg["services"][name]["build"]["additional_contexts"]["nvkvm-source"]
+    assert actual == sys.argv[2], (name, actual)
+PY
+
 # The optional data mount must actually resolve as a bind when the operator
 # supplies a path, not merely look plausible in Compose's short syntax.
 NVKVM_STEAMOS_DATA="$ROOT" \
@@ -79,12 +97,41 @@ assert data["type"] == "bind", data
 assert data["source"] == sys.argv[2], data
 PY
 
+# Docker may exclude more than Git, never less. This deliberately compares the
+# literal rule set: accepting a merely "equivalent-looking" broader glob makes
+# later negations/order changes too easy to get wrong. The conservative rule is
+# cheap and keeps every Git-ignored artifact out of the build context.
+python3 - "$ROOT/.gitignore" "$ROOT/.dockerignore" <<'PY'
+import sys
+
+def rules(path):
+    with open(path, encoding="utf-8") as fh:
+        return {
+            line.rstrip("\n")
+            for line in fh
+            if line.rstrip("\n") and not line.startswith("#")
+        }
+
+git_rules = rules(sys.argv[1])
+docker_rules = rules(sys.argv[2])
+
+missing = git_rules - docker_rules
+assert not missing, (
+    ".dockerignore must be a literal superset of .gitignore; missing: "
+    + ", ".join(sorted(missing))
+)
+
+# Repository metadata is an additional Docker-only exclusion. nvkvm/ remains
+# excluded from the parent context and can enter only through NVKVM_CONTEXT.
+assert ".git" in docker_rules
+assert "nvkvm/" in git_rules and "nvkvm/" in docker_rules
+PY
+
 # The standalone repository owns SteamOS policy but not nvkvm itself. Pin the
-# required fallback contract: absent ./nvkvm, build from the public main branch.
-grep -qF 'ARG NVKVM_REPOSITORY=https://github.com/reindertpelsma/nvkvm-pv.git' \
+# required contract: consume only the explicit named build context.
+grep -qF 'COPY --from=nvkvm-source / /opt/nvkvm' "$ROOT/Dockerfile"
+grep -qF 'ARG NVKVM_SOURCE_LABEL=https://github.com/reindertpelsma/nvkvm-pv.git#main' \
     "$ROOT/Dockerfile"
-grep -qF 'ARG NVKVM_REF=main' "$ROOT/Dockerfile"
-grep -qF 'nvkvm/scripts/build_qemu.sh' "$ROOT/Dockerfile"
 # Broker restart briefly activates QEMU's local fallback while the relay
 # reconnects. libepoxy aborts the VMM if neither libGL nor libOpenGL exists.
 grep -qF 'libegl1 libgl1' "$ROOT/Dockerfile"

@@ -8,8 +8,7 @@ data/root_authorized_keys
 nvidia/*.run
 .env
 
-# Optional local nvkvm-pv checkout used by the Docker build. When absent, the
-# Dockerfile clones https://github.com/reindertpelsma/nvkvm-pv.git at main.
+# External source is always fetched by Docker and never enters its context.
 nvkvm/
 
 # Alpine netboot cache for install_steamos_vm.sh

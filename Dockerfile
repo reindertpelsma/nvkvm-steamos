@@ -1,12 +1,11 @@
 # syntax=docker/dockerfile:1.7
-# Standalone SteamOS/nvkvm build. A checkout at ./nvkvm wins; otherwise the
-# requested upstream ref is cloned during the build (main by default).
+# Standalone SteamOS/nvkvm build. Compose supplies `nvkvm-source` as a named
+# context: public main by default, or an explicitly selected local checkout.
 
 FROM ubuntu:24.04 AS nvkvm-build
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG NVKVM_REPOSITORY=https://github.com/reindertpelsma/nvkvm-pv.git
-ARG NVKVM_REF=main
+ARG NVKVM_SOURCE_LABEL=https://github.com/reindertpelsma/nvkvm-pv.git#main
 
 RUN apt-get update -q && apt-get install -y --no-install-recommends \
         build-essential git ca-certificates \
@@ -17,17 +16,9 @@ RUN apt-get update -q && apt-get install -y --no-install-recommends \
         libxcb1-dev libxcb-dri3-dev libxcb-present-dev libxcb-xinput-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY . /src/nvkvm-steamos
-RUN if [ -f /src/nvkvm-steamos/nvkvm/scripts/build_qemu.sh ]; then \
-        echo "Using the nvkvm checkout supplied at ./nvkvm"; \
-        mkdir -p /opt/nvkvm; \
-        cp -a /src/nvkvm-steamos/nvkvm/. /opt/nvkvm/; \
-    else \
-        echo "No ./nvkvm checkout supplied; cloning $NVKVM_REPOSITORY ($NVKVM_REF)"; \
-        git clone "$NVKVM_REPOSITORY" /opt/nvkvm; \
-        git -C /opt/nvkvm checkout "$NVKVM_REF"; \
-    fi \
-    && (git -C /opt/nvkvm rev-parse HEAD 2>/dev/null || echo local-checkout) \
+COPY --from=nvkvm-source / /opt/nvkvm
+RUN test -x /opt/nvkvm/scripts/build_qemu.sh \
+    && (git -C /opt/nvkvm rev-parse HEAD 2>/dev/null || echo "$NVKVM_SOURCE_LABEL") \
         > /opt/nvkvm/.nvkvm-upstream-commit
 
 WORKDIR /opt/nvkvm

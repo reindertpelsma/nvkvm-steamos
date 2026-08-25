@@ -23,17 +23,45 @@ A/B qcow2, installs NVIDIA userspace matching the dynamically detected host
 driver, builds the nvkvm guest module, generates an SSH key, and boots Plasma.
 Subsequent starts reuse all of that state.
 
-The Docker build uses `./nvkvm` when it contains an nvkvm-pv checkout. If that
-directory is absent, it clones
-`https://github.com/reindertpelsma/nvkvm-pv.git` and checks out `main`. Override
-`NVKVM_REPOSITORY` or `NVKVM_REF` as build arguments through Compose when
-testing a fork or review branch; no nvkvm source is vendored in this repo.
+The `nvkvm-source` named build context defaults to
+`https://github.com/reindertpelsma/nvkvm-pv.git#main`. To build an explicitly
+staged checkout instead:
+
+```sh
+NVKVM_CONTEXT=./nvkvm docker compose build
+```
+
+The parent context excludes `nvkvm/` like every other Git-ignored path, so a
+local checkout cannot silently affect a default build. `NVKVM_CONTEXT` may also
+name another Git URL/ref when testing a remote fork or review branch. No nvkvm
+source is vendored in this repository.
 
 Follow startup:
 
 ```sh
 docker compose logs -f broker vmm
 docker compose ps
+```
+
+## Published images and provenance
+
+A pushed `v*` tag builds both runtime targets from scratch on a GitHub-hosted
+Ubuntu 24.04 runner and publishes:
+
+- `ghcr.io/reindertpelsma/nvkvm-steamos-vmm:<tag>`
+- `ghcr.io/reindertpelsma/nvkvm-steamos-broker:<tag>`
+
+Stable tags also update `latest`; prerelease tags containing `-` do not. Each
+image is smoke-tested by digest before its GitHub OIDC provenance attestation
+is attached in GHCR. Verify them with:
+
+```sh
+gh attestation verify \
+  oci://ghcr.io/reindertpelsma/nvkvm-steamos-vmm:<tag> \
+  --repo reindertpelsma/nvkvm-steamos
+gh attestation verify \
+  oci://ghcr.io/reindertpelsma/nvkvm-steamos-broker:<tag> \
+  --repo reindertpelsma/nvkvm-steamos
 ```
 
 The broker auto-selects Wayland when the configured Wayland socket exists,
@@ -116,7 +144,7 @@ Common overrides:
 
 | variable | default | purpose |
 |---|---|---|
-| `NVKVM_REF` | `main` | nvkvm-pv branch/tag/commit checked out at build |
+| `NVKVM_CONTEXT` | public nvkvm-pv `main` | named build context: Git URL/ref or explicit local checkout |
 | `STEAMOS_VM_MEM` | `12G` | guest RAM |
 | `STEAMOS_VM_SMP` | `8` | guest vCPUs |
 | `NVKVM_STEAMOS_DISK_SIZE` | `64G` | sparse SteamOS disk and games budget |

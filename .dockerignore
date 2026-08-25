@@ -1,14 +1,29 @@
+# Keep every non-comment rule from .gitignore here verbatim. The policy test
+# enforces that this list remains a superset, so an ignored local artifact can
+# never become an undeclared Docker build input.
+*.log
+*.tgz
+loopdev.txt
+nbd_dev.txt
+data/authorized_keys
+data/root_authorized_keys
+nvidia/*.run
+.env
+.alpine-netboot/
+nvkvm/
+
+# Docker-only exclusions follow. The repository metadata must never enter an
+# image layer or invalidate the build cache. A custom nvkvm checkout is passed
+# explicitly as a separate named context, so the parent context still excludes
+# its ignored nvkvm/ directory.
 .git
 .github
-.alpine-netboot
 evidence
 evidence-*
 archive
 *.img
 *.img.bz2
 *.qcow2
-*.log
-*.tgz
 *.run
 core
 core.*

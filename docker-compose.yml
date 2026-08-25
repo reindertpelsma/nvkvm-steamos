@@ -9,9 +9,10 @@ services:
     build:
       context: .
       target: broker
+      additional_contexts:
+        nvkvm-source: "${NVKVM_CONTEXT:-https://github.com/reindertpelsma/nvkvm-pv.git#main}"
       args:
-        NVKVM_REPOSITORY: ${NVKVM_REPOSITORY:-https://github.com/reindertpelsma/nvkvm-pv.git}
-        NVKVM_REF: ${NVKVM_REF:-main}
+        NVKVM_SOURCE_LABEL: "${NVKVM_CONTEXT:-https://github.com/reindertpelsma/nvkvm-pv.git#main}"
     network_mode: none
     read_only: true
     cap_drop: [ALL]
@@ -44,9 +45,10 @@ services:
     build:
       context: .
       target: vmm
+      additional_contexts:
+        nvkvm-source: "${NVKVM_CONTEXT:-https://github.com/reindertpelsma/nvkvm-pv.git#main}"
       args:
-        NVKVM_REPOSITORY: ${NVKVM_REPOSITORY:-https://github.com/reindertpelsma/nvkvm-pv.git}
-        NVKVM_REF: ${NVKVM_REF:-main}
+        NVKVM_SOURCE_LABEL: "${NVKVM_CONTEXT:-https://github.com/reindertpelsma/nvkvm-pv.git#main}"
     init: true
     read_only: true
     cap_drop: [ALL]

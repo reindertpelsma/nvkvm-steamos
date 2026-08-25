@@ -37,10 +37,13 @@ it receives the host Wayland/X11 mounts but no GPU-control device, VM disk,
 recovery image, or SSH key. A private tmpfs Unix socket is their sole shared
 mount.
 
-If `./nvkvm` is not a local nvkvm-pv checkout, the build clones
+By default the named nvkvm build context fetches
 [`reindertpelsma/nvkvm-pv`](https://github.com/reindertpelsma/nvkvm-pv) at
-`main`. The first start downloads and installs SteamOS into persistent volumes;
-later starts boot that qcow2 directly. Reach the guest with:
+`main`. To select a staged checkout explicitly, run
+`NVKVM_CONTEXT=./nvkvm docker compose build`. The parent Docker context always
+excludes `nvkvm/`, so an ignored local checkout can never affect a default
+build silently. The first start downloads and installs SteamOS into persistent
+volumes; later starts boot that qcow2 directly. Reach the guest with:
 
 ```sh
 ./steamos-ssh
