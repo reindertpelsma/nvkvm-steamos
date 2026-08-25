@@ -20,9 +20,8 @@ SteamOS downloading.
 >   Read [Step 8](#step-8--the-mouse-look-problem-read-before-you-blame-yourself)
 >   before you get to it.
 >
-> The short version of this document is the README's
-> [Start here](README.md#start-here-image-to-running-guest). This is the long
-> version, with the host build included and nothing assumed.
+> The README now points at the two-container deployment. This document is the
+> older low-level walkthrough, with the host build included and nothing assumed.
 
 ---
 
@@ -415,7 +414,8 @@ against each slot you care about.
 
 | you want | read |
 |---|---|
-| what is true now, in brief | [`README.md`](README.md) |
+| what to run first | [`README.md`](README.md) |
+| current status and open gaps | [`docs/status.md`](docs/status.md) |
 | steps 4-5 by hand, with the reason for every step | [`docs/manual-install.md`](docs/manual-install.md) |
 | what has been tested, on which machine, and what failed | [`boot/TESTING.md`](boot/TESTING.md) |
 | how any of this was originally worked out (historical) | [`NOTES.md`](NOTES.md) |

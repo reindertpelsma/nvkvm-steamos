@@ -1,11 +1,14 @@
-# Provisioning a SteamOS image by hand
+# Provisioning a SteamOS recovery image by hand
 
-This is the long-hand version of README [step 1–2](../README.md#start-here-image-to-running-guest)
-and TUTORIAL [steps 4–5](../TUTORIAL.md#step-4--grow-the-image-and-repair-the-gpt):
-take a pristine SteamOS recovery image and turn it into a provisioned,
-nvkvm-ready guest disk, entirely offline — no guest boot required.
+This is the long-hand recovery-image path behind
+[`build_steamos_image.sh`](../build_steamos_image.sh): take a pristine SteamOS
+recovery image and turn it into a provisioned nvkvm-ready guest disk, entirely
+offline. It is useful for debugging and for understanding the filesystem
+operations, but it is no longer the README path. For normal use, start with the
+two-container deployment in [`../README.md`](../README.md); for the preferred
+image builder, read [`vm-installer.md`](vm-installer.md).
 
-**If you just want the image, run the script instead:**
+**If you specifically want the recovery-image path, run the script instead:**
 
 ```sh
 sudo ./build_steamos_image.sh \
@@ -13,12 +16,11 @@ sudo ./build_steamos_image.sh \
   --share ~/nvkvm/nvkvm-pv
 ```
 
-[`build_steamos_image.sh`](../build_steamos_image.sh) is this document, mechanised —
-same steps, same order, plus the cleanup and the pre-flight checks that are easy
-to forget by hand. Read *this* document when the script fails, when you want to
-do something it does not do, or when you want to understand what it is doing to
-your filesystem. **Every step below says why it exists**; a reader who
-understands them can debug a failure, one who copies them cannot.
+[`build_steamos_image.sh`](../build_steamos_image.sh) is this document,
+mechanised: same steps, same order, plus the cleanup and pre-flight checks that
+are easy to forget by hand. Read this document when the script fails, when you
+want to do something it does not do, or when you want to understand what it is
+doing to your filesystem.
 
 ---
 
@@ -119,8 +121,8 @@ copy elsewhere.
 truncate -s +60G work.img
 ```
 
-**What this actually buys you, which is not what the README implies.** The
-recovery image's btrfs **rootfs is ~5 GB and this does not grow it** — the
+**What this actually buys you.** The recovery image's btrfs **rootfs is ~5 GB
+and this does not grow it** — the
 rootfs is partition 3, and only the *last* partition can absorb space appended
 to the end of a disk. What grows is `/home` (the last partition), and it grows
 by itself: this SteamOS image ships a boot-time grow-last-partition unit, so on
@@ -144,8 +146,8 @@ intend to do:
 | boot to the desktop, log into Steam | `8G` – `16G` | Steam's own bootstrap and runtime need a few GB, and on the stock 2 GB `/home` (already ~full) Steam cannot even extract itself — that was measured, and the workaround at the time was a tmpfs `HOME`, which cannot hold a game |
 | install and play a game | `+ the game` | Portal 2 is ~10 GB; modern titles are 50–150 GB |
 
-The number in the README, 60 GB, is simply what the sessions in this repository
-used so a couple of games would fit. `truncate` writes a **hole**, so it costs
+The 60 GB size used by the early sessions in this repository was simply a games
+budget so a couple of titles would fit. `truncate` writes a **hole**, so it costs
 nothing on the host today — but the work image and the qcow2 grow for real as
 the guest fills `/home`, so the host must eventually have the space. If you are
 tight on host disk, grow less now; you can always
@@ -264,7 +266,7 @@ ls /mnt/steamos/usr/lib/modules /mnt/steamos/etc/pacman.conf
 sudo mount /dev/loop3p5 /mnt/steamos/home
 ```
 
-**This step is missing from the README and TUTORIAL, and it matters.**
+**This step matters.**
 `steamos_boot.sh` builds the guest module in a 1 GB ext4 loopback image at
 `/home/.nvkvm-build.img` *inside the target root*, and caches the ~380 MB NVIDIA
 `.run` under `/home/deck/.local/share/nvkvm/`. With only the rootfs mounted,
@@ -285,10 +287,9 @@ sudo mount --bind /sys  /mnt/steamos/sys
 sudo mount --rbind /dev /mnt/steamos/dev
 ```
 
-**Also missing from the README and TUTORIAL.** `steamos_boot.sh` chroots into
-the target for `pacman`, `curl`, `nvidia-installer`, `ldconfig` and `depmod`,
-but it does not set up the kernel filesystems itself — it assumes its caller
-did. Both of its other callers do:
+`steamos_boot.sh` chroots into the target for `pacman`, `curl`,
+`nvidia-installer`, `ldconfig` and `depmod`, but it does not set up the kernel
+filesystems itself — it assumes its caller did. Both of its other callers do:
 [`nvkvm-recovery.sh plant`](../boot/image/nvkvm-recovery.sh) binds all three
 before running `--install-only --root`, and so does the older image builder.
 `nvidia-installer` in particular is unhappy without them.
@@ -488,8 +489,8 @@ QEMU=/opt/qemu-nvkvm/bin/qemu-system-x86_64 \
 ```
 
 `SHARE` is the same `nvkvm-pv` checkout you bind-mounted in step 10 — this time
-it really is exported over 9p. See the README for what a healthy first boot
-prints, on the host and in the guest.
+it really is exported over 9p. See [`status.md`](status.md) for what a healthy
+first boot proves on the host and in the guest.
 
 ---
 
@@ -550,10 +551,10 @@ a `trap`, because **a mount namespace does not isolate loop devices**.
 
 ---
 
-## Where this document disagrees with the README and TUTORIAL
+## Corrections to the older walkthroughs
 
-Written down rather than quietly fixed, because the older text was right about
-what was *run* and this is about what the code *does*:
+Written down rather than silently dropped, because the older text was right
+about what was *run* and this is about what the code *does*:
 
 1. **`/proc`, `/sys` and `/dev` are not bind-mounted** in either walkthrough
    (step 8 here). `steamos_boot.sh` chroots but does not mount them; its other
@@ -562,7 +563,7 @@ what was *run* and this is about what the code *does*:
    so the 1 GB build area and the `.run` cache land on the rootfs.
 3. **`truncate -s +60G` is presented as fixing the rootfs**
    ("The repair image's rootfs is too small to hold a toolchain, kernel headers
-   and the NVIDIA userspace at once" — README step 1). It does not: the rootfs
+   and the NVIDIA userspace at once" — older README step 1). It does not: the rootfs
    is not the last partition on the disk and does not grow. What grows is
    `/home`, at the guest's first boot. `boot/TESTING.md`'s "disk space is no
    longer a hard blocker … because the documented path grows the image by 60 GB"

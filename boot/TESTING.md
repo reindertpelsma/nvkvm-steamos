@@ -169,12 +169,12 @@ nested but with real `/dev/kvm`. Ran
   `umount -l` and captures an unflushed filesystem.
   `build_steamos_image.sh` kills processes whose `/proc/<pid>/root` is inside the
   tree before unmounting.
-- **The public `nvkvm-pv` does not contain `boot/`.** As of `252bd44` (and
-  `integration-2026-08-23`) there is no `boot/steamos_boot.sh` and no
-  `boot/image/` in that repository, so the README's
-  `sudo /path/to/nvkvm-pv/boot/steamos_boot.sh` cannot be followed from a fresh
-  public clone. This repo's `boot/` is the only published copy; copy it into the
-  checkout you share.
+- **The public `nvkvm-pv` did not contain `boot/` in this test window.** As of
+  `252bd44` (and `integration-2026-08-23`) there was no
+  `boot/steamos_boot.sh` and no `boot/image/` in that repository, so the older
+  manual command `sudo /path/to/nvkvm-pv/boot/steamos_boot.sh` could not be
+  followed from a fresh public clone. This repo's `boot/` was the published
+  copy; copy it into the checkout you share when using the manual path.
 
 **Still not exercised here:** anything to do with presentation. No nvkvm-patched
 QEMU was built on this box, so no `virtio-nvgpu`, no `nvkvm-gpu`, no GL
@@ -241,7 +241,7 @@ display findings below.
 > **does** build and install through this script; the guest **does** boot and
 > Part 2 **does** run; disk space is no longer a hard blocker in practice,
 > because the documented path grows the image by 60 GB before provisioning it
-> (README step 1) — the underlying tightness of an *ungrown* 5 GB repair rootfs
+> (older README step 1) — the underlying tightness of an *ungrown* 5 GB repair rootfs
 > is unchanged and the pre-flight check still guards it. Only **the update hook
 > against a real rauc A/B device** remains untested. See the AMENDMENT above.
 
