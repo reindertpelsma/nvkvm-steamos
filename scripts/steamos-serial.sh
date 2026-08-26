@@ -27,7 +27,15 @@ command -v socat >/dev/null 2>&1 || {
     exit 1
 }
 
-echo "Attaching to $SOCK -- press ENTER for a prompt, CTRL-] to detach." >&2
-# raw + echo=0: the guest's getty does its own line editing and echoing, and
-# doing it twice gives doubled characters and no working backspace.
-exec socat -,raw,echo=0,escape=0x1d "unix-connect:$SOCK"
+# raw + echo=0 needs a terminal to set termios on.  `docker exec` without -t
+# has none, and socat then dies with "tcgetattr: Inappropriate ioctl for
+# device" -- which reads like the socket is broken when it is not.  Detect it
+# and fall back to a plain pipe, which is still useful for scripting.
+if [ -t 0 ] && [ -t 1 ]; then
+    echo "Attaching to $SOCK -- press ENTER for a prompt, CTRL-] to detach." >&2
+    # The guest's getty does its own line editing and echoing; doing it twice
+    # gives doubled characters and no working backspace.
+    exec socat -,raw,echo=0,escape=0x1d "unix-connect:$SOCK"
+fi
+echo "No TTY (use 'compose exec', or 'docker exec -it'); attaching in pipe mode." >&2
+exec socat - "unix-connect:$SOCK"
