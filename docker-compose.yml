@@ -104,7 +104,11 @@ services:
       NVKVM_ISOLATE_MODE: uid+chroot
       VM_MEM: ${STEAMOS_VM_MEM:-12G}
       VM_SMP: ${STEAMOS_VM_SMP:-8}
-      NVKVM_STEAMOS_DISK_SIZE: ${NVKVM_STEAMOS_DISK_SIZE:-64G}
+      # Empty = fit the host: 60% of the free space where the qcow2 lives,
+      # clamped to [64G, 1024G].  qcow2 is sparse, so this costs nothing until
+      # written -- and /home (i.e. the games budget) cannot be grown later
+      # without a reinstall, because it sits last behind two fixed rootfs slots.
+      NVKVM_STEAMOS_DISK_SIZE: ${NVKVM_STEAMOS_DISK_SIZE:-}
       NVKVM_STEAMOS_PROFILE: ${NVKVM_STEAMOS_PROFILE:-steamos}
       NVKVM_STEAMOS_RECOVERY_URL: ${NVKVM_STEAMOS_RECOVERY_URL:-}
       NVKVM_STEAMOS_LATEST: ${NVKVM_STEAMOS_LATEST:-0}

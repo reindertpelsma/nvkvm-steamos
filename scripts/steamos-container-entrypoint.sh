@@ -187,6 +187,33 @@ if [ -e "$QCOW" ] && [ ! -s "$QCOW" ]; then
     rm -f "$QCOW"
 fi
 
+# ── Disk size: games live on /home, so 64G is a games budget, not a disk ─────
+# Valve's installer needs ~11 GiB and expands /home into everything left, so
+# this number IS the games partition.  qcow2 is sparse: a larger virtual size
+# costs nothing until it is written, and the cost of getting it wrong is
+# asymmetric -- too big is free, too small means reinstalling to grow it, since
+# /home sits last on the disk behind two fixed 5 GiB rootfs slots.
+#
+# Unset means "fit the host": take a share of what is actually free where the
+# qcow2 lives, clamped so a small host still gets a usable machine and a huge
+# one does not get a number nobody can honour.  Set NVKVM_STEAMOS_DISK_SIZE to
+# pin it.
+#
+# NOT a host share for /home, which is the obvious alternative: SteamOS creates
+# /home as ext4 with the `casefold` feature and Proton depends on it for
+# case-insensitive Windows paths.  No 9p or virtiofs export can provide
+# casefold, so games would break in ways that look like game bugs.
+default_disk_size() {
+    local free_g
+    free_g="$(df -PBG "$STATE_DIR" 2>/dev/null | awk 'NR==2{gsub(/G/,"",$4); print $4}')"
+    case "$free_g" in ''|*[!0-9]*) printf '128G\n'; return ;; esac
+    local want=$(( free_g * 60 / 100 ))
+    [ "$want" -lt 64 ]  && want=64
+    [ "$want" -gt 1024 ] && want=1024
+    printf '%sG\n' "$want"
+}
+DISK_SIZE="${NVKVM_STEAMOS_DISK_SIZE:-$(default_disk_size)}"
+
 if [ ! -e "$QCOW" ]; then
     if [ -e "$QCOW_INSTALLING" ]; then
         log "a previous install was interrupted; restarting it from the beginning"
@@ -199,11 +226,12 @@ if [ ! -e "$QCOW" ]; then
     [[ "$DRIVER_VERSION" =~ ^[0-9]+([.][0-9]+)+$ ]] \
         || die "could not determine the NVIDIA driver version exposed to this container"
     log "first run: installing a dual-slot SteamOS image with Valve's installer"
+    log "disk: $DISK_SIZE (sparse; ~11 GiB is the OS, the rest becomes /home for games)"
     log "provisioning NVIDIA userspace for dynamically detected driver $DRIVER_VERSION"
     /opt/nvkvm/install_steamos_vm.sh \
         --repair "$RECOVERY_IMG" \
         --out "$QCOW_INSTALLING" \
-        --size "${NVKVM_STEAMOS_DISK_SIZE:-64G}" \
+        --size "$DISK_SIZE" \
         --alpine-dir "$STATE_DIR/alpine" \
         --stages "${NVKVM_STEAMOS_INSTALL_STAGES:-repair,provision}" \
         --share /opt/nvkvm \
