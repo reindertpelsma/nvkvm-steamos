@@ -37,7 +37,8 @@ services:
       # to offer.  auto walks it: the guest's own modifier, then a LINEAR
       # dma-buf, then shared memory, which no compositor can refuse.
       NVKVM_BROKER_PRESENT_MODE: ${NVKVM_BROKER_PRESENT_MODE:-}
-      # Leave empty to pick a random unowned uid per start.  The broker becomes
+      # Leave empty to pick a random unowned uid per start (600000+, above
+      # the /etc/subuid ranges rootless containers allocate from).  The broker becomes
       # it AFTER the display connection is open, so it keeps the window and
       # input it already holds while losing all reach into the desktop user's
       # files.

@@ -45,11 +45,20 @@ fi
 # directory for no benefit.  So it becomes a uid nothing on the system owns.
 #
 # Random rather than fixed so two brokers, or a broker and anything else that
-# picked a "sensible" number, cannot end up sharing an identity.  The range is
-# above the usual system and login ranges and below the isolate's 500000+
-# window (a different container, but worth not colliding on principle).
+# picked a "sensible" number, cannot end up sharing an identity.
+#
+# NOT 65534.  `nobody` is shared by half the sandboxed daemons on a desktop, and
+# while PR_SET_DUMPABLE(0) stops a same-uid process ptracing us and stealing the
+# display fd, it does not stop one signalling us dead -- and it would make the
+# whole separation rest on a single prctl.
+#
+# The range deliberately starts ABOVE 600000.  Without user namespaces a
+# container uid IS the host uid, and 100000 is exactly where /etc/subuid begins
+# allocating for rootless containers (100000-165535 for the first user, then in
+# 65536 steps), so the low six figures are among the MOST likely to be occupied,
+# not the least.  600000+ is above the isolate's 500000..504095 window too.
 if [ -z "${NVKVM_BROKER_DROP_UID:-}" ]; then
-    NVKVM_BROKER_DROP_UID=$(( 100000 + ($(od -An -N3 -tu4 /dev/urandom) % 300000) ))
+    NVKVM_BROKER_DROP_UID=$(( 600000 + ($(od -An -N3 -tu4 /dev/urandom) % 300000) ))
 fi
 case "$NVKVM_BROKER_DROP_UID" in
     0|"") die "NVKVM_BROKER_DROP_UID must be a non-zero uid" ;;
