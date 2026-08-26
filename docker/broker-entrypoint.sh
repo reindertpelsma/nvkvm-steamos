@@ -127,8 +127,17 @@ esac
 # The host connection lives HERE because this container is the trusted one: it
 # already holds the display, and $XDG_RUNTIME_DIR is mounted at
 # /run/host-runtime for exactly that reason.
-AUDIO_FIFO="${NVKVM_AUDIO_FIFO:-$(dirname "$SOCKET")/audio.fifo}"
+#
+# IN A SUBDIRECTORY, and not for tidiness: fs.protected_fifos is 1 on any
+# modern distro, and it refuses O_WRONLY on a fifo you do not OWN inside a
+# sticky world-writable directory.  The shared volume root is exactly that
+# (drwxrwxrwt), so the VMM -- which does not own a fifo this container
+# created -- got EACCES no matter what the mode bits said.  MEASURED: 0666
+# made no difference; a plain 0755 subdirectory made it work at once.
+AUDIO_DIR="$(dirname "$SOCKET")/audio"
+AUDIO_FIFO="${NVKVM_AUDIO_FIFO:-$AUDIO_DIR/pcm}"
 if [ "${NVKVM_AUDIO:-1}" = 1 ] && command -v pw-cat >/dev/null 2>&1; then
+    mkdir -p "$AUDIO_DIR" && chmod 0755 "$AUDIO_DIR" 2>/dev/null
     rm -f "$AUDIO_FIFO"
     if mkfifo -m 0622 "$AUDIO_FIFO" 2>/dev/null; then
         # 0622: the VMM writes, only this container reads.

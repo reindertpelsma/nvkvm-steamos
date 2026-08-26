@@ -306,7 +306,9 @@ fi
 # which is the thing being avoided.  A fifo cannot be read from this side, so
 # the direction is a property of the plumbing rather than of a policy.
 AUDIO_ARGS=()
-AUDIO_FIFO="${NVKVM_AUDIO_FIFO:-$BROKER_DIR/audio.fifo}"
+# In a subdirectory because fs.protected_fifos refuses O_WRONLY on a fifo this
+# container does not own inside the sticky world-writable volume root.
+AUDIO_FIFO="${NVKVM_AUDIO_FIFO:-$BROKER_DIR/audio/pcm}"
 if [ "${NVKVM_AUDIO:-1}" = 1 ] && [ -p "$AUDIO_FIFO" ]; then
     AUDIO_ARGS=(
         -audiodev "wav,id=nvkvmsnd,path=$AUDIO_FIFO,out.frequency=${NVKVM_AUDIO_RATE:-48000},out.channels=${NVKVM_AUDIO_CHANNELS:-2},out.format=${NVKVM_AUDIO_FORMAT:-s16}"
