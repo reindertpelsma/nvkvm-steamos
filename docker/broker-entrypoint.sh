@@ -42,27 +42,13 @@ fi
 # runtime directory is mode 0700 and the Wayland socket lives inside it.  After
 # that, every resource it needs is an open fd, and staying the desktop user
 # only means retaining reach into that user's files, keys and autostart
-# directory for no benefit.  So it becomes a uid nothing on the system owns.
+# directory for no benefit.
 #
-# Random rather than fixed so two brokers, or a broker and anything else that
-# picked a "sensible" number, cannot end up sharing an identity.
-#
-# NOT 65534.  `nobody` is shared by half the sandboxed daemons on a desktop, and
-# while PR_SET_DUMPABLE(0) stops a same-uid process ptracing us and stealing the
-# display fd, it does not stop one signalling us dead -- and it would make the
-# whole separation rest on a single prctl.
-#
-# The range deliberately starts ABOVE 600000.  Without user namespaces a
-# container uid IS the host uid, and 100000 is exactly where /etc/subuid begins
-# allocating for rootless containers (100000-165535 for the first user, then in
-# 65536 steps), so the low six figures are among the MOST likely to be occupied,
-# not the least.  600000+ is above the isolate's 500000..504095 window too.
-if [ -z "${NVKVM_BROKER_DROP_UID:-}" ]; then
-    NVKVM_BROKER_DROP_UID=$(( 600000 + ($(od -An -N3 -tu4 /dev/urandom) % 300000) ))
-fi
-case "$NVKVM_BROKER_DROP_UID" in
-    0|"") die "NVKVM_BROKER_DROP_UID must be a non-zero uid" ;;
-esac
+# `auto` lets the BROKER choose, because only it can read /proc/self/uid_map.
+# Under `dockerd --userns-remap` or sysbox-runc the container is given a mapped
+# range -- commonly 65536 uids -- and a uid outside it fails setuid() with
+# EINVAL.  A number picked here in shell cannot know that; the broker can.
+# Set NVKVM_BROKER_DROP_UID to pin one instead.
 
 if [ "$BACKEND" = auto ]; then
     if [ -n "${WAYLAND_DISPLAY:-}" ] \
@@ -106,7 +92,7 @@ extra=()
 # arbitrary arguments into it is a widening for no benefit.
 [ "${NVKVM_BROKER_LINEAR_ONLY:-0}" = 1 ] && extra+=(--linear-only)
 [ -n "${NVKVM_BROKER_PRESENT_MODE:-}" ] && extra+=(--present-mode="$NVKVM_BROKER_PRESENT_MODE")
-extra+=(--drop-user "$NVKVM_BROKER_DROP_UID")
+extra+=(--drop-user "${NVKVM_BROKER_DROP_UID:-auto}")
 
 log "backend=$BACKEND desktop_uid=$desktop_uid desktop_gid=$desktop_gid socket=$SOCKET"
 log "the VMM has no display mount; CTRL+ALT+G toggles the broker input grab"
