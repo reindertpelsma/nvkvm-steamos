@@ -612,7 +612,17 @@ install_nvidia_userspace() {
     # the rest of the nvidia state, so an A/B update does not erase it.
     local costfile="$nvstate/userspace-kb"
     if [ "$reclaimed_kb" -gt 0 ]; then
-        printf '%s\n' "$reclaimed_kb" > "$(rp "$costfile")" 2>/dev/null
+        # Keep the LARGEST sample, not the latest.  What a reclaim frees varies
+        # with what the outgoing version happened to ship and how well btrfs
+        # compressed it -- MEASURED 351M on one upgrade and 96M on the next,
+        # for the same pair of drivers in opposite directions.  A single latest
+        # sample would keep shrinking the estimate until it no longer bounds
+        # anything; the high-water mark is the honest one, and this check only
+        # ever needs to be an upper bound.
+        local prev; prev="$(cat "$(rp "$costfile")" 2>/dev/null)"
+        case "$prev" in ''|*[!0-9]*) prev=0 ;; esac
+        [ "$reclaimed_kb" -gt "$prev" ] \
+            && printf '%s\n' "$reclaimed_kb" > "$(rp "$costfile")" 2>/dev/null
     fi
     local known_kb; known_kb="$(cat "$(rp "$costfile")" 2>/dev/null)"
     case "$known_kb" in ''|*[!0-9]*) known_kb="" ;; esac
