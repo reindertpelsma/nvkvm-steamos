@@ -46,11 +46,14 @@ services:
       # input it already holds while losing all reach into the desktop user's
       # files.
       NVKVM_BROKER_DROP_UID: ${NVKVM_BROKER_DROP_UID:-}
-      # off | guest-to-host | consent.  `consent` is the recommended one: the
-      # guest may write your clipboard, and can only READ it on an explicit
-      # paste key (ctrl+v / ctrl+shift+v / shift+insert by default).  Needs the
-      # VMM's qemu-vdagent chardev and spice-vdagent in the guest.
-      NVKVM_BROKER_CLIPBOARD: ${NVKVM_BROKER_CLIPBOARD:-consent}
+      # off | guest-to-host | consent.  OFF BY DEFAULT: clipboard needs both
+      # the VMM's qemu-vdagent chardev and spice-vdagent inside the guest, so
+      # defaulting it on would promise something a given setup may not have.
+      # `consent` is the one to choose: the guest may write your clipboard
+      # (visibly, and only while this window has focus), and can never READ it
+      # except at the instant you press the paste key -- ctrl+v, ctrl+shift+v
+      # or shift+insert by default.  Works on both Wayland and X11.
+      NVKVM_BROKER_CLIPBOARD: ${NVKVM_BROKER_CLIPBOARD:-off}
       NVKVM_BROKER_CLIPBOARD_TRIGGER: ${NVKVM_BROKER_CLIPBOARD_TRIGGER:-}
     volumes:
       - broker-socket:/run/nvkvm
