@@ -134,8 +134,20 @@ if [ "${NVKVM_AUDIO:-1}" = 1 ] && command -v pw-cat >/dev/null 2>&1; then
         # 0622: the VMM writes, only this container reads.
         log "audio: playing the guest stream from $AUDIO_FIFO"
         (
-            # Re-open in a loop: a VM restart closes the writer, and a player
-            # that exits with it would leave the next boot silent.
+            # HOLD THE FIFO OPEN, read-write, for the life of this container.
+            #
+            # Opening a fifo for WRITE fails with ENXIO while no reader is
+            # attached, and QEMU opens its audiodev during startup -- so a VM
+            # that booted before the player was ready died with "Could not
+            # create a backend for voice 'virtio-sound.out'" and ran silent
+            # until something restarted it.  MEASURED on the first attempt.
+            #
+            # An O_RDWR holder never blocks, and means the writer always finds
+            # a reader no matter which container starts first.  It also stops
+            # the player seeing EOF when a VM shuts down, so one pw-cat serves
+            # every VM restart instead of needing a respawn loop.  The holder
+            # never reads, so the player still receives the whole stream.
+            exec 3<>"$AUDIO_FIFO"
             while :; do
                 XDG_RUNTIME_DIR=/run/host-runtime \
                 pw-cat --playback --raw \
@@ -143,7 +155,7 @@ if [ "${NVKVM_AUDIO:-1}" = 1 ] && command -v pw-cat >/dev/null 2>&1; then
                        --channels "${NVKVM_AUDIO_CHANNELS:-2}" \
                        --format "${NVKVM_AUDIO_FORMAT:-s16}" \
                        "$AUDIO_FIFO" >/dev/null 2>&1
-                sleep 1
+                sleep 1     # only reached if the player itself dies
             done
         ) &
     else
