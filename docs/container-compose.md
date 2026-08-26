@@ -70,6 +70,15 @@ drops to that uid/gid, and then executes the broker with no effective
 capabilities and `no_new_privs`. Set `NVKVM_BROKER_BACKEND=wayland` or `x11` to
 make selection explicit. `CTRL+ALT+G` toggles the input grab.
 
+`CAP_SETUID`/`CAP_SETGID` are the sole exception: they stay *inheritable* across
+that first `setpriv` so the broker can drop a second time once its window is up.
+`NVKVM_BROKER_DROP_UID` (empty by default, meaning `--drop-user auto`) makes the
+broker become an unowned uid after the display connection exists, keeping the
+window and input it already holds while losing all reach into the desktop user's
+files. It picks the uid itself because only it can read `/proc/self/uid_map`,
+which matters under `dockerd --userns-remap` or sysbox-runc; pin a number to
+override. It clears the whole capability set immediately after the transition.
+
 ## SSH and shared data
 
 SSH is published only on host loopback. The shortest route is:
@@ -152,6 +161,9 @@ Common overrides:
 | `NVKVM_STEAMOS_DATA` | named volume | optional host data bind mount |
 | `NVKVM_BROKER_SIZE` | `1280x800` | initial broker window size |
 | `NVKVM_BROKER_FULLSCREEN` | `0` | start broker fullscreen when set to `1` |
+| `NVKVM_BROKER_LINEAR_ONLY` | `0` | `1` advertises only LINEAR, forcing the VMM's readback path |
+| `NVKVM_BROKER_PRESENT_MODE` | empty (`auto`) | `auto`, `native`, `linear` or `shm`: which rung of the presentation ladder to offer |
+| `NVKVM_BROKER_DROP_UID` | empty (`auto`) | uid the broker becomes after its window is up; empty lets the broker pick an unowned one |
 
 The NVIDIA driver version is intentionally not a configuration value. The VMM
 container reads the version supplied by NVIDIA Container Toolkit from

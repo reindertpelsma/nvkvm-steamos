@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Host-side shortcut onto the SteamOS guest's serial console.
+#
+# This is the console that still answers when steamos-ssh does not: no network,
+# a guest that never reached multi-user, an initramfs prompt, the bootloader.
+# Detach with CTRL-].
+set -euo pipefail
+exec docker compose exec vmm nvkvm-steamos-serial "$@"

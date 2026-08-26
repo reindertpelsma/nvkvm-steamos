@@ -30,7 +30,12 @@ assert vmm["security_opt"] == ["no-new-privileges:true"]
 assert vmm["environment"]["NVKVM_ISOLATE_MODE"] == "uid+chroot"
 assert not ({"DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY"} & set(vmm["environment"]))
 assert vmm["read_only"] is True
-assert {d["source"] for d in vmm["devices"]} == {"/dev/kvm"}
+# Exactly these two, never more. /dev/udmabuf is the cross-vendor present path:
+# root:kvm 0660, and this service already holds /dev/kvm, so it grants nothing
+# new. Any other node appearing here is a real widening of the untrusted VMM.
+assert {d["source"] for d in vmm["devices"]} == {"/dev/kvm", "/dev/udmabuf"}, (
+    vmm["devices"]
+)
 
 assert set(broker["cap_drop"]) == {"ALL"}
 assert set(broker["cap_add"]) == {"SETUID", "SETGID"}
@@ -43,6 +48,16 @@ assert not broker.get("deploy")
 remote_context = "https://github.com/reindertpelsma/nvkvm-pv.git#main"
 assert broker["build"]["additional_contexts"]["nvkvm-source"] == remote_context
 assert vmm["build"]["additional_contexts"]["nvkvm-source"] == remote_context
+
+# The broker's three presentation/uid knobs must stay declared: they are
+# load-bearing for features already in nvkvm-pv main, and a silent drop here
+# would break them quietly.
+for knob in (
+    "NVKVM_BROKER_LINEAR_ONLY",
+    "NVKVM_BROKER_PRESENT_MODE",
+    "NVKVM_BROKER_DROP_UID",
+):
+    assert knob in broker["environment"], knob
 
 def mounts(service):
     return {v["target"]: (v["type"], v["source"]) for v in service["volumes"]}
@@ -135,3 +150,9 @@ grep -qF 'ARG NVKVM_SOURCE_LABEL=https://github.com/reindertpelsma/nvkvm-pv.git#
 # Broker restart briefly activates QEMU's local fallback while the relay
 # reconnects. libepoxy aborts the VMM if neither libGL nor libOpenGL exists.
 grep -qF 'libegl1 libgl1' "$ROOT/Dockerfile"
+
+# The broker drops a second time, to an unowned uid, after its window is up. It
+# needs CAP_SETUID/CAP_SETGID inheritable across the first setpriv to do so.
+grep -qF -- '--inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid' \
+    "$ROOT/docker/broker-entrypoint.sh"
+grep -qF -- '--drop-user' "$ROOT/docker/broker-entrypoint.sh"

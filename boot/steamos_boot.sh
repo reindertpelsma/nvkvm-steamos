@@ -529,9 +529,110 @@ install_nvidia_userspace() {
         ovr="$ovr --override-file-type-destination=OPENCL_LIB:/tmp/nvkvm-discard"
     fi
 
+    # UPGRADE: RECLAIM THE OUTGOING USERSPACE BEFORE TESTING FOR SPACE.
+    # The requirement below is sized for a FRESH install and is right for one.
+    # On an upgrade it asks the 5 GB SteamOS rootfs to hold two NVIDIA
+    # userspaces at once, which it cannot.  MEASURED on a 595 -> 610 host
+    # driver change: 418M free against a 768M requirement, while the outgoing
+    # version occupied ~753M of that same partition -- so the space we needed
+    # was the space the old version was sitting on, and the upgrade refused
+    # itself.
+    #
+    # Deliberately here and not earlier: locate_or_fetch_run() has already
+    # produced a .run that passed its own integrity check, so removing the
+    # installed one cannot strand the guest with no userspace because a
+    # download failed.  A converge runs on every boot, so even a failure after
+    # this point is retried rather than permanent.
+    #
+    # NOT nvidia-uninstall.  It is nvidia-installer --uninstall and it needs the
+    # install log and backup directory to know what it put where; this image has
+    # neither (no /var/log/nvidia-installer.log, no /var/lib/nvidia), so it
+    # exits 0 having removed nothing -- MEASURED, twice, free space unchanged to
+    # the kilobyte.  The new .run's uninstaller would consult the same missing
+    # bookkeeping and do the same nothing.
+    #
+    # Every file NVIDIA's userspace installs is suffixed with the driver
+    # version, so the outgoing set names itself and needs no records at all:
+    # `*.so.<version>` matched 49 files totalling 800M here, and nothing else on
+    # the filesystem.  That is a stronger guarantee than a log we have just
+    # watched go missing.
+    local installed; installed="$(installed_userspace_version)"
+    local reclaimed_kb=0
+    if [ -n "$installed" ]; then
+        local before_kb; before_kb="$(df -Pk "$(rp /usr)" 2>/dev/null | awk 'NR==2{print $4}')"
+        local nfiles
+        nfiles="$(in_target sh -c "find /usr/lib /usr/lib32 /usr/lib/vdpau /usr/lib32/vdpau \
+            -maxdepth 1 -name '*.so.$installed' 2>/dev/null | wc -l" 2>/dev/null)"
+        log "reclaiming the outgoing NVIDIA userspace ($installed): ${nfiles:-0} file(s)"
+        in_target sh -c "find /usr/lib /usr/lib32 /usr/lib/vdpau /usr/lib32/vdpau \
+            -maxdepth 1 -name '*.so.$installed' -delete 2>/dev/null" \
+            || warn "could not fully remove the outgoing userspace; the space test may still refuse"
+        # The SONAME symlinks now dangle; the install below rewrites them and
+        # ldconfig runs after it either way.
+        local after_kb; after_kb="$(df -Pk "$(rp /usr)" 2>/dev/null | awk 'NR==2{print $4}')"
+        [ -n "$before_kb" ] && [ -n "$after_kb" ] && reclaimed_kb=$((after_kb - before_kb))
+        [ "$reclaimed_kb" -lt 0 ] && reclaimed_kb=0
+        log "reclaimed $((reclaimed_kb/1024))M on $(rp /usr)"
+    fi
+
+    # PERSIST THE INSTALLER'S RECORDS OFF THE 5 GB ROOTFS.  nvidia-installer
+    # writes what it installed to /var/lib/nvidia, and that is the only thing
+    # its --uninstall consults.  On this image the directory did not survive,
+    # so nvidia-uninstall exited 0 having removed nothing and every upgrade had
+    # to rediscover the outgoing files by name.  /home has 48 GB and is not
+    # replaced by an A/B update, so keep them there and the supported path
+    # works next time.
+    # It must be a real DIRECTORY -- nvidia-installer refuses a symlink outright
+    # ("ERROR: /var/lib/nvidia is not a directory") and the install fails, which
+    # is worse than not persisting anything.  It costs the rootfs nothing
+    # either way: /var is its own partition on this layout, so the records were
+    # never taking space from the 5 GB rootfs -- they were simply absent, which
+    # is why nvidia-uninstall had nothing to go on.
+    local nvstate="/home/.nvkvm-nvidia-state"
+    mkdir -p "$(rp "$nvstate")" 2>/dev/null
+    [ -L "$(rp /var/lib/nvidia)" ] && rm -f "$(rp /var/lib/nvidia)" 2>/dev/null
+    mkdir -p "$(rp /var/lib/nvidia)" 2>/dev/null \
+        || warn "could not create /var/lib/nvidia; the next upgrade will have to find the old files by name again"
+
+    # The constants below are calibrated for a FRESH install on an uncompressed
+    # estimate.  This rootfs is btrfs with zstd, where the outgoing userspace
+    # measured 800M by du but only ~277M on disk -- so on an upgrade the
+    # constant overstates the need by roughly 3x and refuses installs that fit
+    # comfortably.  When we have just reclaimed a previous version we know what
+    # a userspace actually costs HERE, so use that plus a margin instead of
+    # guessing.  A fresh install has no such measurement and keeps the constant.
     local need_kb=1310720
     [ "$PROFILE" = steamos ] && need_kb=786432
     [ "${NVKVM_NO_COMPAT32:-0}" = "1" ] && need_kb=$((need_kb/2))
+    #
+    # Remember the measurement across runs.  A reclaim only happens on an
+    # upgrade, so without persisting it the very next converge is back to
+    # guessing -- which is exactly how this ended up refusing an install with
+    # 707M free and a 277M-shaped hole to fill.  The record lives on /home with
+    # the rest of the nvidia state, so an A/B update does not erase it.
+    local costfile="$nvstate/userspace-kb"
+    if [ "$reclaimed_kb" -gt 0 ]; then
+        # Keep the LARGEST sample, not the latest.  What a reclaim frees varies
+        # with what the outgoing version happened to ship and how well btrfs
+        # compressed it -- MEASURED 351M on one upgrade and 96M on the next,
+        # for the same pair of drivers in opposite directions.  A single latest
+        # sample would keep shrinking the estimate until it no longer bounds
+        # anything; the high-water mark is the honest one, and this check only
+        # ever needs to be an upper bound.
+        local prev; prev="$(cat "$(rp "$costfile")" 2>/dev/null)"
+        case "$prev" in ''|*[!0-9]*) prev=0 ;; esac
+        [ "$reclaimed_kb" -gt "$prev" ] \
+            && printf '%s\n' "$reclaimed_kb" > "$(rp "$costfile")" 2>/dev/null
+    fi
+    local known_kb; known_kb="$(cat "$(rp "$costfile")" 2>/dev/null)"
+    case "$known_kb" in ''|*[!0-9]*) known_kb="" ;; esac
+    if [ -n "$known_kb" ] && [ "$known_kb" -gt 0 ]; then
+        local measured_kb=$((known_kb + known_kb / 4))
+        if [ "$measured_kb" -lt "$need_kb" ]; then
+            log "sizing the space test from what a userspace actually costs here: $((measured_kb/1024))M (the fresh-install estimate is $((need_kb/1024))M)"
+            need_kb="$measured_kb"
+        fi
+    fi
     local free_kb; free_kb="$(df -Pk "$(rp /usr)" 2>/dev/null | awk 'NR==2{print $4}')"
     if [ -n "$free_kb" ] && [ "$free_kb" -lt "$need_kb" ]; then
         err "not enough space for the NVIDIA userspace: free=$((free_kb/1024))M needed=$((need_kb/1024))M"
@@ -915,6 +1016,213 @@ build_validation_probes() {
     rm -f "$(rp "$staged")"
 }
 
+# ── Clipboard agent ──────────────────────────────────────────────────────────
+# The whole guest side of clipboard sharing is stock spice-vdagent talking over
+# the stock spice port; nvkvm invents no guest software.  QEMU's qemu-vdagent
+# chardev turns that into ui/clipboard.c peers, and the display broker is
+# registered as one of those peers -- so the guest never reaches the host
+# clipboard directly, it only ever reaches the broker's policy.
+#
+# MUST be called AFTER remove_added_packages(), which removes everything this
+# run installed.  Putting it any earlier installs the agent and then deletes it
+# again, on every single boot, silently.
+ensure_clipboard_agent() {
+    # -s, not `command -v`.  A present-but-EMPTY binary is a real state on this
+    # image: an unclean guest shutdown discards unflushed data and leaves whole
+    # packages as 0-byte files with their metadata intact, so pacman still calls
+    # them installed and `command -v` still finds them.  Testing for content is
+    # what tells "installed" apart from "installed and then truncated", and the
+    # repair is a forced reinstall -- --needed would decline, the version being
+    # nominally correct already.
+    if in_target sh -c '[ -s /usr/bin/spice-vdagentd ] && [ -s /usr/bin/spice-vdagent ]'; then
+        log "clipboard: spice-vdagent already present"
+    else
+        local why="installing" repair=0
+        if in_target sh -c 'command -v spice-vdagentd >/dev/null 2>&1'; then
+            why="reinstalling (present but zero-length -- lost to an unclean shutdown)"
+            repair=1
+        fi
+        log "clipboard: $why spice-vdagent"
+        steamos_unlock
+        ensure_pacman_keyring || { warn "clipboard: no pacman keyring; skipping"; return 0; }
+        # The truncation takes pacman's own local DB entry with it (its mtree
+        # fails to parse), so pacman no longer recognises the files as its own
+        # and refuses with "exists in filesystem".  --overwrite is the repair,
+        # and it is scoped by the fact that exactly one package is being
+        # installed: the only paths it can touch are the ones that package ships.
+        local ow=()
+        [ "$repair" = 1 ] && ow=(--overwrite '*')
+        in_target pacman -S --noconfirm "${ow[@]}" spice-vdagent \
+            || { warn "clipboard: could not install spice-vdagent; clipboard stays off"; return 0; }
+        in_target sh -c '[ -s /usr/bin/spice-vdagentd ]' \
+            || { warn "clipboard: spice-vdagentd is STILL zero-length after reinstall"; return 0; }
+    fi
+    steamos_unlock
+    # The daemon owns the virtio port.  The per-session half (spice-vdagent)
+    # starts itself from /etc/xdg/autostart in the desktop session, so there is
+    # nothing to enable for it -- and nothing we could enable, since it needs a
+    # session bus we are not inside of.
+    in_target systemctl unmask spice-vdagentd.service spice-vdagentd.socket >/dev/null 2>&1 || true
+    in_target systemctl enable spice-vdagentd.service >/dev/null 2>&1 \
+        || warn "clipboard: could not enable spice-vdagentd.service (is its unit file 0 bytes?)"
+
+    # THE SESSION HALF, which the package does not get right on its own here.
+    # It ships /etc/xdg/autostart/spice-vdagent.desktop with
+    # X-GNOME-Autostart-Phase=WindowManager, i.e. launched as early as an
+    # autostart can be -- before XWayland exists.  MEASURED on a fresh install:
+    # the daemon was active, the binary was fine, XWayland was up, and the
+    # agent was simply not running, because it had already tried and exited.
+    #
+    # The package's own user unit is `static` (no [Install]), so it cannot be
+    # enabled as shipped.  A drop-in gives it one, ties it to the graphical
+    # session rather than to a phase, and lets it retry -- which turns a race
+    # into a wait.
+    local dropdir; dropdir="$(rp /etc/systemd/user/spice-vdagent.service.d)"
+    mkdir -p "$dropdir" 2>/dev/null || warn "clipboard: could not create $dropdir"
+    {
+        printf '# Added by nvkvm steamos_boot.sh.  The shipped unit is static and the\n'
+        printf '# shipped autostart entry races XWayland; this starts the agent with the\n'
+        printf '# graphical session and retries until the display is actually there.\n'
+        printf '[Unit]\nAfter=graphical-session.target\nPartOf=graphical-session.target\n\n'
+        printf '[Service]\nRestart=on-failure\nRestartSec=2\n\n'
+        printf '[Install]\nWantedBy=graphical-session.target\n'
+    } > "$dropdir/nvkvm.conf" 2>/dev/null || warn "clipboard: could not write the session drop-in"
+    in_target systemctl --global enable spice-vdagent.service >/dev/null 2>&1 \
+        || warn "clipboard: could not enable the per-session spice-vdagent"
+
+    # ── Wayland -> X11 bridge ────────────────────────────────────────────────
+    # spice-vdagent only ever watches the X11 selection.  MEASURED on this
+    # image: KWin mirrors X11 -> Wayland (which is why PASTE works) but NOT
+    # Wayland -> X11, so the two selections diverge and a copy made in any
+    # normal KDE app never reaches the agent at all.  Proven by copying in both
+    # worlds at once: Wayland held the new text while X11 still held a value
+    # from minutes earlier.
+    #
+    # So mirror the missing direction.  wl-paste --watch fires on every Wayland
+    # clipboard change and hands the text to a helper that writes it into X11 --
+    # where vdagent finally sees it.  The helper compares first, so the paste
+    # path (vdagent sets X -> KWin mirrors to Wayland -> we fire) settles
+    # instead of bouncing.
+    if ! in_target sh -c 'command -v wl-paste >/dev/null 2>&1 && command -v xclip >/dev/null 2>&1'; then
+        log "clipboard: installing wl-clipboard + xclip for the Wayland->X11 bridge"
+        steamos_unlock
+        in_target pacman -S --noconfirm --needed wl-clipboard xclip \
+            || { warn "clipboard: no wl-clipboard/xclip; copies made in Wayland apps will not reach the host"; return 0; }
+    fi
+
+    cat > "$(rp /usr/local/bin/nvkvm-clip-w2x)" <<'NVKVM_W2X_EOF'
+#!/bin/sh
+# Written by nvkvm steamos_boot.sh.  stdin carries the new Wayland clipboard
+# text; put it on the X11 CLIPBOARD selection so spice-vdagent can see it.
+[ -n "$DISPLAY" ] || DISPLAY=:0
+export DISPLAY
+if [ -z "$XAUTHORITY" ]; then
+    for f in "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"/xauth_*; do
+        [ -r "$f" ] || continue
+        XAUTHORITY="$f"; export XAUTHORITY; break
+    done
+fi
+new=$(cat)
+cur=$(xclip -selection clipboard -o 2>/dev/null)
+[ "$cur" = "$new" ] && exit 0
+printf %s "$new" | xclip -selection clipboard
+NVKVM_W2X_EOF
+    chmod 0755 "$(rp /usr/local/bin/nvkvm-clip-w2x)" 2>/dev/null \
+        || warn "clipboard: could not install the Wayland->X11 helper"
+
+    mkdir -p "$(rp /etc/systemd/user)" 2>/dev/null
+    {
+        printf '[Unit]\nDescription=nvkvm: mirror the Wayland clipboard into X11 for spice-vdagent\n'
+        printf 'After=graphical-session.target\nPartOf=graphical-session.target\n\n'
+        printf '[Service]\n'
+        printf 'ExecStart=/usr/bin/wl-paste --type text --watch /usr/local/bin/nvkvm-clip-w2x\n'
+        printf 'Restart=on-failure\nRestartSec=2\n\n'
+        printf '[Install]\nWantedBy=graphical-session.target\n'
+    } > "$(rp /etc/systemd/user/nvkvm-clipboard-bridge.service)" 2>/dev/null \
+        || warn "clipboard: could not write the bridge unit"
+    in_target systemctl --global enable nvkvm-clipboard-bridge.service >/dev/null 2>&1 \
+        || warn "clipboard: could not enable the Wayland->X11 bridge"
+    log "clipboard: agent installed and enabled (broker still decides policy)"
+}
+
+# ── Serial console ───────────────────────────────────────────────────────────
+# Two independent halves, deliberately: the login prompt does NOT depend on the
+# bootloader half working.
+#
+#   1. serial-getty@ttyS0 -- an interactive login on the serial port.  systemd
+#      only autostarts this when console=ttyS0 is on the cmdline, so enable it
+#      explicitly and it works even if half 2 is reverted by an OTA.
+#   2. kernel + GRUB output on the same port -- boot messages and the boot menu,
+#      which is what you actually want when the guest does not reach a login at
+#      all.  This edits /etc/default/grub, which an A/B update can replace, so
+#      it is idempotent and re-applied on every converge, and NON-FATAL: a
+#      guest that boots with no serial boot log is inconvenient, not broken.
+ensure_serial_console() {
+    steamos_unlock
+    # The half that matters, and the half that cannot block anything: a login
+    # on the serial line.  systemd only autostarts this when console=ttyS0 is
+    # on the cmdline, so enable it explicitly and it survives an A/B update
+    # replacing the bootloader config below.
+    in_target systemctl enable serial-getty@ttyS0.service >/dev/null 2>&1 \
+        || warn "serial: could not enable serial-getty@ttyS0.service"
+
+    local gd regen=0; gd="$(rp /etc/default/grub)"
+    [ -r "$gd" ] || { warn "serial: no /etc/default/grub; kernel log stays off serial"; return 0; }
+
+    # NEVER give GRUB a serial TERMINAL.  An earlier version of this set
+    # GRUB_TERMINAL_INPUT/OUTPUT so the boot MENU appeared on the line too, and
+    # that made the guest unbootable without a human: a serial terminal
+    # overrides SteamOS's hidden-menu timeout style, so GRUB drew the menu and
+    # waited for a keypress an unattended VM never sends.  MEASURED on a fresh
+    # install -- `docker compose up` hung at the menu until a CR was pushed
+    # into serial.sock by hand.  Strip it if a previous converge wrote it.
+    if grep -q '^GRUB_TERMINAL_\(INPUT\|OUTPUT\)=.*serial\|^GRUB_SERIAL_COMMAND=' "$gd" 2>/dev/null; then
+        log "serial: removing GRUB's serial terminal (it stalls the boot at the menu)"
+        sed -i '/^GRUB_TERMINAL_INPUT=.*serial/d; /^GRUB_TERMINAL_OUTPUT=.*serial/d; /^GRUB_SERIAL_COMMAND=/d' \
+            "$gd" || warn "serial: could not strip GRUB's serial terminal lines"
+        regen=1
+    fi
+
+    # console=tty1 stays first and keeps /dev/console; ttyS0 is an ADDITIONAL
+    # printk destination, which is all the kernel half was ever for.
+    if ! grep -q 'console=ttyS0' "$gd" 2>/dev/null; then
+        log "serial: adding console=ttyS0 to the kernel cmdline"
+        {
+            printf '\n# nvkvm: kernel console on ttyS0 (added by steamos_boot.sh, idempotent)\n'
+            printf 'GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT console=ttyS0,115200"\n'
+        } >> "$gd" || { warn "serial: could not append to /etc/default/grub"; return 0; }
+        regen=1
+    fi
+
+    # BELT AND BRACES: an unattended VM must never be able to sit at the boot
+    # menu.  Removing the serial terminal above fixes the cause we introduced,
+    # but GRUB_TIMEOUT=-1 ("wait forever") reaches the same dead end from a
+    # different direction -- and on a headless container start there is nobody
+    # to press a key either way.  Pin a finite timeout when it is missing or
+    # infinite, and leave any sane existing value alone.
+    local tmo; tmo="$(sed -n 's/^GRUB_TIMEOUT=//p' "$gd" 2>/dev/null | tail -1 | tr -d '\"'"'"' ')"
+    case "$tmo" in
+        ''|-1|*[!0-9-]*)
+            log "serial: pinning GRUB_TIMEOUT=5 (was '${tmo:-unset}' -- an unattended VM cannot answer a menu)"
+            sed -i '/^GRUB_TIMEOUT=/d' "$gd" 2>/dev/null
+            printf 'GRUB_TIMEOUT=5\n' >> "$gd" || warn "serial: could not pin GRUB_TIMEOUT"
+            regen=1
+            ;;
+    esac
+
+    [ "$regen" = 1 ] || { log "serial: bootloader already correct for ttyS0"; return 0; }
+
+    if in_target sh -c 'command -v update-grub >/dev/null 2>&1'; then
+        in_target update-grub >/dev/null 2>&1 \
+            || warn "serial: update-grub failed; the change takes effect on the next successful one"
+    elif in_target sh -c 'command -v grub-mkconfig >/dev/null 2>&1'; then
+        in_target grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 \
+            || warn "serial: grub-mkconfig failed; the change is staged only"
+    else
+        warn "serial: no grub-mkconfig/update-grub; the change is staged only"
+    fi
+}
+
 install_stub() {
     local img_dir="$NVKVM_SHARE_MNT/boot/image"
     [ -d "$img_dir" ] || { err "in-image sources not found at $img_dir"; return 1; }
@@ -1010,6 +1318,10 @@ do_install() {
 
     write_desktop_config || rc=1
     configure_ssh || rc=1
+    # Both AFTER remove_added_packages() above -- anything installed before it
+    # is removed again on the same run.
+    ensure_clipboard_agent || rc=1
+    ensure_serial_console || rc=1
     # NOT `|| true`. A silently-failed plant is how a 0-byte
     # /usr/local/sbin/nvkvm-recovery.sh ships: 203/EXEC on every boot, from a run
     # that reported rc=0. This does not endanger the update path -- the plant

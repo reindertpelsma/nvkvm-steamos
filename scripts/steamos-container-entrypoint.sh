@@ -17,6 +17,24 @@ BROKER_DIR="${NVKVM_BROKER_DIR_IN_CONTAINER:-/run/nvkvm}"
 BROKER_SOCKET="${NVKVM_BROKER_SOCKET:-$BROKER_DIR/steamos.sock}"
 QEMU_DISPLAY="${NVKVM_STEAMOS_QEMU_DISPLAY:-nvkvm-broker,socket=$BROKER_SOCKET}"
 QCOW="${NVKVM_STEAMOS_QCOW:-$STATE_DIR/steamos.qcow2}"
+# ── Artifact naming: the final name MEANS "complete and trustworthy" ─────────
+# Every artifact here is written under a temporary name and renamed only once it
+# is known to be complete.  The recovery .img.bz2 and the decompressed .img
+# already followed that rule (curl -C - into .part, bzip2 into .part, mv on
+# success).  The installed qcow2 did NOT, and that was the whole bug: cancel an
+# install halfway and a large, non-empty, unbootable steamos.qcow2 was left
+# behind, which `[ ! -s "$QCOW" ]` then read as "already installed" -- so the
+# next start neither installed nor booted anything.
+#
+# The two names carry the entire contract:
+#
+#   $QCOW_INSTALLING  provably holds no user data, because only a COMPLETED
+#                     install is ever given the other name.  Deleting it is
+#                     always safe, so an interrupted install just starts over.
+#   $QCOW             may hold the user's games and saves.  It is NEVER removed
+#                     or overwritten automatically -- not even when it is
+#                     corrupt.  Replacing that file is an operator decision.
+QCOW_INSTALLING="$QCOW.installing"
 PINNED_RECOVERY="steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2"
 RECOVERY_BASE="https://steamdeck-images.steamos.cloud/recovery"
 LATEST=0
@@ -155,21 +173,65 @@ export PATH="/opt/qemu-nvkvm/bin:$PATH"
 if [ "$INSTALL_SHELL" = 1 ]; then
     RECOVERY_IMG="$(prepare_recovery)"
     exec /opt/nvkvm/install_steamos_vm.sh \
-        --repair "$RECOVERY_IMG" --out "$QCOW" \
+        --repair "$RECOVERY_IMG" --out "$QCOW_INSTALLING" \
         --alpine-dir "$STATE_DIR/alpine" --share /opt/nvkvm --shell
 fi
 
-if [ ! -s "$QCOW" ]; then
+# A zero-length final name is the fingerprint of the pre-.installing crash this
+# scheme exists to prevent.  It provably holds nothing, so removing it is the
+# same argument that makes $QCOW_INSTALLING safe -- and it spares the operator a
+# manual step for a file that cannot contain anything of theirs.  A NON-empty
+# but corrupt image is the opposite case and is left strictly alone below.
+if [ -e "$QCOW" ] && [ ! -s "$QCOW" ]; then
+    log "removing a zero-length $(basename "$QCOW") -- it can hold no data -- and installing"
+    rm -f "$QCOW"
+fi
+
+# ── Disk size: games live on /home, so 64G is a games budget, not a disk ─────
+# Valve's installer needs ~11 GiB and expands /home into everything left, so
+# this number IS the games partition.  qcow2 is sparse: a larger virtual size
+# costs nothing until it is written, and the cost of getting it wrong is
+# asymmetric -- too big is free, too small means reinstalling to grow it, since
+# /home sits last on the disk behind two fixed 5 GiB rootfs slots.
+#
+# Unset means "fit the host": take a share of what is actually free where the
+# qcow2 lives, clamped so a small host still gets a usable machine and a huge
+# one does not get a number nobody can honour.  Set NVKVM_STEAMOS_DISK_SIZE to
+# pin it.
+#
+# NOT a host share for /home, which is the obvious alternative: SteamOS creates
+# /home as ext4 with the `casefold` feature and Proton depends on it for
+# case-insensitive Windows paths.  No 9p or virtiofs export can provide
+# casefold, so games would break in ways that look like game bugs.
+default_disk_size() {
+    local free_g
+    free_g="$(df -PBG "$STATE_DIR" 2>/dev/null | awk 'NR==2{gsub(/G/,"",$4); print $4}')"
+    case "$free_g" in ''|*[!0-9]*) printf '128G\n'; return ;; esac
+    local want=$(( free_g * 60 / 100 ))
+    [ "$want" -lt 64 ]  && want=64
+    [ "$want" -gt 1024 ] && want=1024
+    printf '%sG\n' "$want"
+}
+DISK_SIZE="${NVKVM_STEAMOS_DISK_SIZE:-$(default_disk_size)}"
+
+if [ ! -e "$QCOW" ]; then
+    if [ -e "$QCOW_INSTALLING" ]; then
+        log "a previous install was interrupted; restarting it from the beginning"
+        log "(only a completed install is given the final name, so nothing is lost)"
+        rm -f "$QCOW_INSTALLING"
+    fi
+    # Resumable, and a completed .img.bz2/.img is reused rather than re-fetched.
     RECOVERY_IMG="$(prepare_recovery)"
     DRIVER_VERSION="$(container_driver_version)"
     [[ "$DRIVER_VERSION" =~ ^[0-9]+([.][0-9]+)+$ ]] \
         || die "could not determine the NVIDIA driver version exposed to this container"
     log "first run: installing a dual-slot SteamOS image with Valve's installer"
+    log "disk: $DISK_SIZE (sparse; ~11 GiB is the OS, the rest becomes /home for games)"
     log "provisioning NVIDIA userspace for dynamically detected driver $DRIVER_VERSION"
     /opt/nvkvm/install_steamos_vm.sh \
         --repair "$RECOVERY_IMG" \
-        --out "$QCOW" \
-        --size "${NVKVM_STEAMOS_DISK_SIZE:-64G}" \
+        --out "$QCOW_INSTALLING" \
+        --size "$DISK_SIZE" \
         --alpine-dir "$STATE_DIR/alpine" \
         --stages "${NVKVM_STEAMOS_INSTALL_STAGES:-repair,provision}" \
         --share /opt/nvkvm \
@@ -178,6 +240,16 @@ if [ ! -s "$QCOW" ]; then
         --memory "${NVKVM_INSTALL_MEMORY_MB:-4096}" \
         --cpus "${NVKVM_INSTALL_CPUS:-4}" \
         --log "$STATE_DIR/install.log"
+
+    # Promote only what qemu-img is willing to read back as a qcow2.  The
+    # installer's exit status says the run finished; this says the artifact
+    # survived it.  Cheap (a header read), unlike a full `qemu-img check`.
+    qemu-img info --output=json "$QCOW_INSTALLING" >/dev/null 2>&1 \
+        || die "the installer finished but $QCOW_INSTALLING is not a readable qcow2; not promoting it"
+    sync
+    mv -f "$QCOW_INSTALLING" "$QCOW"
+    sync
+    log "install complete -- promoted to $(basename "$QCOW")"
 fi
 
 OVMF_CODE="${NVKVM_OVMF_CODE:-/usr/share/OVMF/OVMF_CODE_4M.fd}"
@@ -188,14 +260,146 @@ if [ ! -f "$OVMF_VARS" ]; then
     install -m 0600 "$OVMF_TEMPLATE" "$OVMF_VARS"
 fi
 
-rm -f "$STATE_DIR/qmp.sock"
+# ── Serial console: one chardev, three consumers ────────────────────────────
+# It used to be `-serial file:`, which is write-only.  That is why `docker
+# compose up -d` streamed nothing and why there was no way to type at the guest
+# outside SSH -- precisely when you most need one, i.e. when SSH is what is
+# broken.
+#
+# A socket chardev with logfile= serves all three needs from one device:
+#   serial.sock  interactive, both directions   -> nvkvm-steamos-serial (socat)
+#   serial.log   durable, survives the VM       -> post-mortem
+#   stdout       live                           -> docker logs / compose up
+# The last one is the `tail -F` below: this script exec()s QEMU, so it cannot
+# also copy the log, and a background reader started first is the simplest
+# thing that keeps `docker logs` working.  -F (not -f) so it does not matter
+# that the file does not exist yet.
+# ── Clipboard transport is OPTIONAL and must never block the boot ────────────
+# The qemu-vdagent chardev only exists when QEMU was built against
+# spice-protocol.  A build without it used to be fatal here -- QEMU exited with
+# "'qemu-vdagent' is not a valid char driver name" and the VM never started, so
+# an optional convenience took the whole guest down with it.  Probe instead, and
+# say plainly which of the two states we are in.
+VDAGENT_ARGS=()
+if /opt/qemu-nvkvm/bin/qemu-system-x86_64 -chardev help 2>&1 | grep -qw qemu-vdagent; then
+    VDAGENT_ARGS=(
+        # mouse=off on purpose: pointer input already has a path through the
+        # broker, and a second injector is how you get two cursors.
+        -device virtio-serial-pci,id=nvkvm-vser
+        -chardev qemu-vdagent,id=nvkvm-vdagent,name=vdagent,clipboard=on,mouse=off
+        -device virtserialport,bus=nvkvm-vser.0,chardev=nvkvm-vdagent,name=com.redhat.spice.0
+    )
+    log "clipboard: vdagent transport present (guest still needs spice-vdagent)"
+else
+    log "clipboard: this QEMU has no qemu-vdagent chardev (built without spice-protocol)"
+    log "clipboard: booting WITHOUT clipboard support; nothing else is affected"
+fi
+
+# ── audio: write into the broker's fifo, and nothing else ───────────────────
+# The only audio privilege the untrusted VMM gets is a file descriptor it can
+# WRITE.  No host audio socket is mounted here and none is needed: the trusted
+# broker container owns the connection to the host and plays what arrives.
+#
+# `wav` is a stock QEMU audiodev and needs no extra library in the build --
+# QEMU's own audio backends (pipewire, pulse, alsa) are not compiled in, and
+# adding one would mean handing this container a host audio socket anyway,
+# which is the thing being avoided.  A fifo cannot be read from this side, so
+# the direction is a property of the plumbing rather than of a policy.
+AUDIO_ARGS=()
+# In a subdirectory because fs.protected_fifos refuses O_WRONLY on a fifo this
+# container does not own inside the sticky world-writable volume root.
+AUDIO_FIFO="${NVKVM_AUDIO_FIFO:-$BROKER_DIR/audio/pcm}"
+if [ "${NVKVM_AUDIO:-1}" = 1 ] && [ -p "$AUDIO_FIFO" ]; then
+    AUDIO_ARGS=(
+        -audiodev "wav,id=nvkvmsnd,path=$AUDIO_FIFO,out.frequency=${NVKVM_AUDIO_RATE:-48000},out.channels=${NVKVM_AUDIO_CHANNELS:-2},out.format=${NVKVM_AUDIO_QEMU_FORMAT:-s16}"
+        `# ich9-intel-hda, not virtio-sound.  MEASURED: with virtio-sound the` \
+        `# guest saw the card and then timed out on every stream ("Stream` \
+        `# error: Timeout"), and NOTHING was ever written to the fifo -- the` \
+        `# device never completed a period against this backend.  HDA is the` \
+        `# path QEMU has shipped for a decade and every guest already has a` \
+        `# driver for.` \
+        -device ich9-intel-hda,id=nvkvmhda
+        -device hda-output,bus=nvkvmhda.0,audiodev=nvkvmsnd
+    )
+    log "audio: intel-hda -> $AUDIO_FIFO (playback only; the broker plays it)"
+else
+    log "audio: none ($AUDIO_FIFO is not a fifo, or NVKVM_AUDIO=0)"
+fi
+
+SERIAL_SOCK="$STATE_DIR/serial.sock"
+SERIAL_LOG="$STATE_DIR/serial.log"
+rm -f "$STATE_DIR/qmp.sock" "$SERIAL_SOCK"
+: > "$SERIAL_LOG.new" && mv -f "$SERIAL_LOG.new" "$SERIAL_LOG" 2>/dev/null || true
+tail -n +1 -F "$SERIAL_LOG" 2>/dev/null &
+log "serial: live on stdout, logged to $SERIAL_LOG, interactive on $SERIAL_SOCK"
+log "serial: attach with  docker compose exec steamos nvkvm-steamos-serial"
 log "booting SteamOS now; broker presence is not an ordering requirement"
 log "display socket: $BROKER_SOCKET"
 log "QEMU display backend: $QEMU_DISPLAY"
 log "SSH after provisioning: docker compose exec vmm nvkvm-steamos-ssh"
 
+# ── Shutdown: the guest must be powered down, not shot ───────────────────────
+# This used to exec() QEMU, so `docker stop` -- and therefore every
+# `compose stop`, `restart` and `up --force-recreate` -- delivered SIGTERM
+# straight to QEMU, which exits on the spot.  The guest was never once shut
+# down cleanly, and ext4's delayed allocation then discarded whatever it had
+# not yet flushed.  MEASURED here three times, each looking like a different
+# bug: systemd units planted as 0 bytes (which systemd reports as "masked"),
+# a 0-byte log, and finally an entire pacman-installed package -- binaries and
+# all -- left as 0-byte files with their metadata intact.
+#
+# So: run QEMU as a child, and on SIGTERM ask the guest to power down over QMP
+# and WAIT for it.  Compose already allows this (stop_grace_period: 2m); only
+# the exec() stood in the way.
+SHUTDOWN_WAIT="${NVKVM_STEAMOS_SHUTDOWN_WAIT:-90}"
+QEMU_PID=""
+wait_for_qemu() {   # <seconds>
+    local n=0
+    while kill -0 "$QEMU_PID" 2>/dev/null && [ "$n" -lt "$1" ]; do
+        sleep 1; n=$((n + 1))
+    done
+    kill -0 "$QEMU_PID" 2>/dev/null && return 1 || return 0
+}
+
+on_term() {
+    [ -n "$QEMU_PID" ] || exit 0
+
+    # SSH FIRST, ACPI SECOND.  MEASURED: `system_powerdown` alone sat for the
+    # full 90 s and the guest never went down -- on a SteamOS desktop the power
+    # button is grabbed by the session (KDE puts up a dialog nobody is there to
+    # answer), so the ACPI event politely asks a human.  `systemctl poweroff`
+    # asks the init system instead, which is the thing that actually unmounts.
+    # ACPI stays as the fallback for a guest that has no SSH yet -- an install,
+    # an initramfs, a boot that did not get that far.
+    local key="$STATE_DIR/ssh/id_ed25519"
+    if [ -r "$key" ]; then
+        log "shutdown: asking the guest to power down over SSH"
+        timeout 15 ssh -i "$key" -p "${NVKVM_STEAMOS_SSH_PORT:-15022}" \
+            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=5 -o BatchMode=yes \
+            "${NVKVM_STEAMOS_SSH_USER:-root}@127.0.0.1" \
+            'systemctl poweroff' >/dev/null 2>&1 || true
+        if wait_for_qemu "$SHUTDOWN_WAIT"; then
+            log "shutdown: guest powered down cleanly"
+            return
+        fi
+    fi
+
+    log "shutdown: falling back to ACPI power button"
+    printf '{"execute":"qmp_capabilities"}\n{"execute":"system_powerdown"}\n' \
+        | timeout 5 socat - "unix-connect:$STATE_DIR/qmp.sock" >/dev/null 2>&1 \
+        || log "shutdown: QMP unreachable"
+    if wait_for_qemu 20; then
+        log "shutdown: guest powered down cleanly"
+        return
+    fi
+    log "shutdown: guest did not stop -- terminating QEMU (writes may be lost)"
+    kill -TERM "$QEMU_PID" 2>/dev/null || true
+}
+trap on_term TERM INT
+
 export NVKVM_PRESENT_TIMING="${NVKVM_PRESENT_TIMING:-1}"
-exec /opt/qemu-nvkvm/bin/qemu-system-x86_64 \
+/opt/qemu-nvkvm/bin/qemu-system-x86_64 \
     -name nvkvm-steamos \
     -machine q35,accel=kvm -cpu host \
     -m "${VM_MEM:-12G}" -smp "${VM_SMP:-8}" \
@@ -212,8 +416,20 @@ exec /opt/qemu-nvkvm/bin/qemu-system-x86_64 \
     -virtfs "local,path=$DATA_DIR,mount_tag=data,security_model=passthrough" \
     -fw_cfg opt/ovmf/X-PciMmio64Mb,string=262144 \
     -device virtio-keyboard-pci -device virtio-tablet-pci -device virtio-mouse-pci \
+    "${VDAGENT_ARGS[@]}" \
+    "${AUDIO_ARGS[@]}" \
     -qmp "unix:$STATE_DIR/qmp.sock,server=on,wait=off" \
-    -serial "file:$STATE_DIR/serial.log" \
+    -chardev "socket,id=nvkvm-serial,path=$SERIAL_SOCK,server=on,wait=off,logfile=$SERIAL_LOG,logappend=on" \
+    -serial chardev:nvkvm-serial \
     -monitor none \
     -display "$QEMU_DISPLAY" \
-    "${QEMU_EXTRA[@]}"
+    "${QEMU_EXTRA[@]}" &
+QEMU_PID=$!
+# `wait` returns as soon as a trapped signal arrives, with QEMU still running,
+# so keep waiting until the child is genuinely gone.
+rc=0
+while kill -0 "$QEMU_PID" 2>/dev/null; do
+    wait "$QEMU_PID"; rc=$?
+done
+log "QEMU exited with status $rc"
+exit "$rc"

@@ -16,8 +16,10 @@ services:
     network_mode: none
     read_only: true
     cap_drop: [ALL]
-    # The entrypoint uses these only to become the owner of the mounted desktop
-    # runtime directory, then clears effective/permitted caps before execing.
+    # The entrypoint uses these to become the owner of the mounted desktop
+    # runtime directory, and keeps them inheritable across that one setpriv so
+    # the broker can drop again to NVKVM_BROKER_DROP_UID once its window is up.
+    # The broker clears the whole capability set right after that transition.
     cap_add: [SETUID, SETGID]
     security_opt:
       - no-new-privileges:true
@@ -28,6 +30,31 @@ services:
       NVKVM_BROKER_SIZE: ${NVKVM_BROKER_SIZE:-1280x800}
       NVKVM_BROKER_SCALE: ${NVKVM_BROKER_SCALE:-aspect}
       NVKVM_BROKER_FULLSCREEN: ${NVKVM_BROKER_FULLSCREEN:-0}
+      # 1 = advertise only LINEAR, so the VMM must detile through the guest's
+      # GPU instead of handing over its native tiling.  Needed when the host
+      # compositor scans out on a different GPU than the guest renders on --
+      # it cannot read NVIDIA tiling at any price -- and useful for forcing
+      # that path on a single-GPU host.
+      NVKVM_BROKER_LINEAR_ONLY: ${NVKVM_BROKER_LINEAR_ONLY:-0}
+      # auto | native | linear | shm -- which rung of the presentation ladder
+      # to offer.  auto walks it: the guest's own modifier, then a LINEAR
+      # dma-buf, then shared memory, which no compositor can refuse.
+      NVKVM_BROKER_PRESENT_MODE: ${NVKVM_BROKER_PRESENT_MODE:-}
+      # Leave empty to pick a random unowned uid per start (600000+, above
+      # the /etc/subuid ranges rootless containers allocate from).  The broker becomes
+      # it AFTER the display connection is open, so it keeps the window and
+      # input it already holds while losing all reach into the desktop user's
+      # files.
+      NVKVM_BROKER_DROP_UID: ${NVKVM_BROKER_DROP_UID:-}
+      # off | guest-to-host | consent.  OFF BY DEFAULT: clipboard needs both
+      # the VMM's qemu-vdagent chardev and spice-vdagent inside the guest, so
+      # defaulting it on would promise something a given setup may not have.
+      # `consent` is the one to choose: the guest may write your clipboard
+      # (visibly, and only while this window has focus), and can never READ it
+      # except at the instant you press the paste key -- ctrl+v, ctrl+shift+v
+      # or shift+insert by default.  Works on both Wayland and X11.
+      NVKVM_BROKER_CLIPBOARD: ${NVKVM_BROKER_CLIPBOARD:-off}
+      NVKVM_BROKER_CLIPBOARD_TRIGGER: ${NVKVM_BROKER_CLIPBOARD_TRIGGER:-}
     volumes:
       - broker-socket:/run/nvkvm
       # Trusted broker only. The untrusted VMM service has neither mount.
@@ -36,6 +63,47 @@ services:
       - ${XAUTHORITY:-/dev/null}:/run/host-xauthority:ro
     tmpfs:
       - /tmp:rw,nosuid,nodev,noexec,size=16m
+    restart: unless-stopped
+
+  # The guest's audio, and NOTHING else.
+  #
+  # Deliberately not part of the broker: the broker holds the display, the
+  # keyboard grab and the clipboard, and the player parses bytes chosen by a
+  # possibly-compromised VMM.  Those two things do not belong in one process.
+  #
+  # Note what is NOT mounted here: $XDG_RUNTIME_DIR.  Mounting it would have
+  # carried the Wayland socket in with it and defeated the point; the pulse
+  # socket is world-accessible (srw-rw-rw-) so it can be bind-mounted ALONE,
+  # which is why this can run as nobody with no capabilities at all.
+  audio:
+    image: nvkvm-steamos-audio:${NVKVM_IMAGE_TAG:-local}
+    build:
+      context: .
+      target: audio
+      args:
+        NVKVM_REPOSITORY: ${NVKVM_REPOSITORY:-https://github.com/reindertpelsma/nvkvm-pv.git}
+        NVKVM_REF: ${NVKVM_REF:-main}
+    entrypoint: ["/usr/local/bin/nvkvm-audio-entrypoint"]
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    user: "65534:65534"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - broker-socket:/run/nvkvm
+      # ONE socket per audio server, bind-mounted individually.  They are
+      # srw-rw-rw-, so a single socket can be mounted on its own -- mounting
+      # the runtime DIR would have brought the Wayland socket with it, which
+      # is the whole thing this container exists to avoid.
+      #
+      # Both are listed because the host decides which exists: PipeWire hosts
+      # have pipewire-0 (and usually pulse/native too, via pipewire-pulse),
+      # legacy PulseAudio hosts have only pulse/native.  The player picks at
+      # runtime.  On a host missing one, point its variable at /dev/null so
+      # Docker does not create a stray directory in the runtime dir.
+      - ${NVKVM_AUDIO_PW_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/1000}/pipewire-0}:/run/pw/pipewire-0
+      - ${NVKVM_AUDIO_PULSE_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/1000}/pulse/native}:/run/pulse/native
     restart: unless-stopped
 
   # Untrusted VMM. Its only path toward the desktop is broker-socket. It gets
@@ -61,6 +129,14 @@ services:
       - no-new-privileges:true
     devices:
       - /dev/kvm:/dev/kvm
+      # The cross-vendor present path allocates a sealed memfd and exports it
+      # as a LINEAR dma-buf, so the same pages are both a pointer the guest's
+      # GPU reads back into and a buffer any compositor can import.  Without
+      # this node that path is unavailable and frames are dropped on a host
+      # whose compositor cannot take the guest's tiling.  /dev/udmabuf is
+      # root:kvm 0660 and this service already needs /dev/kvm, so it grants
+      # nothing new; QEMU also already uses udmabuf for virtio-gpu blobs.
+      - /dev/udmabuf:/dev/udmabuf
     deploy:
       resources:
         reservations:
@@ -72,7 +148,11 @@ services:
       NVKVM_ISOLATE_MODE: uid+chroot
       VM_MEM: ${STEAMOS_VM_MEM:-12G}
       VM_SMP: ${STEAMOS_VM_SMP:-8}
-      NVKVM_STEAMOS_DISK_SIZE: ${NVKVM_STEAMOS_DISK_SIZE:-64G}
+      # Empty = fit the host: 60% of the free space where the qcow2 lives,
+      # clamped to [64G, 1024G].  qcow2 is sparse, so this costs nothing until
+      # written -- and /home (i.e. the games budget) cannot be grown later
+      # without a reinstall, because it sits last behind two fixed rootfs slots.
+      NVKVM_STEAMOS_DISK_SIZE: ${NVKVM_STEAMOS_DISK_SIZE:-}
       NVKVM_STEAMOS_PROFILE: ${NVKVM_STEAMOS_PROFILE:-steamos}
       NVKVM_STEAMOS_RECOVERY_URL: ${NVKVM_STEAMOS_RECOVERY_URL:-}
       NVKVM_STEAMOS_LATEST: ${NVKVM_STEAMOS_LATEST:-0}
@@ -92,6 +172,7 @@ services:
       - 127.0.0.1:${NVKVM_STEAMOS_HOST_SSH_PORT:-15022}:15022
     depends_on:
       - broker
+      - audio
     restart: unless-stopped
     stop_grace_period: 2m
 
