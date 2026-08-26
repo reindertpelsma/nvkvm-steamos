@@ -915,6 +915,83 @@ build_validation_probes() {
     rm -f "$(rp "$staged")"
 }
 
+# ── Clipboard agent ──────────────────────────────────────────────────────────
+# The whole guest side of clipboard sharing is stock spice-vdagent talking over
+# the stock spice port; nvkvm invents no guest software.  QEMU's qemu-vdagent
+# chardev turns that into ui/clipboard.c peers, and the display broker is
+# registered as one of those peers -- so the guest never reaches the host
+# clipboard directly, it only ever reaches the broker's policy.
+#
+# MUST be called AFTER remove_added_packages(), which removes everything this
+# run installed.  Putting it any earlier installs the agent and then deletes it
+# again, on every single boot, silently.
+ensure_clipboard_agent() {
+    if in_target sh -c 'command -v spice-vdagentd >/dev/null 2>&1'; then
+        log "clipboard: spice-vdagent already present"
+    else
+        log "clipboard: installing spice-vdagent"
+        steamos_unlock
+        ensure_pacman_keyring || { warn "clipboard: no pacman keyring; skipping"; return 0; }
+        in_target pacman -S --noconfirm --needed spice-vdagent \
+            || { warn "clipboard: could not install spice-vdagent; clipboard stays off"; return 0; }
+    fi
+    steamos_unlock
+    # The daemon owns the virtio port.  The per-session half (spice-vdagent)
+    # starts itself from /etc/xdg/autostart in the desktop session, so there is
+    # nothing to enable for it -- and nothing we could enable, since it needs a
+    # session bus we are not inside of.
+    in_target systemctl enable spice-vdagentd.service >/dev/null 2>&1 \
+        || warn "clipboard: could not enable spice-vdagentd.service"
+    log "clipboard: agent installed and enabled (broker still decides policy)"
+}
+
+# ── Serial console ───────────────────────────────────────────────────────────
+# Two independent halves, deliberately: the login prompt does NOT depend on the
+# bootloader half working.
+#
+#   1. serial-getty@ttyS0 -- an interactive login on the serial port.  systemd
+#      only autostarts this when console=ttyS0 is on the cmdline, so enable it
+#      explicitly and it works even if half 2 is reverted by an OTA.
+#   2. kernel + GRUB output on the same port -- boot messages and the boot menu,
+#      which is what you actually want when the guest does not reach a login at
+#      all.  This edits /etc/default/grub, which an A/B update can replace, so
+#      it is idempotent and re-applied on every converge, and NON-FATAL: a
+#      guest that boots with no serial boot log is inconvenient, not broken.
+ensure_serial_console() {
+    steamos_unlock
+    in_target systemctl enable serial-getty@ttyS0.service >/dev/null 2>&1 \
+        || warn "serial: could not enable serial-getty@ttyS0.service"
+
+    local gd; gd="$(rp /etc/default/grub)"
+    [ -w "$gd" ] || [ -r "$gd" ] || { warn "serial: no /etc/default/grub; boot log stays off"; return 0; }
+    if grep -q 'console=ttyS0' "$gd" 2>/dev/null; then
+        log "serial: bootloader already configured for ttyS0"
+        return 0
+    fi
+    log "serial: adding console=ttyS0 to the kernel cmdline and GRUB"
+    # console=tty1 is kept and listed FIRST so the graphical console stays the
+    # one /dev/console points at; the LAST console= wins for /dev/console, so
+    # ttyS0 goes last only if we wanted the opposite.  Order here: keep tty1
+    # primary, add ttyS0 as an additional printk destination.
+    {
+        printf '\n# nvkvm: serial console (added by steamos_boot.sh, idempotent)\n'
+        printf 'GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT console=ttyS0,115200"\n'
+        printf 'GRUB_TERMINAL_INPUT="console serial"\n'
+        printf 'GRUB_TERMINAL_OUTPUT="console serial"\n'
+        printf 'GRUB_SERIAL_COMMAND="serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1"\n'
+    } >> "$gd" || { warn "serial: could not append to /etc/default/grub"; return 0; }
+
+    if in_target sh -c 'command -v update-grub >/dev/null 2>&1'; then
+        in_target update-grub >/dev/null 2>&1 \
+            || warn "serial: update-grub failed; the cmdline change takes effect on the next successful one"
+    elif in_target sh -c 'command -v grub-mkconfig >/dev/null 2>&1'; then
+        in_target grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 \
+            || warn "serial: grub-mkconfig failed; the cmdline change is staged only"
+    else
+        warn "serial: no grub-mkconfig/update-grub; the cmdline change is staged only"
+    fi
+}
+
 install_stub() {
     local img_dir="$NVKVM_SHARE_MNT/boot/image"
     [ -d "$img_dir" ] || { err "in-image sources not found at $img_dir"; return 1; }
@@ -1010,6 +1087,10 @@ do_install() {
 
     write_desktop_config || rc=1
     configure_ssh || rc=1
+    # Both AFTER remove_added_packages() above -- anything installed before it
+    # is removed again on the same run.
+    ensure_clipboard_agent || rc=1
+    ensure_serial_console || rc=1
     # NOT `|| true`. A silently-failed plant is how a 0-byte
     # /usr/local/sbin/nvkvm-recovery.sh ships: 203/EXEC on every boot, from a run
     # that reported rc=0. This does not endanger the update path -- the plant

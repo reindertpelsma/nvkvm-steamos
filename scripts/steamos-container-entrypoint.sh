@@ -17,6 +17,24 @@ BROKER_DIR="${NVKVM_BROKER_DIR_IN_CONTAINER:-/run/nvkvm}"
 BROKER_SOCKET="${NVKVM_BROKER_SOCKET:-$BROKER_DIR/steamos.sock}"
 QEMU_DISPLAY="${NVKVM_STEAMOS_QEMU_DISPLAY:-nvkvm-broker,socket=$BROKER_SOCKET}"
 QCOW="${NVKVM_STEAMOS_QCOW:-$STATE_DIR/steamos.qcow2}"
+# ── Artifact naming: the final name MEANS "complete and trustworthy" ─────────
+# Every artifact here is written under a temporary name and renamed only once it
+# is known to be complete.  The recovery .img.bz2 and the decompressed .img
+# already followed that rule (curl -C - into .part, bzip2 into .part, mv on
+# success).  The installed qcow2 did NOT, and that was the whole bug: cancel an
+# install halfway and a large, non-empty, unbootable steamos.qcow2 was left
+# behind, which `[ ! -s "$QCOW" ]` then read as "already installed" -- so the
+# next start neither installed nor booted anything.
+#
+# The two names carry the entire contract:
+#
+#   $QCOW_INSTALLING  provably holds no user data, because only a COMPLETED
+#                     install is ever given the other name.  Deleting it is
+#                     always safe, so an interrupted install just starts over.
+#   $QCOW             may hold the user's games and saves.  It is NEVER removed
+#                     or overwritten automatically -- not even when it is
+#                     corrupt.  Replacing that file is an operator decision.
+QCOW_INSTALLING="$QCOW.installing"
 PINNED_RECOVERY="steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2"
 RECOVERY_BASE="https://steamdeck-images.steamos.cloud/recovery"
 LATEST=0
@@ -155,11 +173,27 @@ export PATH="/opt/qemu-nvkvm/bin:$PATH"
 if [ "$INSTALL_SHELL" = 1 ]; then
     RECOVERY_IMG="$(prepare_recovery)"
     exec /opt/nvkvm/install_steamos_vm.sh \
-        --repair "$RECOVERY_IMG" --out "$QCOW" \
+        --repair "$RECOVERY_IMG" --out "$QCOW_INSTALLING" \
         --alpine-dir "$STATE_DIR/alpine" --share /opt/nvkvm --shell
 fi
 
-if [ ! -s "$QCOW" ]; then
+# A zero-length final name is the fingerprint of the pre-.installing crash this
+# scheme exists to prevent.  It provably holds nothing, so removing it is the
+# same argument that makes $QCOW_INSTALLING safe -- and it spares the operator a
+# manual step for a file that cannot contain anything of theirs.  A NON-empty
+# but corrupt image is the opposite case and is left strictly alone below.
+if [ -e "$QCOW" ] && [ ! -s "$QCOW" ]; then
+    log "removing a zero-length $(basename "$QCOW") -- it can hold no data -- and installing"
+    rm -f "$QCOW"
+fi
+
+if [ ! -e "$QCOW" ]; then
+    if [ -e "$QCOW_INSTALLING" ]; then
+        log "a previous install was interrupted; restarting it from the beginning"
+        log "(only a completed install is given the final name, so nothing is lost)"
+        rm -f "$QCOW_INSTALLING"
+    fi
+    # Resumable, and a completed .img.bz2/.img is reused rather than re-fetched.
     RECOVERY_IMG="$(prepare_recovery)"
     DRIVER_VERSION="$(container_driver_version)"
     [[ "$DRIVER_VERSION" =~ ^[0-9]+([.][0-9]+)+$ ]] \
@@ -168,7 +202,7 @@ if [ ! -s "$QCOW" ]; then
     log "provisioning NVIDIA userspace for dynamically detected driver $DRIVER_VERSION"
     /opt/nvkvm/install_steamos_vm.sh \
         --repair "$RECOVERY_IMG" \
-        --out "$QCOW" \
+        --out "$QCOW_INSTALLING" \
         --size "${NVKVM_STEAMOS_DISK_SIZE:-64G}" \
         --alpine-dir "$STATE_DIR/alpine" \
         --stages "${NVKVM_STEAMOS_INSTALL_STAGES:-repair,provision}" \
@@ -178,6 +212,16 @@ if [ ! -s "$QCOW" ]; then
         --memory "${NVKVM_INSTALL_MEMORY_MB:-4096}" \
         --cpus "${NVKVM_INSTALL_CPUS:-4}" \
         --log "$STATE_DIR/install.log"
+
+    # Promote only what qemu-img is willing to read back as a qcow2.  The
+    # installer's exit status says the run finished; this says the artifact
+    # survived it.  Cheap (a header read), unlike a full `qemu-img check`.
+    qemu-img info --output=json "$QCOW_INSTALLING" >/dev/null 2>&1 \
+        || die "the installer finished but $QCOW_INSTALLING is not a readable qcow2; not promoting it"
+    sync
+    mv -f "$QCOW_INSTALLING" "$QCOW"
+    sync
+    log "install complete -- promoted to $(basename "$QCOW")"
 fi
 
 OVMF_CODE="${NVKVM_OVMF_CODE:-/usr/share/OVMF/OVMF_CODE_4M.fd}"
@@ -188,7 +232,27 @@ if [ ! -f "$OVMF_VARS" ]; then
     install -m 0600 "$OVMF_TEMPLATE" "$OVMF_VARS"
 fi
 
-rm -f "$STATE_DIR/qmp.sock"
+# ── Serial console: one chardev, three consumers ────────────────────────────
+# It used to be `-serial file:`, which is write-only.  That is why `docker
+# compose up -d` streamed nothing and why there was no way to type at the guest
+# outside SSH -- precisely when you most need one, i.e. when SSH is what is
+# broken.
+#
+# A socket chardev with logfile= serves all three needs from one device:
+#   serial.sock  interactive, both directions   -> nvkvm-steamos-serial (socat)
+#   serial.log   durable, survives the VM       -> post-mortem
+#   stdout       live                           -> docker logs / compose up
+# The last one is the `tail -F` below: this script exec()s QEMU, so it cannot
+# also copy the log, and a background reader started first is the simplest
+# thing that keeps `docker logs` working.  -F (not -f) so it does not matter
+# that the file does not exist yet.
+SERIAL_SOCK="$STATE_DIR/serial.sock"
+SERIAL_LOG="$STATE_DIR/serial.log"
+rm -f "$STATE_DIR/qmp.sock" "$SERIAL_SOCK"
+: > "$SERIAL_LOG.new" && mv -f "$SERIAL_LOG.new" "$SERIAL_LOG" 2>/dev/null || true
+tail -n +1 -F "$SERIAL_LOG" 2>/dev/null &
+log "serial: live on stdout, logged to $SERIAL_LOG, interactive on $SERIAL_SOCK"
+log "serial: attach with  docker compose exec steamos nvkvm-steamos-serial"
 log "booting SteamOS now; broker presence is not an ordering requirement"
 log "display socket: $BROKER_SOCKET"
 log "QEMU display backend: $QEMU_DISPLAY"
@@ -212,8 +276,17 @@ exec /opt/qemu-nvkvm/bin/qemu-system-x86_64 \
     -virtfs "local,path=$DATA_DIR,mount_tag=data,security_model=passthrough" \
     -fw_cfg opt/ovmf/X-PciMmio64Mb,string=262144 \
     -device virtio-keyboard-pci -device virtio-tablet-pci -device virtio-mouse-pci \
+    `# CLIPBOARD.  The guest side is stock spice-vdagent over the stock spice` \
+    `# port name; QEMU's qemu-vdagent chardev turns it into ui/clipboard.c` \
+    `# peers, which is what the broker registers as.  mouse=off on purpose:` \
+    `# pointer input already has a path through the broker, and letting the` \
+    `# agent inject a second one is how you get two cursors.` \
+    -device virtio-serial-pci,id=nvkvm-vser \
+    -chardev qemu-vdagent,id=nvkvm-vdagent,name=vdagent,clipboard=on,mouse=off \
+    -device virtserialport,bus=nvkvm-vser.0,chardev=nvkvm-vdagent,name=com.redhat.spice.0 \
     -qmp "unix:$STATE_DIR/qmp.sock,server=on,wait=off" \
-    -serial "file:$STATE_DIR/serial.log" \
+    -chardev "socket,id=nvkvm-serial,path=$SERIAL_SOCK,server=on,wait=off,logfile=$SERIAL_LOG,logappend=on" \
+    -serial chardev:nvkvm-serial \
     -monitor none \
     -display "$QEMU_DISPLAY" \
     "${QEMU_EXTRA[@]}"

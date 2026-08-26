@@ -33,6 +33,7 @@ COPY install_steamos_vm.sh /opt/nvkvm/install_steamos_vm.sh
 COPY vm /opt/nvkvm/vm
 COPY scripts/steamos-container-entrypoint.sh /opt/nvkvm/scripts/steamos-container-entrypoint.sh
 COPY scripts/steamos-ssh.sh /opt/nvkvm/scripts/steamos-ssh.sh
+COPY scripts/steamos-serial.sh /opt/nvkvm/scripts/steamos-serial.sh
 
 RUN find src boot tests/validate.sh -type f -print0 \
         | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1 \
@@ -49,12 +50,14 @@ RUN apt-get update -q && apt-get install -y --no-install-recommends \
         curl wget ca-certificates qemu-utils genisoimage \
         bzip2 cpio gzip tar ovmf util-linux \
         openssh-client sshpass \
+        socat \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=nvkvm-build /opt/qemu-nvkvm /opt/qemu-nvkvm
 COPY --from=nvkvm-build /usr/lib/nvkvm /usr/lib/nvkvm
 COPY --from=nvkvm-build /opt/nvkvm /opt/nvkvm
-RUN ln -s /opt/nvkvm/scripts/steamos-ssh.sh /usr/local/bin/nvkvm-steamos-ssh
+RUN ln -s /opt/nvkvm/scripts/steamos-ssh.sh /usr/local/bin/nvkvm-steamos-ssh \
+    && ln -s /opt/nvkvm/scripts/steamos-serial.sh /usr/local/bin/nvkvm-steamos-serial
 
 WORKDIR /opt/nvkvm
 EXPOSE 15022
