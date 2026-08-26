@@ -246,6 +246,27 @@ fi
 # also copy the log, and a background reader started first is the simplest
 # thing that keeps `docker logs` working.  -F (not -f) so it does not matter
 # that the file does not exist yet.
+# ── Clipboard transport is OPTIONAL and must never block the boot ────────────
+# The qemu-vdagent chardev only exists when QEMU was built against
+# spice-protocol.  A build without it used to be fatal here -- QEMU exited with
+# "'qemu-vdagent' is not a valid char driver name" and the VM never started, so
+# an optional convenience took the whole guest down with it.  Probe instead, and
+# say plainly which of the two states we are in.
+VDAGENT_ARGS=()
+if /opt/qemu-nvkvm/bin/qemu-system-x86_64 -chardev help 2>&1 | grep -qw qemu-vdagent; then
+    VDAGENT_ARGS=(
+        # mouse=off on purpose: pointer input already has a path through the
+        # broker, and a second injector is how you get two cursors.
+        -device virtio-serial-pci,id=nvkvm-vser
+        -chardev qemu-vdagent,id=nvkvm-vdagent,name=vdagent,clipboard=on,mouse=off
+        -device virtserialport,bus=nvkvm-vser.0,chardev=nvkvm-vdagent,name=com.redhat.spice.0
+    )
+    log "clipboard: vdagent transport present (guest still needs spice-vdagent)"
+else
+    log "clipboard: this QEMU has no qemu-vdagent chardev (built without spice-protocol)"
+    log "clipboard: booting WITHOUT clipboard support; nothing else is affected"
+fi
+
 SERIAL_SOCK="$STATE_DIR/serial.sock"
 SERIAL_LOG="$STATE_DIR/serial.log"
 rm -f "$STATE_DIR/qmp.sock" "$SERIAL_SOCK"
@@ -276,14 +297,7 @@ exec /opt/qemu-nvkvm/bin/qemu-system-x86_64 \
     -virtfs "local,path=$DATA_DIR,mount_tag=data,security_model=passthrough" \
     -fw_cfg opt/ovmf/X-PciMmio64Mb,string=262144 \
     -device virtio-keyboard-pci -device virtio-tablet-pci -device virtio-mouse-pci \
-    `# CLIPBOARD.  The guest side is stock spice-vdagent over the stock spice` \
-    `# port name; QEMU's qemu-vdagent chardev turns it into ui/clipboard.c` \
-    `# peers, which is what the broker registers as.  mouse=off on purpose:` \
-    `# pointer input already has a path through the broker, and letting the` \
-    `# agent inject a second one is how you get two cursors.` \
-    -device virtio-serial-pci,id=nvkvm-vser \
-    -chardev qemu-vdagent,id=nvkvm-vdagent,name=vdagent,clipboard=on,mouse=off \
-    -device virtserialport,bus=nvkvm-vser.0,chardev=nvkvm-vdagent,name=com.redhat.spice.0 \
+    "${VDAGENT_ARGS[@]}" \
     -qmp "unix:$STATE_DIR/qmp.sock,server=on,wait=off" \
     -chardev "socket,id=nvkvm-serial,path=$SERIAL_SOCK,server=on,wait=off,logfile=$SERIAL_LOG,logappend=on" \
     -serial chardev:nvkvm-serial \

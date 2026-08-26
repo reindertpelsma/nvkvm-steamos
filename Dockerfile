@@ -7,12 +7,14 @@ FROM ubuntu:24.04 AS nvkvm-build
 ARG DEBIAN_FRONTEND=noninteractive
 ARG NVKVM_SOURCE_LABEL=https://github.com/reindertpelsma/nvkvm-pv.git#main
 
+# spice-protocol is HEADERS ONLY (no spice server). It is what gates QEMU's
+# qemu-vdagent chardev -- without it the clipboard transport does not exist.
 RUN apt-get update -q && apt-get install -y --no-install-recommends \
         build-essential git ca-certificates \
         ninja-build meson libglib2.0-dev libpixman-1-dev \
         python3 python3-venv python3-tomli libslirp-dev pkg-config \
         libattr1-dev libepoxy-dev libgbm-dev libegl-dev libdrm-dev xxd \
-        libwayland-dev wayland-protocols \
+        libwayland-dev wayland-protocols libspice-protocol-dev \
         libxcb1-dev libxcb-dri3-dev libxcb-present-dev libxcb-xinput-dev \
     && rm -rf /var/lib/apt/lists/*
 
