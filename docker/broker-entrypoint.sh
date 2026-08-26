@@ -136,7 +136,7 @@ esac
 # made no difference; a plain 0755 subdirectory made it work at once.
 AUDIO_DIR="$(dirname "$SOCKET")/audio"
 AUDIO_FIFO="${NVKVM_AUDIO_FIFO:-$AUDIO_DIR/pcm}"
-if [ "${NVKVM_AUDIO:-1}" = 1 ] && command -v pw-cat >/dev/null 2>&1; then
+if [ "${NVKVM_AUDIO:-1}" = 1 ] && command -v pacat >/dev/null 2>&1; then
     mkdir -p "$AUDIO_DIR" && chmod 0755 "$AUDIO_DIR" 2>/dev/null
     rm -f "$AUDIO_FIFO"
     if mkfifo -m 0622 "$AUDIO_FIFO" 2>/dev/null; then
@@ -158,12 +158,14 @@ if [ "${NVKVM_AUDIO:-1}" = 1 ] && command -v pw-cat >/dev/null 2>&1; then
             # never reads, so the player still receives the whole stream.
             exec 3<>"$AUDIO_FIFO"
             while :; do
+                PULSE_SERVER="unix:/run/host-runtime/pulse/native" \
                 XDG_RUNTIME_DIR=/run/host-runtime \
-                pw-cat --playback --raw \
-                       --rate "${NVKVM_AUDIO_RATE:-48000}" \
-                       --channels "${NVKVM_AUDIO_CHANNELS:-2}" \
-                       --format "${NVKVM_AUDIO_FORMAT:-s16}" \
-                       "$AUDIO_FIFO" >/dev/null 2>&1
+                pacat --playback --raw \
+                      --rate="${NVKVM_AUDIO_RATE:-48000}" \
+                      --channels="${NVKVM_AUDIO_CHANNELS:-2}" \
+                      --format="${NVKVM_AUDIO_FORMAT:-s16le}" \
+                      --stream-name=nvkvm-guest \
+                      "$AUDIO_FIFO" >/dev/null 2>&1
                 sleep 1     # only reached if the player itself dies
             done
         ) &
@@ -171,7 +173,7 @@ if [ "${NVKVM_AUDIO:-1}" = 1 ] && command -v pw-cat >/dev/null 2>&1; then
         log "audio: could not create $AUDIO_FIFO; the guest will have no sound"
     fi
 else
-    log "audio: disabled (NVKVM_AUDIO=0 or pw-cat missing)"
+    log "audio: disabled (NVKVM_AUDIO=0 or pacat missing)"
 fi
 
 log "backend=$BACKEND desktop_uid=$desktop_uid desktop_gid=$desktop_gid socket=$SOCKET"

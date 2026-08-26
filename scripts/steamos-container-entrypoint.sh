@@ -311,7 +311,7 @@ AUDIO_ARGS=()
 AUDIO_FIFO="${NVKVM_AUDIO_FIFO:-$BROKER_DIR/audio/pcm}"
 if [ "${NVKVM_AUDIO:-1}" = 1 ] && [ -p "$AUDIO_FIFO" ]; then
     AUDIO_ARGS=(
-        -audiodev "wav,id=nvkvmsnd,path=$AUDIO_FIFO,out.frequency=${NVKVM_AUDIO_RATE:-48000},out.channels=${NVKVM_AUDIO_CHANNELS:-2},out.format=${NVKVM_AUDIO_FORMAT:-s16}"
+        -audiodev "wav,id=nvkvmsnd,path=$AUDIO_FIFO,out.frequency=${NVKVM_AUDIO_RATE:-48000},out.channels=${NVKVM_AUDIO_CHANNELS:-2},out.format=${NVKVM_AUDIO_QEMU_FORMAT:-s16}"
         -device virtio-sound-pci,audiodev=nvkvmsnd
     )
     log "audio: virtio-sound -> $AUDIO_FIFO (playback only; the broker plays it)"

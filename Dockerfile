@@ -76,7 +76,10 @@ RUN apt-get update -q && apt-get install -y --no-install-recommends \
         `# pw-cat: plays the guest's audio stream. The TRUSTED container holds` \
         `# the connection to the host's PipeWire; the VMM only ever writes to` \
         `# a fifo.` \
-        pipewire-bin \
+        `# pacat: reads RAW pcm from a pipe.  pw-cat only grew --raw after` \
+        `# 24.04's pipewire, and without it it hands the file to libsndfile,` \
+        `# which must seek and therefore cannot read a fifo at all.` \
+        pulseaudio-utils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=nvkvm-build /opt/nvkvm/src/broker/nvkvm-display-broker /usr/local/bin/
