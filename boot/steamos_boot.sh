@@ -988,6 +988,59 @@ ensure_clipboard_agent() {
     } > "$dropdir/nvkvm.conf" 2>/dev/null || warn "clipboard: could not write the session drop-in"
     in_target systemctl --global enable spice-vdagent.service >/dev/null 2>&1 \
         || warn "clipboard: could not enable the per-session spice-vdagent"
+
+    # ── Wayland -> X11 bridge ────────────────────────────────────────────────
+    # spice-vdagent only ever watches the X11 selection.  MEASURED on this
+    # image: KWin mirrors X11 -> Wayland (which is why PASTE works) but NOT
+    # Wayland -> X11, so the two selections diverge and a copy made in any
+    # normal KDE app never reaches the agent at all.  Proven by copying in both
+    # worlds at once: Wayland held the new text while X11 still held a value
+    # from minutes earlier.
+    #
+    # So mirror the missing direction.  wl-paste --watch fires on every Wayland
+    # clipboard change and hands the text to a helper that writes it into X11 --
+    # where vdagent finally sees it.  The helper compares first, so the paste
+    # path (vdagent sets X -> KWin mirrors to Wayland -> we fire) settles
+    # instead of bouncing.
+    if ! in_target sh -c 'command -v wl-paste >/dev/null 2>&1 && command -v xclip >/dev/null 2>&1'; then
+        log "clipboard: installing wl-clipboard + xclip for the Wayland->X11 bridge"
+        steamos_unlock
+        in_target pacman -S --noconfirm --needed wl-clipboard xclip \
+            || { warn "clipboard: no wl-clipboard/xclip; copies made in Wayland apps will not reach the host"; return 0; }
+    fi
+
+    cat > "$(rp /usr/local/bin/nvkvm-clip-w2x)" <<'NVKVM_W2X_EOF'
+#!/bin/sh
+# Written by nvkvm steamos_boot.sh.  stdin carries the new Wayland clipboard
+# text; put it on the X11 CLIPBOARD selection so spice-vdagent can see it.
+[ -n "$DISPLAY" ] || DISPLAY=:0
+export DISPLAY
+if [ -z "$XAUTHORITY" ]; then
+    for f in "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"/xauth_*; do
+        [ -r "$f" ] || continue
+        XAUTHORITY="$f"; export XAUTHORITY; break
+    done
+fi
+new=$(cat)
+cur=$(xclip -selection clipboard -o 2>/dev/null)
+[ "$cur" = "$new" ] && exit 0
+printf %s "$new" | xclip -selection clipboard
+NVKVM_W2X_EOF
+    chmod 0755 "$(rp /usr/local/bin/nvkvm-clip-w2x)" 2>/dev/null \
+        || warn "clipboard: could not install the Wayland->X11 helper"
+
+    mkdir -p "$(rp /etc/systemd/user)" 2>/dev/null
+    {
+        printf '[Unit]\nDescription=nvkvm: mirror the Wayland clipboard into X11 for spice-vdagent\n'
+        printf 'After=graphical-session.target\nPartOf=graphical-session.target\n\n'
+        printf '[Service]\n'
+        printf 'ExecStart=/usr/bin/wl-paste --type text --watch /usr/local/bin/nvkvm-clip-w2x\n'
+        printf 'Restart=on-failure\nRestartSec=2\n\n'
+        printf '[Install]\nWantedBy=graphical-session.target\n'
+    } > "$(rp /etc/systemd/user/nvkvm-clipboard-bridge.service)" 2>/dev/null \
+        || warn "clipboard: could not write the bridge unit"
+    in_target systemctl --global enable nvkvm-clipboard-bridge.service >/dev/null 2>&1 \
+        || warn "clipboard: could not enable the Wayland->X11 bridge"
     log "clipboard: agent installed and enabled (broker still decides policy)"
 }
 
