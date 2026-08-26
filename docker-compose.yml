@@ -92,10 +92,18 @@ services:
       - no-new-privileges:true
     volumes:
       - broker-socket:/run/nvkvm
-      # The NATIVE pipewire socket, alone.  It is srw-rw-rw-, so it can be
-      # bind-mounted on its own -- mounting the runtime DIR would have brought
-      # the Wayland socket with it.
-      - ${XDG_RUNTIME_DIR:-/run/user/1000}/pipewire-0:/run/pw/pipewire-0
+      # ONE socket per audio server, bind-mounted individually.  They are
+      # srw-rw-rw-, so a single socket can be mounted on its own -- mounting
+      # the runtime DIR would have brought the Wayland socket with it, which
+      # is the whole thing this container exists to avoid.
+      #
+      # Both are listed because the host decides which exists: PipeWire hosts
+      # have pipewire-0 (and usually pulse/native too, via pipewire-pulse),
+      # legacy PulseAudio hosts have only pulse/native.  The player picks at
+      # runtime.  On a host missing one, point its variable at /dev/null so
+      # Docker does not create a stray directory in the runtime dir.
+      - ${NVKVM_AUDIO_PW_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/1000}/pipewire-0}:/run/pw/pipewire-0
+      - ${NVKVM_AUDIO_PULSE_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/1000}/pulse/native}:/run/pulse/native
     restart: unless-stopped
 
   # Untrusted VMM. Its only path toward the desktop is broker-socket. It gets

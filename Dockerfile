@@ -98,8 +98,11 @@ ENTRYPOINT ["/usr/local/bin/nvkvm-broker-entrypoint"]
 FROM ubuntu:26.04 AS audio
 
 ARG DEBIAN_FRONTEND=noninteractive
+# BOTH clients, because the host decides which one is usable: a PipeWire host
+# gets pw-cat, a legacy PulseAudio-only host gets pacat.  Neither is large, and
+# shipping only the modern one would mean no sound on anything older.
 RUN apt-get update -q && apt-get install -y --no-install-recommends \
-        pipewire-bin \
+        pipewire-bin pulseaudio-utils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/audio-entrypoint.sh /usr/local/bin/nvkvm-audio-entrypoint
