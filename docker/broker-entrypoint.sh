@@ -64,6 +64,14 @@ esac
 
 extra=()
 [ "${NVKVM_BROKER_FULLSCREEN:-0}" = 1 ] && extra+=(--fullscreen)
+# Advertise only DRM_FORMAT_MOD_LINEAR, forcing the VMM to read frames back
+# into a linear buffer rather than handing over the guest's native tiling.
+# Set it to reproduce a cross-vendor host on a single-GPU one, or when a
+# compositor advertises a modifier it then fails to import.  Costs one GPU
+# transfer per frame.  An explicit boolean rather than an argv passthrough:
+# this process owns a window and input focus, and letting compose inject
+# arbitrary arguments into it is a widening for no benefit.
+[ "${NVKVM_BROKER_LINEAR_ONLY:-0}" = 1 ] && extra+=(--linear-only)
 
 log "backend=$BACKEND desktop_uid=$desktop_uid desktop_gid=$desktop_gid socket=$SOCKET"
 log "the VMM has no display mount; CTRL+ALT+G toggles the broker input grab"
