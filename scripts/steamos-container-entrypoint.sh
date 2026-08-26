@@ -295,6 +295,28 @@ else
     log "clipboard: booting WITHOUT clipboard support; nothing else is affected"
 fi
 
+# ── audio: write into the broker's fifo, and nothing else ───────────────────
+# The only audio privilege the untrusted VMM gets is a file descriptor it can
+# WRITE.  No host audio socket is mounted here and none is needed: the trusted
+# broker container owns the connection to the host and plays what arrives.
+#
+# `wav` is a stock QEMU audiodev and needs no extra library in the build --
+# QEMU's own audio backends (pipewire, pulse, alsa) are not compiled in, and
+# adding one would mean handing this container a host audio socket anyway,
+# which is the thing being avoided.  A fifo cannot be read from this side, so
+# the direction is a property of the plumbing rather than of a policy.
+AUDIO_ARGS=()
+AUDIO_FIFO="${NVKVM_AUDIO_FIFO:-$BROKER_DIR/audio.fifo}"
+if [ "${NVKVM_AUDIO:-1}" = 1 ] && [ -p "$AUDIO_FIFO" ]; then
+    AUDIO_ARGS=(
+        -audiodev "wav,id=nvkvmsnd,path=$AUDIO_FIFO,out.frequency=${NVKVM_AUDIO_RATE:-48000},out.channels=${NVKVM_AUDIO_CHANNELS:-2},out.format=${NVKVM_AUDIO_FORMAT:-s16}"
+        -device virtio-sound-pci,audiodev=nvkvmsnd
+    )
+    log "audio: virtio-sound -> $AUDIO_FIFO (playback only; the broker plays it)"
+else
+    log "audio: none ($AUDIO_FIFO is not a fifo, or NVKVM_AUDIO=0)"
+fi
+
 SERIAL_SOCK="$STATE_DIR/serial.sock"
 SERIAL_LOG="$STATE_DIR/serial.log"
 rm -f "$STATE_DIR/qmp.sock" "$SERIAL_SOCK"
@@ -386,6 +408,7 @@ export NVKVM_PRESENT_TIMING="${NVKVM_PRESENT_TIMING:-1}"
     -fw_cfg opt/ovmf/X-PciMmio64Mb,string=262144 \
     -device virtio-keyboard-pci -device virtio-tablet-pci -device virtio-mouse-pci \
     "${VDAGENT_ARGS[@]}" \
+    "${AUDIO_ARGS[@]}" \
     -qmp "unix:$STATE_DIR/qmp.sock,server=on,wait=off" \
     -chardev "socket,id=nvkvm-serial,path=$SERIAL_SOCK,server=on,wait=off,logfile=$SERIAL_LOG,logappend=on" \
     -serial chardev:nvkvm-serial \

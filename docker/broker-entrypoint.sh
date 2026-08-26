@@ -113,6 +113,46 @@ esac
 [ -n "${NVKVM_BROKER_CLIPBOARD_TRIGGER:-}" ] \
     && extra+=(--clipboard-trigger "$NVKVM_BROKER_CLIPBOARD_TRIGGER")
 
+# ── audio ────────────────────────────────────────────────────────────────────
+# PLAYBACK ONLY, AND ONE DIRECTION BY CONSTRUCTION.
+#
+# The VMM writes PCM into a fifo on the shared /run/nvkvm volume; this
+# container reads it and plays it to the host.  The fifo is the whole security
+# argument: it cannot be read from the VMM's side, so there is no path back --
+# no microphone, no monitoring of other applications, no host audio socket in
+# the untrusted container at all.  Anyone who wants a microphone or a camera
+# uses QEMU's own passthrough for those, which is a deliberately larger
+# decision than "the game should have sound".
+#
+# The host connection lives HERE because this container is the trusted one: it
+# already holds the display, and $XDG_RUNTIME_DIR is mounted at
+# /run/host-runtime for exactly that reason.
+AUDIO_FIFO="${NVKVM_AUDIO_FIFO:-$(dirname "$SOCKET")/audio.fifo}"
+if [ "${NVKVM_AUDIO:-1}" = 1 ] && command -v pw-cat >/dev/null 2>&1; then
+    rm -f "$AUDIO_FIFO"
+    if mkfifo -m 0622 "$AUDIO_FIFO" 2>/dev/null; then
+        # 0622: the VMM writes, only this container reads.
+        log "audio: playing the guest stream from $AUDIO_FIFO"
+        (
+            # Re-open in a loop: a VM restart closes the writer, and a player
+            # that exits with it would leave the next boot silent.
+            while :; do
+                XDG_RUNTIME_DIR=/run/host-runtime \
+                pw-cat --playback --raw \
+                       --rate "${NVKVM_AUDIO_RATE:-48000}" \
+                       --channels "${NVKVM_AUDIO_CHANNELS:-2}" \
+                       --format "${NVKVM_AUDIO_FORMAT:-s16}" \
+                       "$AUDIO_FIFO" >/dev/null 2>&1
+                sleep 1
+            done
+        ) &
+    else
+        log "audio: could not create $AUDIO_FIFO; the guest will have no sound"
+    fi
+else
+    log "audio: disabled (NVKVM_AUDIO=0 or pw-cat missing)"
+fi
+
 log "backend=$BACKEND desktop_uid=$desktop_uid desktop_gid=$desktop_gid socket=$SOCKET"
 log "the VMM has no display mount; CTRL+ALT+G toggles the broker input grab"
 
