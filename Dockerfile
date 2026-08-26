@@ -72,7 +72,7 @@ FROM ubuntu:24.04 AS broker
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -q && apt-get install -y --no-install-recommends \
         libwayland-client0 libxcb1 libxcb-dri3-0 libxcb-present0 \
-        libxcb-xinput0 util-linux ca-certificates \
+        libxcb-xinput0 libxcb-render0 util-linux ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=nvkvm-build /opt/nvkvm/src/broker/nvkvm-display-broker /usr/local/bin/
