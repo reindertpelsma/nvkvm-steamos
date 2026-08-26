@@ -312,9 +312,16 @@ AUDIO_FIFO="${NVKVM_AUDIO_FIFO:-$BROKER_DIR/audio/pcm}"
 if [ "${NVKVM_AUDIO:-1}" = 1 ] && [ -p "$AUDIO_FIFO" ]; then
     AUDIO_ARGS=(
         -audiodev "wav,id=nvkvmsnd,path=$AUDIO_FIFO,out.frequency=${NVKVM_AUDIO_RATE:-48000},out.channels=${NVKVM_AUDIO_CHANNELS:-2},out.format=${NVKVM_AUDIO_QEMU_FORMAT:-s16}"
-        -device virtio-sound-pci,audiodev=nvkvmsnd
+        `# ich9-intel-hda, not virtio-sound.  MEASURED: with virtio-sound the` \
+        `# guest saw the card and then timed out on every stream ("Stream` \
+        `# error: Timeout"), and NOTHING was ever written to the fifo -- the` \
+        `# device never completed a period against this backend.  HDA is the` \
+        `# path QEMU has shipped for a decade and every guest already has a` \
+        `# driver for.` \
+        -device ich9-intel-hda,id=nvkvmhda
+        -device hda-output,bus=nvkvmhda.0,audiodev=nvkvmsnd
     )
-    log "audio: virtio-sound -> $AUDIO_FIFO (playback only; the broker plays it)"
+    log "audio: intel-hda -> $AUDIO_FIFO (playback only; the broker plays it)"
 else
     log "audio: none ($AUDIO_FIFO is not a fifo, or NVKVM_AUDIO=0)"
 fi
