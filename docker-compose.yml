@@ -33,6 +33,15 @@ services:
       # it cannot read NVIDIA tiling at any price -- and useful for forcing
       # that path on a single-GPU host.
       NVKVM_BROKER_LINEAR_ONLY: ${NVKVM_BROKER_LINEAR_ONLY:-0}
+      # auto | native | linear | shm -- which rung of the presentation ladder
+      # to offer.  auto walks it: the guest's own modifier, then a LINEAR
+      # dma-buf, then shared memory, which no compositor can refuse.
+      NVKVM_BROKER_PRESENT_MODE: ${NVKVM_BROKER_PRESENT_MODE:-}
+      # Leave empty to pick a random unowned uid per start.  The broker becomes
+      # it AFTER the display connection is open, so it keeps the window and
+      # input it already holds while losing all reach into the desktop user's
+      # files.
+      NVKVM_BROKER_DROP_UID: ${NVKVM_BROKER_DROP_UID:-}
     volumes:
       - broker-socket:/run/nvkvm
       # Trusted broker only. The untrusted VMM service has neither mount.

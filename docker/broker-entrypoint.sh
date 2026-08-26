@@ -24,12 +24,36 @@ esac
 # Wayland. The marker also handles the unusual case of a root-owned session.
 if [ "${NVKVM_BROKER_DROPPED:-0}" != 1 ]; then
     export NVKVM_BROKER_DROPPED=1
+    # CAP_SETUID/CAP_SETGID are kept ONLY so the broker can drop FURTHER once
+    # its window is up -- see NVKVM_BROKER_DROP_UID below.  It spends them on
+    # that one transition and clears the whole capability set immediately
+    # after, proving the drop took by checking setuid(0) now fails.  Everything
+    # else is still dropped here.
     exec setpriv \
         --reuid "$desktop_uid" --regid "$desktop_gid" --clear-groups \
-        --inh-caps=-all --ambient-caps=-all \
+        --inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid \
         --no-new-privs \
         "$0" "$@"
 fi
+
+# A uid that owns nothing.
+#
+# Until the display connection exists the broker must BE the desktop user: the
+# runtime directory is mode 0700 and the Wayland socket lives inside it.  After
+# that, every resource it needs is an open fd, and staying the desktop user
+# only means retaining reach into that user's files, keys and autostart
+# directory for no benefit.  So it becomes a uid nothing on the system owns.
+#
+# Random rather than fixed so two brokers, or a broker and anything else that
+# picked a "sensible" number, cannot end up sharing an identity.  The range is
+# above the usual system and login ranges and below the isolate's 500000+
+# window (a different container, but worth not colliding on principle).
+if [ -z "${NVKVM_BROKER_DROP_UID:-}" ]; then
+    NVKVM_BROKER_DROP_UID=$(( 100000 + ($(od -An -N3 -tu4 /dev/urandom) % 300000) ))
+fi
+case "$NVKVM_BROKER_DROP_UID" in
+    0|"") die "NVKVM_BROKER_DROP_UID must be a non-zero uid" ;;
+esac
 
 if [ "$BACKEND" = auto ]; then
     if [ -n "${WAYLAND_DISPLAY:-}" ] \
@@ -72,6 +96,8 @@ extra=()
 # this process owns a window and input focus, and letting compose inject
 # arbitrary arguments into it is a widening for no benefit.
 [ "${NVKVM_BROKER_LINEAR_ONLY:-0}" = 1 ] && extra+=(--linear-only)
+[ -n "${NVKVM_BROKER_PRESENT_MODE:-}" ] && extra+=(--present-mode="$NVKVM_BROKER_PRESENT_MODE")
+extra+=(--drop-user "$NVKVM_BROKER_DROP_UID")
 
 log "backend=$BACKEND desktop_uid=$desktop_uid desktop_gid=$desktop_gid socket=$SOCKET"
 log "the VMM has no display mount; CTRL+ALT+G toggles the broker input grab"
