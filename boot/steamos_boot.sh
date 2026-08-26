@@ -981,36 +981,51 @@ ensure_clipboard_agent() {
 #      guest that boots with no serial boot log is inconvenient, not broken.
 ensure_serial_console() {
     steamos_unlock
+    # The half that matters, and the half that cannot block anything: a login
+    # on the serial line.  systemd only autostarts this when console=ttyS0 is
+    # on the cmdline, so enable it explicitly and it survives an A/B update
+    # replacing the bootloader config below.
     in_target systemctl enable serial-getty@ttyS0.service >/dev/null 2>&1 \
         || warn "serial: could not enable serial-getty@ttyS0.service"
 
-    local gd; gd="$(rp /etc/default/grub)"
-    [ -w "$gd" ] || [ -r "$gd" ] || { warn "serial: no /etc/default/grub; boot log stays off"; return 0; }
-    if grep -q 'console=ttyS0' "$gd" 2>/dev/null; then
-        log "serial: bootloader already configured for ttyS0"
-        return 0
+    local gd regen=0; gd="$(rp /etc/default/grub)"
+    [ -r "$gd" ] || { warn "serial: no /etc/default/grub; kernel log stays off serial"; return 0; }
+
+    # NEVER give GRUB a serial TERMINAL.  An earlier version of this set
+    # GRUB_TERMINAL_INPUT/OUTPUT so the boot MENU appeared on the line too, and
+    # that made the guest unbootable without a human: a serial terminal
+    # overrides SteamOS's hidden-menu timeout style, so GRUB drew the menu and
+    # waited for a keypress an unattended VM never sends.  MEASURED on a fresh
+    # install -- `docker compose up` hung at the menu until a CR was pushed
+    # into serial.sock by hand.  Strip it if a previous converge wrote it.
+    if grep -q '^GRUB_TERMINAL_\(INPUT\|OUTPUT\)=.*serial\|^GRUB_SERIAL_COMMAND=' "$gd" 2>/dev/null; then
+        log "serial: removing GRUB's serial terminal (it stalls the boot at the menu)"
+        sed -i '/^GRUB_TERMINAL_INPUT=.*serial/d; /^GRUB_TERMINAL_OUTPUT=.*serial/d; /^GRUB_SERIAL_COMMAND=/d' \
+            "$gd" || warn "serial: could not strip GRUB's serial terminal lines"
+        regen=1
     fi
-    log "serial: adding console=ttyS0 to the kernel cmdline and GRUB"
-    # console=tty1 is kept and listed FIRST so the graphical console stays the
-    # one /dev/console points at; the LAST console= wins for /dev/console, so
-    # ttyS0 goes last only if we wanted the opposite.  Order here: keep tty1
-    # primary, add ttyS0 as an additional printk destination.
-    {
-        printf '\n# nvkvm: serial console (added by steamos_boot.sh, idempotent)\n'
-        printf 'GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT console=ttyS0,115200"\n'
-        printf 'GRUB_TERMINAL_INPUT="console serial"\n'
-        printf 'GRUB_TERMINAL_OUTPUT="console serial"\n'
-        printf 'GRUB_SERIAL_COMMAND="serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1"\n'
-    } >> "$gd" || { warn "serial: could not append to /etc/default/grub"; return 0; }
+
+    # console=tty1 stays first and keeps /dev/console; ttyS0 is an ADDITIONAL
+    # printk destination, which is all the kernel half was ever for.
+    if ! grep -q 'console=ttyS0' "$gd" 2>/dev/null; then
+        log "serial: adding console=ttyS0 to the kernel cmdline"
+        {
+            printf '\n# nvkvm: kernel console on ttyS0 (added by steamos_boot.sh, idempotent)\n'
+            printf 'GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT console=ttyS0,115200"\n'
+        } >> "$gd" || { warn "serial: could not append to /etc/default/grub"; return 0; }
+        regen=1
+    fi
+
+    [ "$regen" = 1 ] || { log "serial: bootloader already correct for ttyS0"; return 0; }
 
     if in_target sh -c 'command -v update-grub >/dev/null 2>&1'; then
         in_target update-grub >/dev/null 2>&1 \
-            || warn "serial: update-grub failed; the cmdline change takes effect on the next successful one"
+            || warn "serial: update-grub failed; the change takes effect on the next successful one"
     elif in_target sh -c 'command -v grub-mkconfig >/dev/null 2>&1'; then
         in_target grub-mkconfig -o /boot/grub/grub.cfg >/dev/null 2>&1 \
-            || warn "serial: grub-mkconfig failed; the cmdline change is staged only"
+            || warn "serial: grub-mkconfig failed; the change is staged only"
     else
-        warn "serial: no grub-mkconfig/update-grub; the cmdline change is staged only"
+        warn "serial: no grub-mkconfig/update-grub; the change is staged only"
     fi
 }
 

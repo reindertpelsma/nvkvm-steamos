@@ -94,6 +94,25 @@ extra=()
 [ -n "${NVKVM_BROKER_PRESENT_MODE:-}" ] && extra+=(--present-mode="$NVKVM_BROKER_PRESENT_MODE")
 extra+=(--drop-user "${NVKVM_BROKER_DROP_UID:-auto}")
 
+# Clipboard.  Validated here rather than passed through, for the same reason as
+# every other option above: this process owns a window and input focus.
+#
+#   off            nothing crosses (the broker's own default)
+#   guest-to-host  the guest may write YOUR clipboard; it can never read it
+#   consent        the above, plus host->guest on an explicit paste key
+#
+# Needs QEMU's qemu-vdagent chardev on the VMM side and spice-vdagent in the
+# guest; without either, this is inert rather than broken.
+case "${NVKVM_BROKER_CLIPBOARD:-off}" in
+    off)                       ;;
+    guest-to-host|consent)     extra+=(--clipboard "$NVKVM_BROKER_CLIPBOARD") ;;
+    *) die "NVKVM_BROKER_CLIPBOARD must be off, guest-to-host or consent" ;;
+esac
+# Which keys mean "paste".  The broker validates the list itself and refuses to
+# start on a bad one, so this only has to decide whether to pass it at all.
+[ -n "${NVKVM_BROKER_CLIPBOARD_TRIGGER:-}" ] \
+    && extra+=(--clipboard-trigger "$NVKVM_BROKER_CLIPBOARD_TRIGGER")
+
 log "backend=$BACKEND desktop_uid=$desktop_uid desktop_gid=$desktop_gid socket=$SOCKET"
 log "the VMM has no display mount; CTRL+ALT+G toggles the broker input grab"
 

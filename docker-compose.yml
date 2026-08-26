@@ -46,6 +46,12 @@ services:
       # input it already holds while losing all reach into the desktop user's
       # files.
       NVKVM_BROKER_DROP_UID: ${NVKVM_BROKER_DROP_UID:-}
+      # off | guest-to-host | consent.  `consent` is the recommended one: the
+      # guest may write your clipboard, and can only READ it on an explicit
+      # paste key (ctrl+v / ctrl+shift+v / shift+insert by default).  Needs the
+      # VMM's qemu-vdagent chardev and spice-vdagent in the guest.
+      NVKVM_BROKER_CLIPBOARD: ${NVKVM_BROKER_CLIPBOARD:-consent}
+      NVKVM_BROKER_CLIPBOARD_TRIGGER: ${NVKVM_BROKER_CLIPBOARD_TRIGGER:-}
     volumes:
       - broker-socket:/run/nvkvm
       # Trusted broker only. The untrusted VMM service has neither mount.
