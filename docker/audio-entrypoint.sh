@@ -24,8 +24,22 @@ PULSE_SOCK="${NVKVM_PULSE_SOCKET:-/run/pulse/native}"
 # writer does not own inside a sticky world-writable directory, and the volume
 # root is drwxrwxrwt.  No sysctl change, just somewhere the rule does not apply.
 mkdir -p "$DIR" && chmod 0755 "$DIR"
-rm -f "$FIFO"
-mkfifo -m 0622 "$FIFO"          # the VMM writes; it can never read
+#
+# REATTACH, do not replace.  Recreating the fifo unconditionally means that
+# restarting THIS container while a VM is running orphans QEMU's file
+# descriptor: it keeps writing into the old inode, which now has no reader, and
+# the guest goes silent with no error anywhere to explain it.  depends_on does
+# not help -- it orders startup, not restarts.  MEASURED exactly that way.
+#
+# So keep an existing fifo and only create one when there is none, or when
+# something that is not a fifo is sitting in its place.
+if [ -p "$FIFO" ]; then
+    log "reusing the existing fifo (a running VM may already hold it open)"
+else
+    rm -f "$FIFO"
+    mkfifo -m 0622 "$FIFO"      # the VMM writes; it can never read
+    log "created $FIFO"
+fi
 log "fifo ready at $FIFO"
 
 #
