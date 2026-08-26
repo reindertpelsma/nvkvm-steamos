@@ -20,9 +20,10 @@ with open(sys.argv[1], encoding="utf-8") as fh:
     cfg = json.load(fh)
 
 services = cfg["services"]
-assert set(services) == {"broker", "vmm"}, set(services)
+assert set(services) == {"broker", "vmm", "audio"}, set(services)
 broker = services["broker"]
 vmm = services["vmm"]
+audio = services["audio"]
 
 assert set(vmm["cap_drop"]) == {"ALL"}
 assert set(vmm["cap_add"]) == {"SETUID", "SETGID", "SETPCAP", "SYS_CHROOT"}
@@ -59,6 +60,19 @@ for knob in (
 ):
     assert knob in broker["environment"], knob
 
+# ── the audio player ────────────────────────────────────────────────────────
+# It reads bytes chosen by a possibly-compromised VMM, so it is confined harder
+# than either of the other two: no capabilities at all, no network, read-only,
+# and it runs as nobody.  Any relaxation here is a real widening and this test
+# exists to make that impossible to do quietly.
+assert set(audio["cap_drop"]) == {"ALL"}
+assert not audio.get("cap_add"), audio.get("cap_add")
+assert audio["security_opt"] == ["no-new-privileges:true"]
+assert audio["network_mode"] == "none"
+assert audio["read_only"] is True
+assert audio["user"] == "65534:65534", audio["user"]
+assert not audio.get("devices")
+
 def mounts(service):
     return {v["target"]: (v["type"], v["source"]) for v in service["volumes"]}
 
@@ -70,6 +84,17 @@ assert bm["/run/nvkvm"] == ("volume", "broker-socket")
 assert vm["/run/nvkvm"] == ("volume", "broker-socket")
 assert vm["/var/lib/nvkvm-steamos"] == ("volume", "steamos-state")
 assert vm["/data"] == ("volume", "steamos-data")
+
+am = mounts(audio)
+# The whole point of a separate audio container: it must NEVER see the display.
+# Mounting $XDG_RUNTIME_DIR would drag the Wayland socket in, which is why the
+# sockets are bind-mounted individually.
+assert "/run/host-runtime" not in am and "/tmp/.X11-unix" not in am, am
+assert am["/run/nvkvm"] == ("volume", "broker-socket")
+# Exactly the fifo volume and the two audio sockets, never more.
+assert set(am) == {"/run/nvkvm", "/run/pw/pipewire-0", "/run/pulse/native"}, am
+for target in ("/run/pw/pipewire-0", "/run/pulse/native"):
+    assert am[target][0] == "bind", am[target]
 
 socket_volume = cfg["volumes"]["broker-socket"]
 assert socket_volume["driver"] == "local"
