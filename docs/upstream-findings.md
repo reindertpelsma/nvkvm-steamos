@@ -7,6 +7,17 @@ Nothing here is an nvkvm bug; our own are in git history.
 Each entry aims to be filable as-is: version, what was observed, why it happens,
 and what the fix looks like.
 
+**QEMU findings are NOT repeated here.** They already live in
+`nvkvm-pv/patches/README.md`, which classifies every patch by whether it is
+upstreamable and why -- e.g. `0004` (ui/console aborting on a text console) is
+flagged there as a clean upstream bug intended for qemu-devel, while `0003`
+(egl-helpers) and `0005` (gtk console selection) are explained as NOT
+upstreamable as written. That file is the source of truth for anything under
+`patches/`; restating it here would only let the two drift apart. Read it
+before filing any QEMU report.
+
+This file is for upstream defects found OUTSIDE that set.
+
 ---
 
 ## 1. PulseAudio: `pacat` swallows read errors (signedness)
@@ -46,6 +57,9 @@ threat model, no functional change to the file since 2018).
 ---
 
 ## 2. QEMU: `virtio-sound` never delivers audio to the backend
+
+*(Not in `patches/` -- we worked around it by choosing a different device, so
+there is no patch carrying this analysis.)*
 
 **Project** QEMU · **Version** 9.2.0 · **Devices** `virtio-sound-pci` with
 `-audiodev wav`
