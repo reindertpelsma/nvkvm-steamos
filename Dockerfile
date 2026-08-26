@@ -16,6 +16,7 @@ RUN apt-get update -q && apt-get install -y --no-install-recommends \
         libattr1-dev libepoxy-dev libgbm-dev libegl-dev libdrm-dev xxd \
         libwayland-dev wayland-protocols libspice-protocol-dev \
         libxcb1-dev libxcb-dri3-dev libxcb-present-dev libxcb-xinput-dev \
+        libxcb-render0-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=nvkvm-source / /opt/nvkvm
