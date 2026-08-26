@@ -37,7 +37,6 @@ COPY vm /opt/nvkvm/vm
 COPY scripts/steamos-container-entrypoint.sh /opt/nvkvm/scripts/steamos-container-entrypoint.sh
 COPY scripts/steamos-ssh.sh /opt/nvkvm/scripts/steamos-ssh.sh
 COPY scripts/steamos-serial.sh /opt/nvkvm/scripts/steamos-serial.sh
-COPY docker/audio-entrypoint.sh /opt/nvkvm/docker/audio-entrypoint.sh
 
 RUN find src boot tests/validate.sh -type f -print0 \
         | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1 \
@@ -85,4 +84,6 @@ RUN apt-get update -q && apt-get install -y --no-install-recommends \
 
 COPY --from=nvkvm-build /opt/nvkvm/src/broker/nvkvm-display-broker /usr/local/bin/
 COPY docker/broker-entrypoint.sh /usr/local/bin/nvkvm-broker-entrypoint
+# The audio service runs from this same image; it needs its own entrypoint.
+COPY docker/audio-entrypoint.sh /usr/local/bin/nvkvm-audio-entrypoint
 ENTRYPOINT ["/usr/local/bin/nvkvm-broker-entrypoint"]

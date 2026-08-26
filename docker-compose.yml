@@ -83,7 +83,7 @@ services:
       args:
         NVKVM_REPOSITORY: ${NVKVM_REPOSITORY:-https://github.com/reindertpelsma/nvkvm-pv.git}
         NVKVM_REF: ${NVKVM_REF:-main}
-    entrypoint: ["/opt/nvkvm/docker/audio-entrypoint.sh"]
+    entrypoint: ["/usr/local/bin/nvkvm-audio-entrypoint"]
     network_mode: none
     read_only: true
     cap_drop: [ALL]
