@@ -279,8 +279,42 @@ log "display socket: $BROKER_SOCKET"
 log "QEMU display backend: $QEMU_DISPLAY"
 log "SSH after provisioning: docker compose exec vmm nvkvm-steamos-ssh"
 
+# ── Shutdown: the guest must be powered down, not shot ───────────────────────
+# This used to exec() QEMU, so `docker stop` -- and therefore every
+# `compose stop`, `restart` and `up --force-recreate` -- delivered SIGTERM
+# straight to QEMU, which exits on the spot.  The guest was never once shut
+# down cleanly, and ext4's delayed allocation then discarded whatever it had
+# not yet flushed.  MEASURED here three times, each looking like a different
+# bug: systemd units planted as 0 bytes (which systemd reports as "masked"),
+# a 0-byte log, and finally an entire pacman-installed package -- binaries and
+# all -- left as 0-byte files with their metadata intact.
+#
+# So: run QEMU as a child, and on SIGTERM ask the guest to power down over QMP
+# and WAIT for it.  Compose already allows this (stop_grace_period: 2m); only
+# the exec() stood in the way.
+SHUTDOWN_WAIT="${NVKVM_STEAMOS_SHUTDOWN_WAIT:-90}"
+QEMU_PID=""
+on_term() {
+    [ -n "$QEMU_PID" ] || exit 0
+    log "shutdown: asking the guest to power down (ACPI), up to ${SHUTDOWN_WAIT}s"
+    if printf '{"execute":"qmp_capabilities"}\n{"execute":"system_powerdown"}\n' \
+        | timeout 5 socat - "unix-connect:$STATE_DIR/qmp.sock" >/dev/null 2>&1; then
+        local n=0
+        while kill -0 "$QEMU_PID" 2>/dev/null && [ "$n" -lt "$SHUTDOWN_WAIT" ]; do
+            sleep 1; n=$((n + 1))
+        done
+        kill -0 "$QEMU_PID" 2>/dev/null \
+            && log "shutdown: guest still up after ${SHUTDOWN_WAIT}s -- terminating QEMU" \
+            || log "shutdown: guest powered down cleanly"
+    else
+        log "shutdown: QMP unreachable -- terminating QEMU directly"
+    fi
+    kill -TERM "$QEMU_PID" 2>/dev/null || true
+}
+trap on_term TERM INT
+
 export NVKVM_PRESENT_TIMING="${NVKVM_PRESENT_TIMING:-1}"
-exec /opt/qemu-nvkvm/bin/qemu-system-x86_64 \
+/opt/qemu-nvkvm/bin/qemu-system-x86_64 \
     -name nvkvm-steamos \
     -machine q35,accel=kvm -cpu host \
     -m "${VM_MEM:-12G}" -smp "${VM_SMP:-8}" \
@@ -303,4 +337,13 @@ exec /opt/qemu-nvkvm/bin/qemu-system-x86_64 \
     -serial chardev:nvkvm-serial \
     -monitor none \
     -display "$QEMU_DISPLAY" \
-    "${QEMU_EXTRA[@]}"
+    "${QEMU_EXTRA[@]}" &
+QEMU_PID=$!
+# `wait` returns as soon as a trapped signal arrives, with QEMU still running,
+# so keep waiting until the child is genuinely gone.
+rc=0
+while kill -0 "$QEMU_PID" 2>/dev/null; do
+    wait "$QEMU_PID"; rc=$?
+done
+log "QEMU exited with status $rc"
+exit "$rc"

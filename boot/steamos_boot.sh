@@ -926,22 +926,35 @@ build_validation_probes() {
 # run installed.  Putting it any earlier installs the agent and then deletes it
 # again, on every single boot, silently.
 ensure_clipboard_agent() {
-    if in_target sh -c 'command -v spice-vdagentd >/dev/null 2>&1'; then
+    # -s, not `command -v`.  A present-but-EMPTY binary is a real state on this
+    # image: an unclean guest shutdown discards unflushed data and leaves whole
+    # packages as 0-byte files with their metadata intact, so pacman still calls
+    # them installed and `command -v` still finds them.  Testing for content is
+    # what tells "installed" apart from "installed and then truncated", and the
+    # repair is a forced reinstall -- --needed would decline, the version being
+    # nominally correct already.
+    if in_target sh -c '[ -s /usr/bin/spice-vdagentd ] && [ -s /usr/bin/spice-vdagent ]'; then
         log "clipboard: spice-vdagent already present"
     else
-        log "clipboard: installing spice-vdagent"
+        local why="installing"
+        in_target sh -c 'command -v spice-vdagentd >/dev/null 2>&1' \
+            && why="reinstalling (present but zero-length -- lost to an unclean shutdown)"
+        log "clipboard: $why spice-vdagent"
         steamos_unlock
         ensure_pacman_keyring || { warn "clipboard: no pacman keyring; skipping"; return 0; }
-        in_target pacman -S --noconfirm --needed spice-vdagent \
+        in_target pacman -S --noconfirm spice-vdagent \
             || { warn "clipboard: could not install spice-vdagent; clipboard stays off"; return 0; }
+        in_target sh -c '[ -s /usr/bin/spice-vdagentd ]' \
+            || { warn "clipboard: spice-vdagentd is STILL zero-length after reinstall"; return 0; }
     fi
     steamos_unlock
     # The daemon owns the virtio port.  The per-session half (spice-vdagent)
     # starts itself from /etc/xdg/autostart in the desktop session, so there is
     # nothing to enable for it -- and nothing we could enable, since it needs a
     # session bus we are not inside of.
+    in_target systemctl unmask spice-vdagentd.service spice-vdagentd.socket >/dev/null 2>&1 || true
     in_target systemctl enable spice-vdagentd.service >/dev/null 2>&1 \
-        || warn "clipboard: could not enable spice-vdagentd.service"
+        || warn "clipboard: could not enable spice-vdagentd.service (is its unit file 0 bytes?)"
     log "clipboard: agent installed and enabled (broker still decides policy)"
 }
 
