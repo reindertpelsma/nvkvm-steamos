@@ -529,6 +529,27 @@ install_nvidia_userspace() {
         ovr="$ovr --override-file-type-destination=OPENCL_LIB:/tmp/nvkvm-discard"
     fi
 
+    # UPGRADE: RECLAIM THE OUTGOING USERSPACE BEFORE TESTING FOR SPACE.
+    # The requirement below is sized for a FRESH install and is right for one.
+    # On an upgrade it asks the 5 GB SteamOS rootfs to hold two NVIDIA
+    # userspaces at once, which it cannot.  MEASURED on a 595 -> 610 host
+    # driver change: 418M free against a 768M requirement, while the outgoing
+    # version occupied ~753M of that same partition -- so the space we needed
+    # was the space the old version was sitting on, and the upgrade refused
+    # itself.
+    #
+    # Deliberately here and not earlier: locate_or_fetch_run() has already
+    # produced a .run that passed its own integrity check, so removing the
+    # installed one cannot strand the guest with no userspace because a
+    # download failed.  A converge runs on every boot, so even a failure after
+    # this point is retried rather than permanent.
+    local installed; installed="$(installed_userspace_version)"
+    if [ -n "$installed" ] && in_target sh -c 'command -v nvidia-uninstall >/dev/null 2>&1'; then
+        log "removing the outgoing NVIDIA userspace ($installed) to make room for the new one"
+        in_target nvidia-uninstall --silent >/dev/null 2>&1 \
+            || warn "nvidia-uninstall did not report success; continuing to the space test"
+    fi
+
     local need_kb=1310720
     [ "$PROFILE" = steamos ] && need_kb=786432
     [ "${NVKVM_NO_COMPAT32:-0}" = "1" ] && need_kb=$((need_kb/2))
