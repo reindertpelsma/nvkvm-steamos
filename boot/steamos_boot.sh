@@ -964,6 +964,30 @@ ensure_clipboard_agent() {
     in_target systemctl unmask spice-vdagentd.service spice-vdagentd.socket >/dev/null 2>&1 || true
     in_target systemctl enable spice-vdagentd.service >/dev/null 2>&1 \
         || warn "clipboard: could not enable spice-vdagentd.service (is its unit file 0 bytes?)"
+
+    # THE SESSION HALF, which the package does not get right on its own here.
+    # It ships /etc/xdg/autostart/spice-vdagent.desktop with
+    # X-GNOME-Autostart-Phase=WindowManager, i.e. launched as early as an
+    # autostart can be -- before XWayland exists.  MEASURED on a fresh install:
+    # the daemon was active, the binary was fine, XWayland was up, and the
+    # agent was simply not running, because it had already tried and exited.
+    #
+    # The package's own user unit is `static` (no [Install]), so it cannot be
+    # enabled as shipped.  A drop-in gives it one, ties it to the graphical
+    # session rather than to a phase, and lets it retry -- which turns a race
+    # into a wait.
+    local dropdir; dropdir="$(rp /etc/systemd/user/spice-vdagent.service.d)"
+    mkdir -p "$dropdir" 2>/dev/null || warn "clipboard: could not create $dropdir"
+    {
+        printf '# Added by nvkvm steamos_boot.sh.  The shipped unit is static and the\n'
+        printf '# shipped autostart entry races XWayland; this starts the agent with the\n'
+        printf '# graphical session and retries until the display is actually there.\n'
+        printf '[Unit]\nAfter=graphical-session.target\nPartOf=graphical-session.target\n\n'
+        printf '[Service]\nRestart=on-failure\nRestartSec=2\n\n'
+        printf '[Install]\nWantedBy=graphical-session.target\n'
+    } > "$dropdir/nvkvm.conf" 2>/dev/null || warn "clipboard: could not write the session drop-in"
+    in_target systemctl --global enable spice-vdagent.service >/dev/null 2>&1 \
+        || warn "clipboard: could not enable the per-session spice-vdagent"
     log "clipboard: agent installed and enabled (broker still decides policy)"
 }
 
