@@ -543,16 +543,86 @@ install_nvidia_userspace() {
     # installed one cannot strand the guest with no userspace because a
     # download failed.  A converge runs on every boot, so even a failure after
     # this point is retried rather than permanent.
+    #
+    # NOT nvidia-uninstall.  It is nvidia-installer --uninstall and it needs the
+    # install log and backup directory to know what it put where; this image has
+    # neither (no /var/log/nvidia-installer.log, no /var/lib/nvidia), so it
+    # exits 0 having removed nothing -- MEASURED, twice, free space unchanged to
+    # the kilobyte.  The new .run's uninstaller would consult the same missing
+    # bookkeeping and do the same nothing.
+    #
+    # Every file NVIDIA's userspace installs is suffixed with the driver
+    # version, so the outgoing set names itself and needs no records at all:
+    # `*.so.<version>` matched 49 files totalling 800M here, and nothing else on
+    # the filesystem.  That is a stronger guarantee than a log we have just
+    # watched go missing.
     local installed; installed="$(installed_userspace_version)"
-    if [ -n "$installed" ] && in_target sh -c 'command -v nvidia-uninstall >/dev/null 2>&1'; then
-        log "removing the outgoing NVIDIA userspace ($installed) to make room for the new one"
-        in_target nvidia-uninstall --silent >/dev/null 2>&1 \
-            || warn "nvidia-uninstall did not report success; continuing to the space test"
+    local reclaimed_kb=0
+    if [ -n "$installed" ]; then
+        local before_kb; before_kb="$(df -Pk "$(rp /usr)" 2>/dev/null | awk 'NR==2{print $4}')"
+        local nfiles
+        nfiles="$(in_target sh -c "find /usr/lib /usr/lib32 /usr/lib/vdpau /usr/lib32/vdpau \
+            -maxdepth 1 -name '*.so.$installed' 2>/dev/null | wc -l" 2>/dev/null)"
+        log "reclaiming the outgoing NVIDIA userspace ($installed): ${nfiles:-0} file(s)"
+        in_target sh -c "find /usr/lib /usr/lib32 /usr/lib/vdpau /usr/lib32/vdpau \
+            -maxdepth 1 -name '*.so.$installed' -delete 2>/dev/null" \
+            || warn "could not fully remove the outgoing userspace; the space test may still refuse"
+        # The SONAME symlinks now dangle; the install below rewrites them and
+        # ldconfig runs after it either way.
+        local after_kb; after_kb="$(df -Pk "$(rp /usr)" 2>/dev/null | awk 'NR==2{print $4}')"
+        [ -n "$before_kb" ] && [ -n "$after_kb" ] && reclaimed_kb=$((after_kb - before_kb))
+        [ "$reclaimed_kb" -lt 0 ] && reclaimed_kb=0
+        log "reclaimed $((reclaimed_kb/1024))M on $(rp /usr)"
     fi
 
+    # PERSIST THE INSTALLER'S RECORDS OFF THE 5 GB ROOTFS.  nvidia-installer
+    # writes what it installed to /var/lib/nvidia, and that is the only thing
+    # its --uninstall consults.  On this image the directory did not survive,
+    # so nvidia-uninstall exited 0 having removed nothing and every upgrade had
+    # to rediscover the outgoing files by name.  /home has 48 GB and is not
+    # replaced by an A/B update, so keep them there and the supported path
+    # works next time.
+    # It must be a real DIRECTORY -- nvidia-installer refuses a symlink outright
+    # ("ERROR: /var/lib/nvidia is not a directory") and the install fails, which
+    # is worse than not persisting anything.  It costs the rootfs nothing
+    # either way: /var is its own partition on this layout, so the records were
+    # never taking space from the 5 GB rootfs -- they were simply absent, which
+    # is why nvidia-uninstall had nothing to go on.
+    local nvstate="/home/.nvkvm-nvidia-state"
+    mkdir -p "$(rp "$nvstate")" 2>/dev/null
+    [ -L "$(rp /var/lib/nvidia)" ] && rm -f "$(rp /var/lib/nvidia)" 2>/dev/null
+    mkdir -p "$(rp /var/lib/nvidia)" 2>/dev/null \
+        || warn "could not create /var/lib/nvidia; the next upgrade will have to find the old files by name again"
+
+    # The constants below are calibrated for a FRESH install on an uncompressed
+    # estimate.  This rootfs is btrfs with zstd, where the outgoing userspace
+    # measured 800M by du but only ~277M on disk -- so on an upgrade the
+    # constant overstates the need by roughly 3x and refuses installs that fit
+    # comfortably.  When we have just reclaimed a previous version we know what
+    # a userspace actually costs HERE, so use that plus a margin instead of
+    # guessing.  A fresh install has no such measurement and keeps the constant.
     local need_kb=1310720
     [ "$PROFILE" = steamos ] && need_kb=786432
     [ "${NVKVM_NO_COMPAT32:-0}" = "1" ] && need_kb=$((need_kb/2))
+    #
+    # Remember the measurement across runs.  A reclaim only happens on an
+    # upgrade, so without persisting it the very next converge is back to
+    # guessing -- which is exactly how this ended up refusing an install with
+    # 707M free and a 277M-shaped hole to fill.  The record lives on /home with
+    # the rest of the nvidia state, so an A/B update does not erase it.
+    local costfile="$nvstate/userspace-kb"
+    if [ "$reclaimed_kb" -gt 0 ]; then
+        printf '%s\n' "$reclaimed_kb" > "$(rp "$costfile")" 2>/dev/null
+    fi
+    local known_kb; known_kb="$(cat "$(rp "$costfile")" 2>/dev/null)"
+    case "$known_kb" in ''|*[!0-9]*) known_kb="" ;; esac
+    if [ -n "$known_kb" ] && [ "$known_kb" -gt 0 ]; then
+        local measured_kb=$((known_kb + known_kb / 4))
+        if [ "$measured_kb" -lt "$need_kb" ]; then
+            log "sizing the space test from what a userspace actually costs here: $((measured_kb/1024))M (the fresh-install estimate is $((need_kb/1024))M)"
+            need_kb="$measured_kb"
+        fi
+    fi
     local free_kb; free_kb="$(df -Pk "$(rp /usr)" 2>/dev/null | awk 'NR==2{print $4}')"
     if [ -n "$free_kb" ] && [ "$free_kb" -lt "$need_kb" ]; then
         err "not enough space for the NVIDIA userspace: free=$((free_kb/1024))M needed=$((need_kb/1024))M"
