@@ -294,21 +294,47 @@ log "SSH after provisioning: docker compose exec vmm nvkvm-steamos-ssh"
 # the exec() stood in the way.
 SHUTDOWN_WAIT="${NVKVM_STEAMOS_SHUTDOWN_WAIT:-90}"
 QEMU_PID=""
+wait_for_qemu() {   # <seconds>
+    local n=0
+    while kill -0 "$QEMU_PID" 2>/dev/null && [ "$n" -lt "$1" ]; do
+        sleep 1; n=$((n + 1))
+    done
+    kill -0 "$QEMU_PID" 2>/dev/null && return 1 || return 0
+}
+
 on_term() {
     [ -n "$QEMU_PID" ] || exit 0
-    log "shutdown: asking the guest to power down (ACPI), up to ${SHUTDOWN_WAIT}s"
-    if printf '{"execute":"qmp_capabilities"}\n{"execute":"system_powerdown"}\n' \
-        | timeout 5 socat - "unix-connect:$STATE_DIR/qmp.sock" >/dev/null 2>&1; then
-        local n=0
-        while kill -0 "$QEMU_PID" 2>/dev/null && [ "$n" -lt "$SHUTDOWN_WAIT" ]; do
-            sleep 1; n=$((n + 1))
-        done
-        kill -0 "$QEMU_PID" 2>/dev/null \
-            && log "shutdown: guest still up after ${SHUTDOWN_WAIT}s -- terminating QEMU" \
-            || log "shutdown: guest powered down cleanly"
-    else
-        log "shutdown: QMP unreachable -- terminating QEMU directly"
+
+    # SSH FIRST, ACPI SECOND.  MEASURED: `system_powerdown` alone sat for the
+    # full 90 s and the guest never went down -- on a SteamOS desktop the power
+    # button is grabbed by the session (KDE puts up a dialog nobody is there to
+    # answer), so the ACPI event politely asks a human.  `systemctl poweroff`
+    # asks the init system instead, which is the thing that actually unmounts.
+    # ACPI stays as the fallback for a guest that has no SSH yet -- an install,
+    # an initramfs, a boot that did not get that far.
+    local key="$STATE_DIR/ssh/id_ed25519"
+    if [ -r "$key" ]; then
+        log "shutdown: asking the guest to power down over SSH"
+        timeout 15 ssh -i "$key" -p "${NVKVM_STEAMOS_SSH_PORT:-15022}" \
+            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=5 -o BatchMode=yes \
+            "${NVKVM_STEAMOS_SSH_USER:-root}@127.0.0.1" \
+            'systemctl poweroff' >/dev/null 2>&1 || true
+        if wait_for_qemu "$SHUTDOWN_WAIT"; then
+            log "shutdown: guest powered down cleanly"
+            return
+        fi
     fi
+
+    log "shutdown: falling back to ACPI power button"
+    printf '{"execute":"qmp_capabilities"}\n{"execute":"system_powerdown"}\n' \
+        | timeout 5 socat - "unix-connect:$STATE_DIR/qmp.sock" >/dev/null 2>&1 \
+        || log "shutdown: QMP unreachable"
+    if wait_for_qemu 20; then
+        log "shutdown: guest powered down cleanly"
+        return
+    fi
+    log "shutdown: guest did not stop -- terminating QEMU (writes may be lost)"
     kill -TERM "$QEMU_PID" 2>/dev/null || true
 }
 trap on_term TERM INT
