@@ -65,6 +65,36 @@ services:
       - /tmp:rw,nosuid,nodev,noexec,size=16m
     restart: unless-stopped
 
+  # The guest's audio, and NOTHING else.
+  #
+  # Deliberately not part of the broker: the broker holds the display, the
+  # keyboard grab and the clipboard, and the player parses bytes chosen by a
+  # possibly-compromised VMM.  Those two things do not belong in one process.
+  #
+  # Note what is NOT mounted here: $XDG_RUNTIME_DIR.  Mounting it would have
+  # carried the Wayland socket in with it and defeated the point; the pulse
+  # socket is world-accessible (srw-rw-rw-) so it can be bind-mounted ALONE,
+  # which is why this can run as nobody with no capabilities at all.
+  audio:
+    image: nvkvm-steamos-broker:${NVKVM_IMAGE_TAG:-local}
+    build:
+      context: .
+      target: broker
+      args:
+        NVKVM_REPOSITORY: ${NVKVM_REPOSITORY:-https://github.com/reindertpelsma/nvkvm-pv.git}
+        NVKVM_REF: ${NVKVM_REF:-main}
+    entrypoint: ["/opt/nvkvm/docker/audio-entrypoint.sh"]
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    user: "65534:65534"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - broker-socket:/run/nvkvm
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/pulse/native:/run/pulse/native
+    restart: unless-stopped
+
   # Untrusted VMM. Its only path toward the desktop is broker-socket. It gets
   # no host X11/Wayland socket and the broker gets none of this service's state.
   vmm:
@@ -131,6 +161,7 @@ services:
       - 127.0.0.1:${NVKVM_STEAMOS_HOST_SSH_PORT:-15022}:15022
     depends_on:
       - broker
+      - audio
     restart: unless-stopped
     stop_grace_period: 2m
 

@@ -113,69 +113,6 @@ esac
 [ -n "${NVKVM_BROKER_CLIPBOARD_TRIGGER:-}" ] \
     && extra+=(--clipboard-trigger "$NVKVM_BROKER_CLIPBOARD_TRIGGER")
 
-# ── audio ────────────────────────────────────────────────────────────────────
-# PLAYBACK ONLY, AND ONE DIRECTION BY CONSTRUCTION.
-#
-# The VMM writes PCM into a fifo on the shared /run/nvkvm volume; this
-# container reads it and plays it to the host.  The fifo is the whole security
-# argument: it cannot be read from the VMM's side, so there is no path back --
-# no microphone, no monitoring of other applications, no host audio socket in
-# the untrusted container at all.  Anyone who wants a microphone or a camera
-# uses QEMU's own passthrough for those, which is a deliberately larger
-# decision than "the game should have sound".
-#
-# The host connection lives HERE because this container is the trusted one: it
-# already holds the display, and $XDG_RUNTIME_DIR is mounted at
-# /run/host-runtime for exactly that reason.
-#
-# IN A SUBDIRECTORY, and not for tidiness: fs.protected_fifos is 1 on any
-# modern distro, and it refuses O_WRONLY on a fifo you do not OWN inside a
-# sticky world-writable directory.  The shared volume root is exactly that
-# (drwxrwxrwt), so the VMM -- which does not own a fifo this container
-# created -- got EACCES no matter what the mode bits said.  MEASURED: 0666
-# made no difference; a plain 0755 subdirectory made it work at once.
-AUDIO_DIR="$(dirname "$SOCKET")/audio"
-AUDIO_FIFO="${NVKVM_AUDIO_FIFO:-$AUDIO_DIR/pcm}"
-if [ "${NVKVM_AUDIO:-1}" = 1 ] && command -v pacat >/dev/null 2>&1; then
-    mkdir -p "$AUDIO_DIR" && chmod 0755 "$AUDIO_DIR" 2>/dev/null
-    rm -f "$AUDIO_FIFO"
-    if mkfifo -m 0622 "$AUDIO_FIFO" 2>/dev/null; then
-        # 0622: the VMM writes, only this container reads.
-        log "audio: playing the guest stream from $AUDIO_FIFO"
-        (
-            # HOLD THE FIFO OPEN, read-write, for the life of this container.
-            #
-            # Opening a fifo for WRITE fails with ENXIO while no reader is
-            # attached, and QEMU opens its audiodev during startup -- so a VM
-            # that booted before the player was ready died with "Could not
-            # create a backend for voice 'virtio-sound.out'" and ran silent
-            # until something restarted it.  MEASURED on the first attempt.
-            #
-            # An O_RDWR holder never blocks, and means the writer always finds
-            # a reader no matter which container starts first.  It also stops
-            # the player seeing EOF when a VM shuts down, so one pw-cat serves
-            # every VM restart instead of needing a respawn loop.  The holder
-            # never reads, so the player still receives the whole stream.
-            exec 3<>"$AUDIO_FIFO"
-            while :; do
-                PULSE_SERVER="unix:/run/host-runtime/pulse/native" \
-                XDG_RUNTIME_DIR=/run/host-runtime \
-                pacat --playback --raw \
-                      --rate="${NVKVM_AUDIO_RATE:-48000}" \
-                      --channels="${NVKVM_AUDIO_CHANNELS:-2}" \
-                      --format="${NVKVM_AUDIO_FORMAT:-s16le}" \
-                      --stream-name=nvkvm-guest \
-                      "$AUDIO_FIFO" >/dev/null 2>&1
-                sleep 1     # only reached if the player itself dies
-            done
-        ) &
-    else
-        log "audio: could not create $AUDIO_FIFO; the guest will have no sound"
-    fi
-else
-    log "audio: disabled (NVKVM_AUDIO=0 or pacat missing)"
-fi
-
 log "backend=$BACKEND desktop_uid=$desktop_uid desktop_gid=$desktop_gid socket=$SOCKET"
 log "the VMM has no display mount; CTRL+ALT+G toggles the broker input grab"
 

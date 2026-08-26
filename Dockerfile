@@ -37,6 +37,7 @@ COPY vm /opt/nvkvm/vm
 COPY scripts/steamos-container-entrypoint.sh /opt/nvkvm/scripts/steamos-container-entrypoint.sh
 COPY scripts/steamos-ssh.sh /opt/nvkvm/scripts/steamos-ssh.sh
 COPY scripts/steamos-serial.sh /opt/nvkvm/scripts/steamos-serial.sh
+COPY docker/audio-entrypoint.sh /opt/nvkvm/docker/audio-entrypoint.sh
 
 RUN find src boot tests/validate.sh -type f -print0 \
         | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f1 \
