@@ -32,7 +32,7 @@ export NVKVM_PRESENT_TIMING=1
 
 # VGA=none -> decisive: nothing but nvkvm can be drawing.
 VGA_ARGS=(-vga none)
-[ "${VGA:-none}" = "vga" ] && VGA_ARGS=(-device VGA,id=bootvga)
+[ "${VGA:-none}" = "vga" ] && VGA_ARGS=(-device "VGA,id=bootvga")
 
 DISP="${VM_DISPLAY:-gtk,gl=on}"
 echo "== display=$DISP vga=${VGA:-none} present_mode=${NVKVM_PRESENT_MODE:-auto} qcow=$QCOW =="

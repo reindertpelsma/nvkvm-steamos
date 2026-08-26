@@ -1,0 +1,111 @@
+name: nvkvm-steamos
+
+services:
+  # Trusted only in the display-server sense: this process owns a window and
+  # input focus in the logged-in host session. It has no /dev/kvm, NVIDIA
+  # device, VM disk, recovery image, SSH key, or nvkvm source share.
+  broker:
+    image: nvkvm-steamos-broker:${NVKVM_IMAGE_TAG:-local}
+    build:
+      context: .
+      target: broker
+      args:
+        NVKVM_REPOSITORY: ${NVKVM_REPOSITORY:-https://github.com/reindertpelsma/nvkvm-pv.git}
+        NVKVM_REF: ${NVKVM_REF:-main}
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    # The entrypoint uses these only to become the owner of the mounted desktop
+    # runtime directory, then clears effective/permitted caps before execing.
+    cap_add: [SETUID, SETGID]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DISPLAY: ${DISPLAY:-:0}
+      WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-wayland-0}
+      NVKVM_BROKER_BACKEND: ${NVKVM_BROKER_BACKEND:-auto}
+      NVKVM_BROKER_SIZE: ${NVKVM_BROKER_SIZE:-1280x800}
+      NVKVM_BROKER_SCALE: ${NVKVM_BROKER_SCALE:-aspect}
+      NVKVM_BROKER_FULLSCREEN: ${NVKVM_BROKER_FULLSCREEN:-0}
+    volumes:
+      - broker-socket:/run/nvkvm
+      # Trusted broker only. The untrusted VMM service has neither mount.
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}:/run/host-runtime:rw
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${XAUTHORITY:-/dev/null}:/run/host-xauthority:ro
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=16m
+    restart: unless-stopped
+
+  # Untrusted VMM. Its only path toward the desktop is broker-socket. It gets
+  # no host X11/Wayland socket and the broker gets none of this service's state.
+  vmm:
+    image: nvkvm-steamos-vmm:${NVKVM_IMAGE_TAG:-local}
+    build:
+      context: .
+      target: vmm
+      args:
+        NVKVM_REPOSITORY: ${NVKVM_REPOSITORY:-https://github.com/reindertpelsma/nvkvm-pv.git}
+        NVKVM_REF: ${NVKVM_REF:-main}
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    # Required to make each nvkvm isolate use a separate uid and chroot. With
+    # these absent, auto mode falls back to the weaker seccomp-only rung.
+    cap_add: [SETUID, SETGID, SETPCAP, SYS_CHROOT]
+    security_opt:
+      # Docker's built-in syscall allowlist remains active. Each nvkvm isolate
+      # then installs its much smaller, 20-syscall TSYNC seccomp allowlist.
+      - no-new-privileges:true
+    devices:
+      - /dev/kvm:/dev/kvm
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility, compute, graphics, display, video]
+    environment:
+      NVKVM_ISOLATE_MODE: uid+chroot
+      VM_MEM: ${STEAMOS_VM_MEM:-12G}
+      VM_SMP: ${STEAMOS_VM_SMP:-8}
+      NVKVM_STEAMOS_DISK_SIZE: ${NVKVM_STEAMOS_DISK_SIZE:-64G}
+      NVKVM_STEAMOS_PROFILE: ${NVKVM_STEAMOS_PROFILE:-steamos}
+      NVKVM_STEAMOS_RECOVERY_URL: ${NVKVM_STEAMOS_RECOVERY_URL:-}
+      NVKVM_STEAMOS_LATEST: ${NVKVM_STEAMOS_LATEST:-0}
+      NVKVM_BROKER_SOCKET: /run/nvkvm/steamos.sock
+      NVKVM_STEAMOS_QEMU_DISPLAY: nvkvm-broker,socket=/run/nvkvm/steamos.sock
+      NVKVM_STEAMOS_SSH_PORT: 15022
+    volumes:
+      - steamos-state:/var/lib/nvkvm-steamos
+      # A named volume by default; set NVKVM_STEAMOS_DATA=/absolute/host/path
+      # (or ./relative/path) to make the same guest ~/data mount a bind mount.
+      - ${NVKVM_STEAMOS_DATA:-steamos-data}:/data
+      - broker-socket:/run/nvkvm
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=2g
+      - /var/tmp:rw,nosuid,nodev,size=256m
+    ports:
+      - 127.0.0.1:${NVKVM_STEAMOS_HOST_SSH_PORT:-15022}:15022
+    depends_on:
+      - broker
+    restart: unless-stopped
+    stop_grace_period: 2m
+
+volumes:
+  # Recovery image, qcow2, Alpine vmlinuz/initramfs/modloop, OVMF vars, logs,
+  # and the private SSH key generated once by the VMM entrypoint.
+  steamos-state:
+    name: ${NVKVM_STEAMOS_STATE_VOLUME:-nvkvm-steamos-state}
+  steamos-data:
+    name: ${NVKVM_STEAMOS_DATA_VOLUME:-nvkvm-steamos-data}
+  # A daemon-mounted tmpfs shared by exactly the two services. Mount the
+  # directory, never the socket inode: broker restart creates a new inode.
+  broker-socket:
+    name: ${NVKVM_BROKER_SOCKET_VOLUME:-nvkvm-steamos-broker-socket}
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=1m,mode=1777,nosuid,nodev,noexec

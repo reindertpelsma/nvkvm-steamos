@@ -1,0 +1,874 @@
+[2J[001;001H[=3h[2J[001;001H[2J[001;001H[8;042;160t[2J[001;001H[2J[001;001H[8;056;240t[2J[001;001H[    0.000000] Linux version 6.18.35-0-virt (buildozer@build-3-24-x86_64) (cc (Alpine 15.2.0) 15.2.0, GNU ld (GNU Binutils) 2.45.1) #1-Alpine SMP PREEMPT_DYNAMIC 2026-06-09 12:34:47
+[    0.000000] Command line: initrd=initrd console=ttyS0,115200 rdinit=/nvkvm/guest-init.sh nvkvm.stages=repair
+[    0.000000] BIOS-provided physical RAM map:
+[    0.000000] BIOS-e820: [mem 0x0000000000000000-0x000000000009ffff] usable
+[    0.000000] BIOS-e820: [mem 0x0000000000100000-0x00000000007fffff] usable
+[    0.000000] BIOS-e820: [mem 0x0000000000800000-0x0000000000807fff] ACPI NVS
+[    0.000000] BIOS-e820: [mem 0x0000000000808000-0x000000000080afff] usable
+[    0.000000] BIOS-e820: [mem 0x000000000080b000-0x000000000080bfff] ACPI NVS
+[    0.000000] BIOS-e820: [mem 0x000000000080c000-0x0000000000813fff] usable
+[    0.000000] BIOS-e820: [mem 0x0000000000814000-0x00000000008fffff] ACPI NVS
+[    0.000000] BIOS-e820: [mem 0x0000000000900000-0x000000007ed3efff] usable
+[    0.000000] BIOS-e820: [mem 0x000000007ed3f000-0x000000007edfffff] reserved
+[    0.000000] BIOS-e820: [mem 0x000000007ee00000-0x000000007f8ecfff] usable
+[    0.000000] BIOS-e820: [mem 0x000000007f8ed000-0x000000007fb6cfff] reserved
+[    0.000000] BIOS-e820: [mem 0x000000007fb6d000-0x000000007fb7efff] ACPI data
+[    0.000000] BIOS-e820: [mem 0x000000007fb7f000-0x000000007fbfefff] ACPI NVS
+[    0.000000] BIOS-e820: [mem 0x000000007fbff000-0x000000007feebfff] usable
+[    0.000000] BIOS-e820: [mem 0x000000007feec000-0x000000007ff6ffff] reserved
+[    0.000000] BIOS-e820: [mem 0x000000007ff70000-0x000000007fffffff] ACPI NVS
+[    0.000000] BIOS-e820: [mem 0x00000000e0000000-0x00000000efffffff] reserved
+[    0.000000] BIOS-e820: [mem 0x00000000feffc000-0x00000000feffffff] reserved
+[    0.000000] BIOS-e820: [mem 0x00000000ffc00000-0x00000000ffffffff] reserved
+[    0.000000] BIOS-e820: [mem 0x0000000100000000-0x000000017fffffff] usable
+[    0.000000] BIOS-e820: [mem 0x000000fd00000000-0x000000ffffffffff] reserved
+[    0.000000] NX (Execute Disable) protection: active
+[    0.000000] APIC: Static calls initialized
+[    0.000000] efi: EFI v2.7 by Ubuntu distribution of EDK II
+[    0.000000] efi: SMBIOS=0x7f985000 ACPI=0x7fb7e000 ACPI 2.0=0x7fb7e014 MEMATTR=0x7d53b018 INITRD=0x7d53df18 RNG=0x7fb73018 
+[    0.000000] random: crng init done
+[    0.000000] efi: Remove mem137: MMIO range=[0xffc00000-0xffffffff] (4MB) from e820 map
+[    0.000000] SMBIOS 2.8 present.
+[    0.000000] DMI: QEMU Standard PC (Q35 + ICH9, 2009), BIOS 2025.11-3ubuntu7 03/31/2026
+[    0.000000] DMI: Memory slots populated: 1/1
+[    0.000000] Hypervisor detected: KVM
+[    0.000000] last_pfn = 0x7feec max_arch_pfn = 0x400000000
+[    0.000000] kvm-clock: Using msrs 4b564d01 and 4b564d00
+[    0.000001] kvm-clock: using sched offset of 1903956528 cycles
+[    0.000003] clocksource: kvm-clock: mask: 0xffffffffffffffff max_cycles: 0x1cd42e4dffb, max_idle_ns: 881590591483 ns
+[    0.000007] tsc: Detected 2794.750 MHz processor
+[    0.001184] last_pfn = 0x180000 max_arch_pfn = 0x400000000
+[    0.001477] MTRR map: 4 entries (2 fixed + 2 variable; max 18), built from 8 variable MTRRs
+[    0.001488] x86/PAT: Configuration [0-7]: WB  WC  UC- UC  WB  WP  UC- WT  
+[    0.001856] last_pfn = 0x7feec max_arch_pfn = 0x400000000
+[    0.005864] Using GB pages for direct mapping
+[    0.006371] Secure boot disabled
+[    0.006372] RAMDISK: [mem 0x7c9f0000-0x7d322fff]
+[    0.006374] ACPI: Early table checksum verification disabled
+[    0.006376] ACPI: RSDP 0x000000007FB7E014 000024 (v02 BOCHS )
+[    0.006379] ACPI: XSDT 0x000000007FB7D0E8 000054 (v01 BOCHS  BXPC     00000001      01000013)
+[    0.006383] ACPI: FACP 0x000000007FB79000 0000F4 (v03 BOCHS  BXPC     00000001 BXPC 00000001)
+[    0.006386] ACPI: DSDT 0x000000007FB7A000 00218F (v01 BOCHS  BXPC     00000001 BXPC 00000001)
+[    0.006396] ACPI: FACS 0x000000007FBDD000 000040
+[    0.006397] ACPI: APIC 0x000000007FB78000 000080 (v03 BOCHS  BXPC     00000001 BXPC 00000001)
+[    0.006399] ACPI: HPET 0x000000007FB77000 000038 (v01 BOCHS  BXPC     00000001 BXPC 00000001)
+[    0.006400] ACPI: MCFG 0x000000007FB76000 00003C (v01 BOCHS  BXPC     00000001 BXPC 00000001)
+[    0.006402] ACPI: WAET 0x000000007FB75000 000028 (v01 BOCHS  BXPC     00000001 BXPC 00000001)
+[    0.006404] ACPI: BGRT 0x000000007FB74000 000038 (v01 INTEL  EDK2     00000002      01000013)
+[    0.006405] ACPI: Reserving FACP table memory at [mem 0x7fb79000-0x7fb790f3]
+[    0.006406] ACPI: Reserving DSDT table memory at [mem 0x7fb7a000-0x7fb7c18e]
+[    0.006407] ACPI: Reserving FACS table memory at [mem 0x7fbdd000-0x7fbdd03f]
+[    0.006407] ACPI: Reserving APIC table memory at [mem 0x7fb78000-0x7fb7807f]
+[    0.006408] ACPI: Reserving HPET table memory at [mem 0x7fb77000-0x7fb77037]
+[    0.006408] ACPI: Reserving MCFG table memory at [mem 0x7fb76000-0x7fb7603b]
+[    0.006409] ACPI: Reserving WAET table memory at [mem 0x7fb75000-0x7fb75027]
+[    0.006409] ACPI: Reserving BGRT table memory at [mem 0x7fb74000-0x7fb74037]
+[    0.007248] No NUMA configuration found
+[    0.007248] Faking a node at [mem 0x0000000000000000-0x000000017fffffff]
+[    0.007251] NODE_DATA(0) allocated [mem 0x17fffbd40-0x17fffffff]
+[    0.007415] Zone ranges:
+[    0.007415]   DMA      [mem 0x0000000000001000-0x0000000000ffffff]
+[    0.007417]   DMA32    [mem 0x0000000001000000-0x00000000ffffffff]
+[    0.007418]   Normal   [mem 0x0000000100000000-0x000000017fffffff]
+[    0.007419] Movable zone start for each node
+[    0.007419] Early memory node ranges
+[    0.007420]   node   0: [mem 0x0000000000001000-0x000000000009ffff]
+[    0.007421]   node   0: [mem 0x0000000000100000-0x00000000007fffff]
+[    0.007421]   node   0: [mem 0x0000000000808000-0x000000000080afff]
+[    0.007422]   node   0: [mem 0x000000000080c000-0x0000000000813fff]
+[    0.007422]   node   0: [mem 0x0000000000900000-0x000000007ed3efff]
+[    0.007423]   node   0: [mem 0x000000007ee00000-0x000000007f8ecfff]
+[    0.007448]   node   0: [mem 0x000000007fbff000-0x000000007feebfff]
+[    0.007448]   node   0: [mem 0x0000000100000000-0x000000017fffffff]
+[    0.007449] Initmem setup node 0 [mem 0x0000000000001000-0x000000017fffffff]
+[    0.007583] On node 0, zone DMA: 1 pages in unavailable ranges
+[    0.007603] On node 0, zone DMA: 96 pages in unavailable ranges
+[    0.007608] On node 0, zone DMA: 8 pages in unavailable ranges
+[    0.007608] On node 0, zone DMA: 1 pages in unavailable ranges
+[    0.007627] On node 0, zone DMA: 236 pages in unavailable ranges
+[    0.015626] On node 0, zone DMA32: 193 pages in unavailable ranges
+[    0.015646] On node 0, zone DMA32: 786 pages in unavailable ranges
+[    0.024185] On node 0, zone Normal: 276 pages in unavailable ranges
+[    0.025583] ACPI: PM-Timer IO Port: 0x608
+[    0.025620] ACPI: LAPIC_NMI (acpi_id[0xff] dfl dfl lint[0x1])
+[    0.025744] IOAPIC[0]: apic_id 0, version 17, address 0xfec00000, GSI 0-23
+[    0.025747] ACPI: INT_SRC_OVR (bus 0 bus_irq 0 global_irq 2 dfl dfl)
+[    0.025748] ACPI: INT_SRC_OVR (bus 0 bus_irq 5 global_irq 5 high level)
+[    0.025749] ACPI: INT_SRC_OVR (bus 0 bus_irq 9 global_irq 9 high level)
+[    0.025750] ACPI: INT_SRC_OVR (bus 0 bus_irq 10 global_irq 10 high level)
+[    0.025751] ACPI: INT_SRC_OVR (bus 0 bus_irq 11 global_irq 11 high level)
+[    0.025753] ACPI: Using ACPI (MADT) for SMP configuration information
+[    0.025754] ACPI: HPET id: 0x8086a201 base: 0xfed00000
+[    0.025777] TSC deadline timer available
+[    0.025781] CPU topo: Max. logical packages:   1
+[    0.025782] CPU topo: Max. logical dies:       1
+[    0.025782] CPU topo: Max. dies per package:   1
+[    0.025786] CPU topo: Max. threads per core:   1
+[    0.025787] CPU topo: Num. cores per package:     2
+[    0.025787] CPU topo: Num. threads per package:   2
+[    0.025787] CPU topo: Allowing 2 present CPUs plus 0 hotplug CPUs
+[    0.025829] kvm-guest: APIC: eoi() replaced with kvm_guest_apic_eoi_write()
+[    0.025871] kvm-guest: KVM setup pv remote TLB flush
+[    0.025896] kvm-guest: setup PV sched yield
+[    0.025911] [mem 0x80000000-0xdfffffff] available for PCI devices
+[    0.025912] Booting paravirtualized kernel on KVM
+[    0.025914] clocksource: refined-jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 1910969940391419 ns
+[    0.029753] setup_percpu: NR_CPUS:256 nr_cpumask_bits:2 nr_cpu_ids:2 nr_node_ids:1
+[    0.030215] percpu: Embedded 55 pages/cpu s185752 r8192 d31336 u1048576
+[    0.030324] kvm-guest: PV spinlocks enabled
+[    0.030326] PV qspinlock hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.030329] Kernel command line: initrd=initrd console=ttyS0,115200 rdinit=/nvkvm/guest-init.sh nvkvm.stages=repair
+[    0.030383] printk: log buffer data + meta data: 131072 + 458752 = 589824 bytes
+[    0.031264] Dentry cache hash table entries: 524288 (order: 10, 4194304 bytes, linear)
+[    0.031717] Inode-cache hash table entries: 262144 (order: 9, 2097152 bytes, linear)
+[    0.031781] software IO TLB: area num 2.
+[    0.046252] Fallback order for Node 0: 0 
+[    0.046258] Built 1 zonelists, mobility grouping on.  Total pages: 1046979
+[    0.046260] Policy zone: Normal
+[    0.046873] mem auto-init: stack:all(zero), heap alloc:on, heap free:off
+[    0.053948] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=2, Nodes=1
+[    0.054864] Dynamic Preempt: none
+[    0.055053] rcu: Preemptible hierarchical RCU implementation.
+[    0.055054] rcu: 	RCU restricting CPUs from NR_CPUS=256 to nr_cpu_ids=2.
+[    0.055056] 	Trampoline variant of Tasks RCU enabled.
+[    0.055056] 	Tracing variant of Tasks RCU enabled.
+[    0.055057] rcu: RCU calculated value of scheduler-enlistment delay is 100 jiffies.
+[    0.055057] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=2
+[    0.055062] RCU Tasks: Setting shift to 1 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=2.
+[    0.055063] RCU Tasks Trace: Setting shift to 1 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=2.
+[    0.059575] NR_IRQS: 16640, nr_irqs: 440, preallocated irqs: 16
+[    0.059888] rcu: srcu_init: Setting srcu_struct sizes based on contention.
+[    0.059997] kfence: initialized - using 2097152 bytes for 255 objects at 0x(____ptrval____)-0x(____ptrval____)
+[    0.060051] Console: colour dummy device 80x25
+[    0.060188] printk: legacy console [ttyS0] enabled
+[    1.025529] ACPI: Core revision 20250807
+[    1.029831] clocksource: hpet: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604467 ns
+[    1.039621] APIC: Switch to symmetric I/O mode setup
+[    1.047258] x2apic enabled
+[    1.052222] APIC: Switched APIC routing to: physical x2apic
+[    1.058126] kvm-guest: APIC: send_IPI_mask() replaced with kvm_send_ipi_mask()
+[    1.065141] kvm-guest: APIC: send_IPI_mask_allbutself() replaced with kvm_send_ipi_mask_allbutself()
+[    1.073199] kvm-guest: setup PV IPIs
+[    1.082585] ..TIMER: vector=0x30 apic1=0 pin1=2 apic2=-1 pin2=-1
+[    1.089831] clocksource: tsc-early: mask: 0xffffffffffffffff max_cycles: 0x2848e100549, max_idle_ns: 440795215505 ns
+[    1.099217] Calibrating delay loop (skipped) preset value.. 5589.50 BogoMIPS (lpj=2794750)
+[    1.101963] x86/cpu: User Mode Instruction Prevention (UMIP) activated
+[    1.103214] Last level iTLB entries: 4KB 512, 2MB 255, 4MB 127
+[    1.104216] Last level dTLB entries: 4KB 512, 2MB 255, 4MB 127, 1GB 0
+[    1.105258] mitigations: Enabled attack vectors: user_kernel, user_user, guest_host, guest_guest, SMT mitigations: auto
+[    1.106217] Speculative Store Bypass: Mitigation: Speculative Store Bypass disabled via prctl
+[    1.107217] Transient Scheduler Attacks: Vulnerable: No microcode
+[    1.108216] Spectre V2 : Mitigation: Retpolines
+[    1.109216] Speculative Return Stack Overflow: Mitigation: Safe RET
+[    1.110216] Spectre V1 : Mitigation: usercopy/swapgs barriers and __user pointer sanitization
+[    1.111216] Spectre V2 : Spectre v2 / SpectreRSB: Filling RSB on context switch and VMEXIT
+[    1.113216] Spectre V2 : Enabling Restricted Speculation for firmware calls
+[    1.114218] Spectre V2 : mitigation: Enabling conditional Indirect Branch Prediction Barrier
+[    1.115220] active return thunk: srso_alias_return_thunk
+[    1.116363] x86/fpu: Supporting XSAVE feature 0x001: 'x87 floating point registers'
+[    1.117216] x86/fpu: Supporting XSAVE feature 0x002: 'SSE registers'
+[    1.118216] x86/fpu: Supporting XSAVE feature 0x004: 'AVX registers'
+[    1.119217] x86/fpu: xstate_offset[2]:  576, xstate_sizes[2]:  256
+[    1.120216] x86/fpu: Enabled xstate features 0x7, context size is 832 bytes, using 'compacted' format.
+[    1.154726] Freeing SMP alternatives memory: 40K
+[    1.155218] pid_max: default: 32768 minimum: 301
+[    1.156278] LSM: initializing lsm=lockdown,capability,landlock,yama
+[    1.157321] landlock: Up and running.
+[    1.158216] Yama: becoming mindful.
+[    1.159505] Mount-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    1.160238] Mountpoint-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    1.161903] smpboot: CPU0: AMD EPYC 7543 32-Core Processor (family: 0x19, model: 0x1, stepping: 0x1)
+[    1.162705] Performance Events: Fam17h+ core perfctr, AMD PMU driver.
+[    1.163276] ... version:                   0
+[    1.164229] ... bit width:                 48
+[    1.165228] ... generic counters:          6
+[    1.166228] ... generic bitmap:            000000000000003f
+[    1.167227] ... fixed-purpose counters:    0
+[    1.168227] ... fixed-purpose bitmap:      0000000000000000
+[    1.169228] ... value mask:                0000ffffffffffff
+[    1.170228] ... max period:                00007fffffffffff
+[    1.171228] ... global_ctrl mask:          000000000000003f
+[    1.172687] signal: max sigframe size: 1776
+[    1.173370] rcu: Hierarchical SRCU implementation.
+[    1.174227] rcu: 	Max phase no-delay instances is 400.
+[    1.175353] Timer migration: 1 hierarchy levels; 8 children per group; 1 crossnode level
+[    1.181261] smp: Bringing up secondary CPUs ...
+[    1.182852] smpboot: x86: Booting SMP configuration:
+[    1.183232] .... node  #0, CPUs:      #1
+[    1.185361] smp: Brought up 1 node, 2 CPUs
+[    1.187227] smpboot: Total of 2 processors activated (11179.00 BogoMIPS)
+[    1.189302] Memory: 3940572K/4187916K available (14650K kernel code, 2032K rwdata, 9844K rodata, 2996K init, 1168K bss, 243264K reserved, 0K cma-reserved)
+[    1.190542] devtmpfs: initialized
+[    1.191299] x86/mm: Memory block size: 128MB
+[    1.193341] ACPI: PM: Registering ACPI NVS region [mem 0x00800000-0x00807fff] (32768 bytes)
+[    1.202260] ACPI: PM: Registering ACPI NVS region [mem 0x0080b000-0x0080bfff] (4096 bytes)
+[    1.210229] ACPI: PM: Registering ACPI NVS region [mem 0x00814000-0x008fffff] (966656 bytes)
+[    1.220245] ACPI: PM: Registering ACPI NVS region [mem 0x7fb7f000-0x7fbfefff] (524288 bytes)
+[    1.230249] ACPI: PM: Registering ACPI NVS region [mem 0x7ff70000-0x7fffffff] (589824 bytes)
+[    1.240625] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 1911260446275000 ns
+[    1.241248] posixtimers hash table entries: 1024 (order: 2, 16384 bytes, linear)
+[    1.242244] futex hash table entries: 512 (32768 bytes on 1 NUMA nodes, total 32 KiB, linear).
+[    1.244212] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+[    1.250420] audit: initializing netlink subsys (disabled)
+[    1.256267] audit: type=2000 audit(1787584579.817:1): state=initialized audit_enabled=0 res=1
+[    1.256408] thermal_sys: Registered thermal governor 'step_wise'
+[    1.258229] cpuidle: using governor ladder
+[    1.260247] cpuidle: using governor menu
+[    1.269363] efi: Freeing EFI boot services memory: 55232K
+[    1.270230] acpiphp: ACPI Hot Plug PCI Controller Driver version: 0.5
+[    1.271694] PCI: ECAM [mem 0xe0000000-0xefffffff] (base 0xe0000000) for domain 0000 [bus 00-ff]
+[    1.272238] PCI: Using configuration type 1 for base access
+[    1.277376] kprobes: kprobe jump-optimization is enabled. All kprobes are optimized if possible.
+[    1.286285] HugeTLB: registered 1.00 GiB page size, pre-allocated 0 pages
+[    1.292227] HugeTLB: 16380 KiB vmemmap can be freed for a 1.00 GiB page
+[    1.296227] HugeTLB: registered 2.00 MiB page size, pre-allocated 0 pages
+[    1.301228] HugeTLB: 28 KiB vmemmap can be freed for a 2.00 MiB page
+[    1.309764] ACPI: Added _OSI(Module Device)
+[    1.310228] ACPI: Added _OSI(Processor Device)
+[    1.311228] ACPI: Added _OSI(Processor Aggregator Device)
+[    1.313782] ACPI: 1 ACPI AML tables successfully acquired and loaded
+[    1.320489] ACPI: Interpreter enabled
+[    1.323243] ACPI: PM: (supports S0 S3 S5)
+[    1.326228] ACPI: Using IOAPIC for interrupt routing
+[    1.330270] PCI: Using host bridge windows from ACPI; if necessary, use "pci=nocrs" and report a bug
+[    1.344231] PCI: Ignoring E820 reservations for host bridge windows
+[    1.354458] ACPI: Enabled 2 GPEs in block 00 to 3F
+[    1.362528] ACPI: PCI Root Bridge [PCI0] (domain 0000 [bus 00-ff])
+[    1.368234] acpi PNP0A08:00: _OSC: OS supports [ExtendedConfig ASPM ClockPM Segments MSI HPX-Type3]
+[    1.380317] acpi PNP0A08:00: _OSC: platform does not support [PCIeHotplug LTR]
+[    1.390336] acpi PNP0A08:00: _OSC: OS now controls [PME PCIeCapability]
+[    1.399947] PCI host bridge to bus 0000:00
+[    1.404233] pci_bus 0000:00: root bus resource [io  0x0000-0x0cf7 window]
+[    1.410231] pci_bus 0000:00: root bus resource [io  0x0d00-0xffff window]
+[    1.417230] pci_bus 0000:00: root bus resource [mem 0x000a0000-0x000bffff window]
+[    1.426229] pci_bus 0000:00: root bus resource [mem 0x80000000-0xdfffffff window]
+[    1.434229] pci_bus 0000:00: root bus resource [mem 0xf0000000-0xfebfffff window]
+[    1.441229] pci_bus 0000:00: root bus resource [mem 0x380000000000-0x3807ffffffff window]
+[    1.450230] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    1.456454] pci 0000:00:00.0: [8086:29c0] type 00 class 0x060000 conventional PCI endpoint
+[    1.467569] pci 0000:00:01.0: [1234:1111] type 00 class 0x030000 conventional PCI endpoint
+[    1.480322] pci 0000:00:01.0: BAR 0 [mem 0x80000000-0x80ffffff pref]
+[    1.487325] pci 0000:00:01.0: BAR 2 [mem 0x810c7000-0x810c7fff]
+[    1.495458] pci 0000:00:01.0: ROM [mem 0xffff0000-0xffffffff pref]
+[    1.502051] pci 0000:00:01.0: Video device with shadowed ROM at [mem 0x000c0000-0x000dffff]
+[    1.512810] pci 0000:00:02.0: [8086:10d3] type 00 class 0x020000 PCIe Root Complex Integrated Endpoint
+[    1.527275] pci 0000:00:02.0: BAR 0 [mem 0x810a0000-0x810bffff]
+[    1.533286] pci 0000:00:02.0: BAR 1 [mem 0x81080000-0x8109ffff]
+[    1.539278] pci 0000:00:02.0: BAR 2 [io  0x6160-0x617f]
+[    1.544276] pci 0000:00:02.0: BAR 3 [mem 0x810c0000-0x810c3fff]
+[    1.551360] pci 0000:00:02.0: ROM [mem 0xfff80000-0xffffffff pref]
+[    1.555495] pci 0000:00:02.0: enabling Extended Tags
+[    1.564601] pci 0000:00:03.0: [1af4:1001] type 00 class 0x010000 conventional PCI endpoint
+[    1.575278] pci 0000:00:03.0: BAR 0 [io  0x6080-0x60ff]
+[    1.581276] pci 0000:00:03.0: BAR 1 [mem 0x810c6000-0x810c6fff]
+[    1.587440] pci 0000:00:03.0: BAR 4 [mem 0x380000000000-0x380000003fff 64bit pref]
+[    1.600636] pci 0000:00:04.0: [1af4:1001] type 00 class 0x010000 conventional PCI endpoint
+[    1.611261] pci 0000:00:04.0: BAR 0 [io  0x6000-0x607f]
+[    1.618273] pci 0000:00:04.0: BAR 1 [mem 0x810c5000-0x810c5fff]
+[    1.625377] pci 0000:00:04.0: BAR 4 [mem 0x380000004000-0x380000007fff 64bit pref]
+[    1.637031] pci 0000:00:05.0: [1b36:0010] type 00 class 0x010802 PCIe Root Complex Integrated Endpoint
+[    1.651289] pci 0000:00:05.0: BAR 0 [mem 0x380000008000-0x38000000bfff 64bit]
+[    1.659870] pci 0000:00:05.0: enabling Extended Tags
+[    1.668610] pci 0000:00:1f.0: [8086:2918] type 00 class 0x060100 conventional PCI endpoint
+[    1.680193] pci 0000:00:1f.0: quirk: [io  0x0600-0x067f] claimed by ICH6 ACPI/GPIO/TCO
+[    1.690578] pci 0000:00:1f.2: [8086:2922] type 00 class 0x010601 conventional PCI endpoint
+[    1.699501] pci 0000:00:1f.2: BAR 4 [io  0x6140-0x615f]
+[    1.706287] pci 0000:00:1f.2: BAR 5 [mem 0x810c4000-0x810c4fff]
+[    1.716172] pci 0000:00:1f.3: [8086:2930] type 00 class 0x0c0500 conventional PCI endpoint
+[    1.729441] pci 0000:00:1f.3: BAR 4 [io  0x6100-0x613f]
+[    1.750639] ACPI: PCI: Interrupt link LNKA configured for IRQ 10
+[    1.758594] ACPI: PCI: Interrupt link LNKB configured for IRQ 10
+[    1.770499] ACPI: PCI: Interrupt link LNKC configured for IRQ 11
+[    1.777527] ACPI: PCI: Interrupt link LNKD configured for IRQ 11
+[    1.788568] ACPI: PCI: Interrupt link LNKE configured for IRQ 10
+[    1.794500] ACPI: PCI: Interrupt link LNKF configured for IRQ 10
+[    1.801522] ACPI: PCI: Interrupt link LNKG configured for IRQ 11
+[    1.807497] ACPI: PCI: Interrupt link LNKH configured for IRQ 11
+[    1.814453] ACPI: PCI: Interrupt link GSIA configured for IRQ 16
+[    1.819253] ACPI: PCI: Interrupt link GSIB configured for IRQ 17
+[    1.824242] ACPI: PCI: Interrupt link GSIC configured for IRQ 18
+[    1.829245] ACPI: PCI: Interrupt link GSID configured for IRQ 19
+[    1.837246] ACPI: PCI: Interrupt link GSIE configured for IRQ 20
+[    1.844245] ACPI: PCI: Interrupt link GSIF configured for IRQ 21
+[    1.851246] ACPI: PCI: Interrupt link GSIG configured for IRQ 22
+[    1.857245] ACPI: PCI: Interrupt link GSIH configured for IRQ 23
+[    1.865367] iommu: Default domain type: Translated
+[    1.869227] iommu: DMA domain TLB invalidation policy: lazy mode
+[    1.876794] SCSI subsystem initialized
+[    1.882308] pps_core: LinuxPPS API ver. 1 registered
+[    1.887229] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[    1.900291] PTP clock support registered
+[    1.906398] efivars: Registered efivars operations
+[    1.912935] PCI: Using ACPI for IRQ routing
+[    2.196526] clocksource: Switched to clocksource kvm-clock
+[    2.201525] VFS: Disk quotas dquot_6.6.0
+[    2.204712] VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+[    2.211837] pnp: PnP ACPI init
+[    2.214863] system 00:05: [mem 0xe0000000-0xefffffff window] has been reserved
+[    2.222589] pnp: PnP ACPI: found 6 devices
+[    2.237552] clocksource: acpi_pm: mask: 0xffffff max_cycles: 0xffffff, max_idle_ns: 2085701024 ns
+[    2.245769] NET: Registered PF_INET protocol family
+[    2.251042] IP idents hash table entries: 65536 (order: 7, 524288 bytes, linear)
+[    2.272016] tcp_listen_portaddr_hash hash table entries: 2048 (order: 3, 32768 bytes, linear)
+[    2.281199] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+[    2.289171] TCP established hash table entries: 32768 (order: 6, 262144 bytes, linear)
+[    2.297430] TCP bind hash table entries: 32768 (order: 8, 1048576 bytes, linear)
+[    2.305765] TCP: Hash tables configured (established 32768 bind 32768)
+[    2.312489] MPTCP token hash table entries: 4096 (order: 5, 98304 bytes, linear)
+[    2.320386] UDP hash table entries: 2048 (order: 5, 131072 bytes, linear)
+[    2.329142] UDP-Lite hash table entries: 2048 (order: 5, 131072 bytes, linear)
+[    2.336801] NET: Registered PF_UNIX/PF_LOCAL protocol family
+[    2.343720] NET: Registered PF_XDP protocol family
+[    2.349485] pci 0000:00:02.0: ROM [mem 0xfff80000-0xffffffff pref]: can't claim; no compatible bridge window
+[    2.361396] pci 0000:00:02.0: ROM [mem 0x81000000-0x8107ffff pref]: assigned
+[    2.369904] pci_bus 0000:00: resource 4 [io  0x0000-0x0cf7 window]
+[    2.377357] pci_bus 0000:00: resource 5 [io  0x0d00-0xffff window]
+[    2.385031] pci_bus 0000:00: resource 6 [mem 0x000a0000-0x000bffff window]
+[    2.392801] pci_bus 0000:00: resource 7 [mem 0x80000000-0xdfffffff window]
+[    2.400593] pci_bus 0000:00: resource 8 [mem 0xf0000000-0xfebfffff window]
+[    2.408118] pci_bus 0000:00: resource 9 [mem 0x380000000000-0x3807ffffffff window]
+[    2.416812] PCI: CLS 0 bytes, default 64
+[    2.421844] PCI-DMA: Using software bounce buffering for IO (SWIOTLB)
+[    2.422120] Unpacking initramfs...
+[    2.437200] software IO TLB: mapped [mem 0x0000000077ede000-0x000000007bede000] (64MB)
+[    2.437264] clocksource: tsc: mask: 0xffffffffffffffff max_cycles: 0x2848e100549, max_idle_ns: 440795215505 ns
+[    2.437822] Initialise system trusted keyrings
+[    2.445406] workingset: timestamp_bits=40 max_order=20 bucket_order=0
+[    2.508583] Key type asymmetric registered
+[    2.514362] Asymmetric key parser 'x509' registered
+[    2.520398] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 247)
+[    2.529841] io scheduler mq-deadline registered
+[    2.535922] io scheduler kyber registered
+[    2.541226] io scheduler bfq registered
+[    2.550572] ERST DBG: ERST support is disabled.
+[    2.560900] ACPI: \_SB_.GSIH: Enabled at IRQ 23
+[    2.582655] ACPI: \_SB_.GSIE: Enabled at IRQ 20
+[    2.611449] Serial: 8250/16550 driver, 4 ports, IRQ sharing enabled
+[    2.633462] 00:03: ttyS0 at I/O 0x3f8 (irq = 4, base_baud = 115200) is a 16550A
+[    2.642217] VMware PVSCSI driver - version 1.0.7.0-k
+[    2.647668] ACPI: \_SB_.GSIA: Enabled at IRQ 16
+[    2.664380] ahci 0000:00:1f.2: AHCI vers 0001.0000, 32 command slots, 1.5 Gbps, SATA mode
+[    2.673438] ahci 0000:00:1f.2: 6/6 ports implemented (port mask 0x3f)
+[    2.679768] ahci 0000:00:1f.2: flags: 64bit ncq only 
+[    2.691283] scsi host0: ahci
+[    2.698580] scsi host1: ahci
+[    2.708826] scsi host2: ahci
+[    2.717592] scsi host3: ahci
+[    2.723403] scsi host4: ahci
+[    2.727440] scsi host5: ahci
+[    2.735481] ata1: SATA max UDMA/133 abar m4096@0x810c4000 port 0x810c4100 irq 24 lpm-pol 1
+[    2.745270] ata2: SATA max UDMA/133 abar m4096@0x810c4000 port 0x810c4180 irq 24 lpm-pol 1
+[    2.748690] Freeing initrd memory: 9420K
+[    2.757546] ata3: SATA max UDMA/133 abar m4096@0x810c4000 port 0x810c4200 irq 24 lpm-pol 1
+[    2.757577] ata4: SATA max UDMA/133 abar m4096@0x810c4000 port 0x810c4280 irq 24 lpm-pol 1
+[    2.757604] ata5: SATA max UDMA/133 abar m4096@0x810c4000 port 0x810c4300 irq 24 lpm-pol 1
+[    2.757630] ata6: SATA max UDMA/133 abar m4096@0x810c4000 port 0x810c4380 irq 24 lpm-pol 1
+[    2.757784] hv_vmbus: registering driver hv_netvsc
+[    2.757875] i8042: PNP: PS/2 Controller [PNP0303:KBD,PNP0f13:MOU] at 0x60,0x64 irq 1,12
+[    2.763914] serio: i8042 KBD port at 0x60,0x64 irq 1
+[    2.831592] serio: i8042 AUX port at 0x60,0x64 irq 12
+[    2.840706] hv_vmbus: registering driver hyperv_keyboard
+[    2.847483] rtc_cmos 00:04: RTC can wake from S4
+[    2.855503] rtc_cmos 00:04: registered as rtc0
+[    2.860664] rtc_cmos 00:04: setting system clock to 2026-08-24T15:16:21 UTC (1787584581)
+[    2.870717] rtc_cmos 00:04: alarms up to one day, y3k, 242 bytes nvram
+[    2.878529] amd_pstate: the _CPC object is not present in SBIOS or ACPI disabled
+[    2.887936] gre: GRE over IPv4 demultiplexer driver
+[    2.894406] NET: Registered PF_INET6 protocol family
+[    2.902100] input: AT Translated Set 2 keyboard as /devices/platform/i8042/serio0/input/input0
+[    2.902621] Segment Routing with IPv6
+[    2.925926] In-situ OAM (IOAM) with IPv6
+[    2.930899] Key type dns_resolver registered
+[    2.935824] IPI shorthand broadcast: enabled
+[    2.948770] registered taskstats version 1
+[    2.953414] Loading compiled-in X.509 certificates
+[    2.964498] Loaded X.509 cert 'alpinelinux.org: Alpine Linux kernel key: d76a695f66ad9cd28f5c22a8508f36e91f521f7a'
+[    2.982704] Demotion targets for Node 0: null
+[    2.988595] Key type .fscrypt registered
+[    2.995126] Key type fscrypt-provisioning registered
+[    3.005495] Unstable clock detected, switching default tracing clock to "global"
+[    3.005495] If you want to keep using the local clock, then add:
+[    3.005495]   "trace_clock=local"
+[    3.005495] on the kernel command line
+[    3.072404] ata1: SATA link down (SStatus 0 SControl 300)
+[    3.076268] ata2: SATA link down (SStatus 0 SControl 300)
+[    3.082795] ata6: SATA link down (SStatus 0 SControl 300)
+[    3.086420] ata5: SATA link down (SStatus 0 SControl 300)
+[    3.092816] ata4: SATA link down (SStatus 0 SControl 300)
+[    3.096628] ata3: SATA link up 1.5 Gbps (SStatus 113 SControl 300)
+[    3.103674] ata3.00: ATAPI: QEMU DVD-ROM, 2.5+, max UDMA/100
+[    3.109976] ata3.00: applying bridge limits
+[    3.114182] ata3.00: configured for UDMA/100
+[    3.119811] scsi 2:0:0:0: CD-ROM            QEMU     QEMU DVD-ROM     2.5+ PQ: 0 ANSI: 5
+[    3.134171] Freeing unused kernel image (initmem) memory: 2996K
+[    3.138225] Write protecting the kernel read-only data: 26624k
+[    3.143732] Freeing unused kernel image (text/rodata gap) memory: 1732K
+[    3.148768] Freeing unused kernel image (rodata/data gap) memory: 396K
+[    3.153477] rodata_test: all tests were successful
+[    3.156878] Run /nvkvm/guest-init.sh as init process
+[guest] kernel 6.18.35-0-virt
+[guest] cmdline: initrd=initrd console=ttyS0,115200 rdinit=/nvkvm/guest-init.sh nvkvm.stages=repair
+[    3.192702] virtio_blk virtio0: 2/0/0 default/read/poll queues
+[    3.199868] virtio_blk virtio0: [vda] 44664 512-byte logical blocks (22.9 MB/21.8 MiB)
+[    3.209602] virtio_blk virtio1: 2/0/0 default/read/poll queues
+[    3.221282] virtio_blk virtio1: [vdb] 15859712 512-byte logical blocks (8.12 GB/7.56 GiB)
+[    3.237564]  vdb: vdb1 vdb2 vdb3 vdb4 vdb5
+[    3.247841] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    3.260906] loop: module loaded
+[guest] modloop is /dev/vda
+[    3.315355] nvme nvme0: pci function 0000:00:05.0
+[    3.319592] ACPI: \_SB_.GSIF: Enabled at IRQ 21
+[    3.333803] nvme nvme0: 2/0/0 default/read/poll queues
+[    3.339750] nvme nvme0: Ignoring bogus Namespace Identifiers
+[    3.373348] raid6: avx2x4   gen() 35002 MB/s
+[    3.394346] raid6: avx2x2   gen() 34768 MB/s
+[    3.415346] raid6: avx2x1   gen() 21457 MB/s
+[    3.420280] raid6: using algorithm avx2x4 gen() 35002 MB/s
+[    3.443345] raid6: .... xor() 5362 MB/s, rmw enabled
+[    3.449059] raid6: using avx2x2 recovery algorithm
+[    3.466637] xor: automatically using best checksumming function   avx       
+[    3.628634] Btrfs loaded, zoned=no, fsverity=yes
+[guest] modules loaded: vfat fat ext4 crc16 mbcache jbd2 btrfs blake2b_generic xor raid6_pq nvme nvme_core loop squashfs virtio_blk 
+[guest] repair image is /dev/vdb
+[    3.798423] BTRFS: device label rootfs devid 1 transid 67 /dev/vdb3 (253:19) scanned by mount (563)
+[    3.808682] BTRFS info (device vdb3): first mount of filesystem 651004c4-7509-4853-b71c-cacc991d8c8d
+[    3.823061] BTRFS info (device vdb3): using crc32c (crc32c-lib) checksum algorithm
+[    3.866592] BTRFS info (device vdb3): turning on async discard
+[    3.872716] BTRFS info (device vdb3): enabling free space tree
+[    3.914933] EXT4-fs (vdb4): mounted filesystem 6dd5f411-9f94-4bf5-9b8c-18d5c52cea39 r/w with ordered data mode. Quota mode: none.
+[    3.929034] EXT4-fs (vdb5): Using encoding defined by superblock: utf8-12.1.0 with flags 0x0
+[    3.962217] EXT4-fs (vdb5): mounted filesystem 196d9b7b-2861-4943-a2f4-8c2cb5c4c43e r/w with ordered data mode. Quota mode: none.
+Starting systemd-udevd version 257.7-2.5-arch
+Running in chroot, ignoring request.
+Running in chroot, ignoring request.
+[guest] udevd running; /dev/disk: 
+[guest] === stage: repair (repair_device.sh all) ===
+This action will wipe and (re)install SteamOS on this device.
+This will permanently destroy all data on your device.
+This cannot be undone.
+Choose Proceed only if you wish to wipe and reinstall this device.
+NVMe status: Invalid Field in Command: A reserved coded value or an unsupported value in a defined field(0x4002)
+You are about to format nvme0n1, namespace 0x1.
+Namespace nvme0n1 has parent controller(s):nvme0
+WARNING: Format may irrevocably delete this device's data.
+You have 10 seconds to press Ctrl-C to cancel this operation.
+Use the force [--force] option to suppress this warning.
+Sending format operation ...
+[   14.640053] nvme nvme0: Ignoring bogus Namespace Identifiers
+Success formatting namespace:1
+:: Write known partition table
+Checking that no-one is using this disk right now ... OK
+Disk /dev/nvme0n1: 32 GiB, 34359738368 bytes, 67108864 sectors
+Disk model: QEMU NVMe Ctrl                          
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+>>> Script header accepted.
+>>> Created a new GPT disklabel (GUID: 592C82F3-DEFB-47E1-9726-D33BFED0A8DB).
+/dev/nvme0n1p1: Created a new partition 1 of type 'EFI System' and of size 256 MiB.
+/dev/nvme0n1p2: Created a new partition 2 of type 'Microsoft basic data' and of size 64 MiB.
+/dev/nvme0n1p3: Created a new partition 3 of type 'Microsoft basic data' and of size 64 MiB.
+/dev/nvme0n1p4: Created a new partition 4 of type 'Linux root (x86-64)' and of size 5 GiB.
+/dev/nvme0n1p5: Created a new partition 5 of type 'Linux root (x86-64)' and of size 5 GiB.
+/dev/nvme0n1p6: Created a new partition 6 of type 'Linux variable data' and of size 256 MiB.
+/dev/nvme0n1p7: Created a new partition 7 of type 'Linux variable data' and of size 256 MiB.
+/dev/nvme0n1p8: Created a new partition 8 of type 'Linux home' and of size 100 MiB.
+/dev/nvme0n1p9: Done.
+New situation:
+Disklabel type: gpt
+Disk identifier: 592C82F3-DEFB-47E1-9726-D33BFED0A8DB
+Device            Start      End  Sectors  Size Type
+/dev/nvme0n1p1     2048   526335   524288  256M EFI System
+/dev/nvme0n1p2   526336   657407   131072   64M Microsoft basic data
+/dev/nvme0n1p3   657408   788479   131072   64M Microsoft basic data
+/dev/nvme0n1p4   788480 11274239 10485760    5G Linux root (x86-64)
+/dev/nvme0n1p5 11274240 21759999 10485760    5G Linux root (x86-64)
+/dev/nvme0n1p6 21760000 22284287   524288  256M Linux variable data
+/dev/nvme0n1p7 22284288 22808575   524288  256M Linux variable data
+/dev/nvme0n1p8 22808576 23013375   204800  100M Linux home
+The partition table has been altered.
+Calling ioctl() to re-read partition table.
+[   15.177591]  nvme0n1: p1 p2 p3 p4 p5 p6 p7 p8
+Syncing disks.
+:: Creating var partitions
++ 'sudo' 'mkfs.ext4' '-F' '-L' 'var' '/dev/nvme0n1p6'
+mke2fs 1.47.3 (8-Jul-2025)
+Discarding device blocks:      0/262144             done                            
+Creating filesystem with 262144 1k blocks and 65536 inodes
+Filesystem UUID: bebdd93e-ed20-46fe-9096-ef029eca21d4
+Superblock backups stored on blocks: 
+	8193, 24577, 40961, 57345, 73729, 204801, 221185
+Allocating group tables:  0/32     done                            
+Writing inode tables:  0/32     done                            
+Creating journal (8192 blocks): done
+Writing superblocks and filesystem accounting information:  0/32     done
++ 'sudo' 'mkfs.ext4' '-F' '-L' 'var' '/dev/nvme0n1p7'
+mke2fs 1.47.3 (8-Jul-2025)
+Discarding device blocks:      0/262144             done                            
+Creating filesystem with 262144 1k blocks and 65536 inodes
+Filesystem UUID: c262e6de-aa9f-49d7-8e6e-1cedb9e3b6ac
+Superblock backups stored on blocks: 
+	8193, 24577, 40961, 57345, 73729, 204801, 221185
+Allocating group tables:  0/32     done                            
+Writing inode tables:  0/32     done                            
+Creating journal (8192 blocks): done
+Writing superblocks and filesystem accounting information:  0/32     done
+:: Creating boot partitions
++ 'sudo' 'mkfs.vfat' '-nesp' '/dev/nvme0n1p1'
+mkfs.fat 4.2 (2021-01-31)
+mkfs.fat: Warning: lowercase labels might not work properly on some systems
++ 'sudo' 'mkfs.vfat' '-nefi' '/dev/nvme0n1p2'
+mkfs.fat 4.2 (2021-01-31)
+mkfs.fat: Warning: lowercase labels might not work properly on some systems
++ 'sudo' 'mkfs.vfat' '-nefi' '/dev/nvme0n1p3'
+mkfs.fat 4.2 (2021-01-31)
+mkfs.fat: Warning: lowercase labels might not work properly on some systems
+:: Creating home partition...
++ 'sudo' 'mkfs.ext4' '-F' '-O' 'casefold' '-T' 'huge' '-L' 'home' '/dev/nvme0n1p8'
+mke2fs 1.47.3 (8-Jul-2025)
+Discarding device blocks:     0/25600           done                            
+Creating filesystem with 25600 4k blocks and 1600 inodes
+Allocating group tables: 0/1   done                            
+Writing inode tables: 0/1   done                            
+Creating journal (1024 blocks): done
+Writing superblocks and filesystem accounting information: 0/1   done
+:: Remove the reserved blocks on the home partition...
+tune2fs 1.47.3 (8-Jul-2025)
+Setting reserved blocks percentage to 0% (0 blocks)
+:: Staging a BIOS update for next boot if necessary
+:: Mounting new ESP/EFI on /esp /boot/efi for BIOS staging
++ 'mount' '/dev/nvme0n1p1' '/esp'
+[   16.160703] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
++ 'mount' '/dev/nvme0n1p2' '/boot/efi'
+[   16.210876] FAT-fs (nvme0n1p2): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+Performing BIOS updates
+cat: /sys/class/dmi/id/board_name: No such file or directory
+cat: /sys/class/dmi/id/board_vendor: No such file or directory
+Skipping update due to unsupported hardware revision
++ 'umount' '-l' '/esp'
++ 'umount' '-l' '/boot/efi'
+:: Updating controller firmware if necessary
+cat: /sys/class/dmi/id/board_name: No such file or directory
+cat: /sys/class/dmi/id/board_vendor: No such file or directory
+Device does not look like a Steam Deck, not attempting to flash any controllers
+:: Freezing rootfs
++ 'fsfreeze' '-f' '/'
+:: Imaging OS partition A
++ 'dd' 'if=/dev/vdb3' 'of=/dev/nvme0n1p4' 'bs=128M' 'status=progress' 'oflag=sync'
+40+0 records in
+40+0 records out
++ 'btrfstune' '-f' '-u' '/dev/nvme0n1p4'
+Current fsid: 651004c4-7509-4853-b71c-cacc991d8c8d
+New fsid: 02b97234-6a27-458c-843e-a2825b9652be
+Set superblock flag CHANGING_FSID
+Change fsid in extent tree
+[   49.022347] hrtimer: interrupt took 2518782 ns
+Change fsid in chunk tree
+Clear superblock flag CHANGING_FSID
+Fsid change finished
++ 'btrfs' 'check' '/dev/nvme0n1p4'
+Opening filesystem to check...
+Checking filesystem on /dev/nvme0n1p4
+UUID: 02b97234-6a27-458c-843e-a2825b9652be
+[1/8] checking log skipped (none written)
+[2/8] checking root items
+[3/8] checking extents
+[4/8] checking free space tree
+[5/8] checking fs roots
+[6/8] checking only csums items (without verifying data)
+[7/8] checking root refs
+[8/8] checking quota groups skipped (not enabled on this FS)
+found 3557335040 bytes used, no error found
+total csum bytes: 3327576
+total tree bytes: 149897216
+total fs tree bytes: 138805248
+total extent tree bytes: 7061504
+btree space waste bytes: 23224991
+file data blocks allocated: 3407437824
+ referenced 6331514880
+:: Imaging OS partition B
++ 'dd' 'if=/dev/vdb3' 'of=/dev/nvme0n1p5' 'bs=128M' 'status=progress' 'oflag=sync'
+40+0 records in
+40+0 records out
++ 'btrfstune' '-f' '-u' '/dev/nvme0n1p5'
+Current fsid: 651004c4-7509-4853-b71c-cacc991d8c8d
+New fsid: 9e0bb896-5341-4ea3-a757-3d21bf08e21c
+Set superblock flag CHANGING_FSID
+Change fsid in extent tree
+Change fsid in chunk tree
+Clear superblock flag CHANGING_FSID
+Fsid change finished
++ 'btrfs' 'check' '/dev/nvme0n1p5'
+Opening filesystem to check...
+Checking filesystem on /dev/nvme0n1p5
+UUID: 9e0bb896-5341-4ea3-a757-3d21bf08e21c
+[1/8] checking log skipped (none written)
+[2/8] checking root items
+[3/8] checking extents
+[4/8] checking free space tree
+[5/8] checking fs roots
+[6/8] checking only csums items (without verifying data)
+[7/8] checking root refs
+[8/8] checking quota groups skipped (not enabled on this FS)
+found 3557335040 bytes used, no error found
+total csum bytes: 3327576
+total tree bytes: 149897216
+total fs tree bytes: 138805248
+total extent tree bytes: 7061504
+btree space waste bytes: 23224991
+file data blocks allocated: 3407437824
+ referenced 6331514880
+:: Finalizing boot configurations
+:: Finalizing install part A
++ 'steamos-chroot' '--no-overlay' '--disk' '/dev/nvme0n1' '--partset' 'A' '--' 'mkdir' '/efi/SteamOS'
+[   77.736012] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p4 (259:4) scanned by mount (799)
+[   77.744401] BTRFS info (device nvme0n1p4): first mount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
+[   77.750691] BTRFS info (device nvme0n1p4): using crc32c (crc32c-lib) checksum algorithm
+[   77.778495] BTRFS info (device nvme0n1p4): enabling ssd optimizations
+[   77.785812] BTRFS info (device nvme0n1p4): turning on async discard
+[   77.790330] BTRFS info (device nvme0n1p4): enabling free space tree
+[   77.822638] FAT-fs (nvme0n1p2): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   77.848821] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   77.918374] EXT4-fs (nvme0n1p6): mounted filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4 r/w with ordered data mode. Quota mode: none.
+[   78.000671] EXT4-fs (nvme0n1p6): unmounting filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4.
+[   78.070621] BTRFS info (device nvme0n1p4): last unmount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
++ 'steamos-chroot' '--no-overlay' '--disk' '/dev/nvme0n1' '--partset' 'A' '--' 'mkdir' '-p' '/esp/SteamOS/conf'
+[   78.176988] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p4 (259:4) scanned by mount (867)
+[   78.191110] BTRFS info (device nvme0n1p4): first mount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
+[   78.200495] BTRFS info (device nvme0n1p4): using crc32c (crc32c-lib) checksum algorithm
+[   78.218398] BTRFS info (device nvme0n1p4): enabling ssd optimizations
+[   78.225131] BTRFS info (device nvme0n1p4): turning on async discard
+[   78.233044] BTRFS info (device nvme0n1p4): enabling free space tree
+[   78.260849] FAT-fs (nvme0n1p2): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   78.286415] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   78.325855] EXT4-fs (nvme0n1p6): mounted filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4 r/w with ordered data mode. Quota mode: none.
+[   78.359994] EXT4-fs (nvme0n1p6): unmounting filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4.
+[   78.402149] BTRFS info (device nvme0n1p4): last unmount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
++ 'steamos-chroot' '--no-overlay' '--disk' '/dev/nvme0n1' '--partset' 'A' '--' 'steamos-partsets' '/efi/SteamOS/partsets'
+[   78.472941] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p4 (259:4) scanned by mount (934)
+[   78.482237] BTRFS info (device nvme0n1p4): first mount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
+[   78.488831] BTRFS info (device nvme0n1p4): using crc32c (crc32c-lib) checksum algorithm
+[   78.529958] BTRFS info (device nvme0n1p4): enabling ssd optimizations
+[   78.538886] BTRFS info (device nvme0n1p4): turning on async discard
+[   78.544544] BTRFS info (device nvme0n1p4): enabling free space tree
+[   78.572024] FAT-fs (nvme0n1p2): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   78.595725] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   78.638732] EXT4-fs (nvme0n1p6): mounted filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4 r/w with ordered data mode. Quota mode: none.
+SteamOS root device: /dev/nvme0n1p4 (rootfs-A)
+SteamOS disk       : /dev/nvme0n1
+A/B/dev status     : self=A, other=B
+Creating partition definitions in /efi/SteamOS/partsets ...
+[   78.837696] EXT4-fs (nvme0n1p6): unmounting filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4.
+[   78.879797] BTRFS info (device nvme0n1p4): last unmount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
++ 'steamos-chroot' '--no-overlay' '--disk' '/dev/nvme0n1' '--partset' 'A' '--' 'steamos-bootconf' 'create' '--image' 'A' '--conf-dir' '/esp/SteamOS/conf' '--efi-dir' '/efi' '--set' 'title' 'A'
+[   78.982224] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p4 (259:4) scanned by mount (1045)
+[   78.991177] BTRFS info (device nvme0n1p4): first mount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
+[   79.000179] BTRFS info (device nvme0n1p4): using crc32c (crc32c-lib) checksum algorithm
+[   79.026623] BTRFS info (device nvme0n1p4): enabling ssd optimizations
+[   79.034893] BTRFS info (device nvme0n1p4): turning on async discard
+[   79.041512] BTRFS info (device nvme0n1p4): enabling free space tree
+[   79.073554] FAT-fs (nvme0n1p2): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   79.097734] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   79.138939] EXT4-fs (nvme0n1p6): mounted filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4 r/w with ordered data mode. Quota mode: none.
+[   79.206440] EXT4-fs (nvme0n1p6): unmounting filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4.
+[   79.245528] BTRFS info (device nvme0n1p4): last unmount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
++ 'steamos-chroot' '--no-overlay' '--disk' '/dev/nvme0n1' '--partset' 'A' '--' 'grub-mkimage'
+[   79.307068] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p4 (259:4) scanned by mount (1112)
+[   79.318388] BTRFS info (device nvme0n1p4): first mount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
+[   79.329104] BTRFS info (device nvme0n1p4): using crc32c (crc32c-lib) checksum algorithm
+[   79.365576] BTRFS info (device nvme0n1p4): enabling ssd optimizations
+[   79.371504] BTRFS info (device nvme0n1p4): turning on async discard
+[   79.377100] BTRFS info (device nvme0n1p4): enabling free space tree
+[   79.410766] FAT-fs (nvme0n1p2): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   79.439124] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   79.479506] EXT4-fs (nvme0n1p6): mounted filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4 r/w with ordered data mode. Quota mode: none.
+[   79.703567] EXT4-fs (nvme0n1p6): unmounting filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4.
+[   79.742123] BTRFS info (device nvme0n1p4): last unmount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
++ 'steamos-chroot' '--no-overlay' '--disk' '/dev/nvme0n1' '--partset' 'A' '--' 'update-grub'
+[   79.831788] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p4 (259:4) scanned by mount (1193)
+[   79.840381] BTRFS info (device nvme0n1p4): first mount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
+[   79.847342] BTRFS info (device nvme0n1p4): using crc32c (crc32c-lib) checksum algorithm
+[   79.873293] BTRFS info (device nvme0n1p4): enabling ssd optimizations
+[   79.881755] BTRFS info (device nvme0n1p4): turning on async discard
+[   79.889623] BTRFS info (device nvme0n1p4): enabling free space tree
+[   79.921856] FAT-fs (nvme0n1p2): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   79.945914] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   79.992647] EXT4-fs (nvme0n1p6): mounted filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4 r/w with ordered data mode. Quota mode: none.
+[   80.102087] device-mapper: uevent: version 1.0.3
+[   80.107788] device-mapper: ioctl: 4.50.0-ioctl (2025-04-28) initialised: dm-devel@lists.linux.dev
+Generating grub configuration file ...
+Found theme: /usr/share/grub/themes/breeze/theme.txt
+Found linux image: /boot/vmlinuz-linux-neptune-616
+Found initrd image: /boot/amd-ucode.img /boot/initramfs-linux-neptune-616.img
+Found fallback initrd image(s) in /boot:  amd-ucode.img initramfs-linux-neptune-616-fallback.img
+realpath: /dev/disk/by-partsets/self/rootfs: No such file or directory
+Adding boot menu entry for UEFI Firmware Settings ...
+done
+Installing grub configuration file at /efi/EFI/steamos/grub.cfg
+[   81.389783] EXT4-fs (nvme0n1p6): unmounting filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4.
+[   81.437806] BTRFS info (device nvme0n1p4): last unmount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
+:: Finalizing install part B
++ 'steamos-chroot' '--no-overlay' '--disk' '/dev/nvme0n1' '--partset' 'B' '--' 'mkdir' '/efi/SteamOS'
+[   81.516982] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p5 (259:5) scanned by mount (1513)
+[   81.526793] BTRFS info (device nvme0n1p5): first mount of filesystem 9e0bb896-5341-4ea3-a757-3d21bf08e21c
+[   81.533432] BTRFS info (device nvme0n1p5): using crc32c (crc32c-lib) checksum algorithm
+[   81.550404] BTRFS info (device nvme0n1p5): enabling ssd optimizations
+[   81.557268] BTRFS info (device nvme0n1p5): turning on async discard
+[   81.562563] BTRFS info (device nvme0n1p5): enabling free space tree
+[   81.587755] FAT-fs (nvme0n1p3): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   81.613098] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   81.651891] EXT4-fs (nvme0n1p7): mounted filesystem c262e6de-aa9f-49d7-8e6e-1cedb9e3b6ac r/w with ordered data mode. Quota mode: none.
+[   81.706630] EXT4-fs (nvme0n1p7): unmounting filesystem c262e6de-aa9f-49d7-8e6e-1cedb9e3b6ac.
+[   81.756132] BTRFS info (device nvme0n1p5): last unmount of filesystem 9e0bb896-5341-4ea3-a757-3d21bf08e21c
++ 'steamos-chroot' '--no-overlay' '--disk' '/dev/nvme0n1' '--partset' 'B' '--' 'mkdir' '-p' '/esp/SteamOS/conf'
+[   81.840435] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p5 (259:5) scanned by mount (1581)
+[   81.850746] BTRFS info (device nvme0n1p5): first mount of filesystem 9e0bb896-5341-4ea3-a757-3d21bf08e21c
+[   81.857527] BTRFS info (device nvme0n1p5): using crc32c (crc32c-lib) checksum algorithm
+[   81.895925] BTRFS info (device nvme0n1p5): enabling ssd optimizations
+[   81.900387] BTRFS info (device nvme0n1p5): turning on async discard
+[   81.903737] BTRFS info (device nvme0n1p5): enabling free space tree
+[   81.937580] FAT-fs (nvme0n1p3): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   81.965280] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   82.004731] EXT4-fs (nvme0n1p7): mounted filesystem c262e6de-aa9f-49d7-8e6e-1cedb9e3b6ac r/w with ordered data mode. Quota mode: none.
+[   82.056071] EXT4-fs (nvme0n1p7): unmounting filesystem c262e6de-aa9f-49d7-8e6e-1cedb9e3b6ac.
+[   82.089703] BTRFS info (device nvme0n1p5): last unmount of filesystem 9e0bb896-5341-4ea3-a757-3d21bf08e21c
++ 'steamos-chroot' '--no-overlay' '--disk' '/dev/nvme0n1' '--partset' 'B' '--' 'steamos-partsets' '/efi/SteamOS/partsets'
+[   82.185818] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p5 (259:5) scanned by mount (1648)
+[   82.198804] BTRFS info (device nvme0n1p5): first mount of filesystem 9e0bb896-5341-4ea3-a757-3d21bf08e21c
+[   82.205443] BTRFS info (device nvme0n1p5): using crc32c (crc32c-lib) checksum algorithm
+[   82.225359] BTRFS info (device nvme0n1p5): enabling ssd optimizations
+[   82.230587] BTRFS info (device nvme0n1p5): turning on async discard
+[   82.235839] BTRFS info (device nvme0n1p5): enabling free space tree
+[   82.265663] FAT-fs (nvme0n1p3): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   82.291575] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   82.331244] EXT4-fs (nvme0n1p7): mounted filesystem c262e6de-aa9f-49d7-8e6e-1cedb9e3b6ac r/w with ordered data mode. Quota mode: none.
+SteamOS root device: /dev/nvme0n1p5 (rootfs-B)
+SteamOS disk       : /dev/nvme0n1
+A/B/dev status     : self=B, other=A
+Creating partition definitions in /efi/SteamOS/partsets ...
+[   82.492632] EXT4-fs (nvme0n1p7): unmounting filesystem c262e6de-aa9f-49d7-8e6e-1cedb9e3b6ac.
+[   82.523029] BTRFS info (device nvme0n1p5): last unmount of filesystem 9e0bb896-5341-4ea3-a757-3d21bf08e21c
++ 'steamos-chroot' '--no-overlay' '--disk' '/dev/nvme0n1' '--partset' 'B' '--' 'steamos-bootconf' 'create' '--image' 'B' '--conf-dir' '/esp/SteamOS/conf' '--efi-dir' '/efi' '--set' 'title' 'B'
+[   82.610050] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p5 (259:5) scanned by mount (1759)
+[   82.617880] BTRFS info (device nvme0n1p5): first mount of filesystem 9e0bb896-5341-4ea3-a757-3d21bf08e21c
+[   82.625121] BTRFS info (device nvme0n1p5): using crc32c (crc32c-lib) checksum algorithm
+[   82.649132] BTRFS info (device nvme0n1p5): enabling ssd optimizations
+[   82.656349] BTRFS info (device nvme0n1p5): turning on async discard
+[   82.663042] BTRFS info (device nvme0n1p5): enabling free space tree
+[   82.689524] FAT-fs (nvme0n1p3): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   82.713992] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   82.756865] EXT4-fs (nvme0n1p7): mounted filesystem c262e6de-aa9f-49d7-8e6e-1cedb9e3b6ac r/w with ordered data mode. Quota mode: none.
+[   82.794385] EXT4-fs (nvme0n1p7): unmounting filesystem c262e6de-aa9f-49d7-8e6e-1cedb9e3b6ac.
+[   82.824603] BTRFS info (device nvme0n1p5): last unmount of filesystem 9e0bb896-5341-4ea3-a757-3d21bf08e21c
++ 'steamos-chroot' '--no-overlay' '--disk' '/dev/nvme0n1' '--partset' 'B' '--' 'grub-mkimage'
+[   82.903747] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p5 (259:5) scanned by mount (1826)
+[   82.914416] BTRFS info (device nvme0n1p5): first mount of filesystem 9e0bb896-5341-4ea3-a757-3d21bf08e21c
+[   82.920815] BTRFS info (device nvme0n1p5): using crc32c (crc32c-lib) checksum algorithm
+[   82.945459] BTRFS info (device nvme0n1p5): enabling ssd optimizations
+[   82.950471] BTRFS info (device nvme0n1p5): turning on async discard
+[   82.955630] BTRFS info (device nvme0n1p5): enabling free space tree
+[   82.984454] FAT-fs (nvme0n1p3): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   83.008072] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   83.048783] EXT4-fs (nvme0n1p7): mounted filesystem c262e6de-aa9f-49d7-8e6e-1cedb9e3b6ac r/w with ordered data mode. Quota mode: none.
+[   83.310115] EXT4-fs (nvme0n1p7): unmounting filesystem c262e6de-aa9f-49d7-8e6e-1cedb9e3b6ac.
+[   83.357761] BTRFS info (device nvme0n1p5): last unmount of filesystem 9e0bb896-5341-4ea3-a757-3d21bf08e21c
++ 'steamos-chroot' '--no-overlay' '--disk' '/dev/nvme0n1' '--partset' 'B' '--' 'update-grub'
+[   83.452144] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p5 (259:5) scanned by mount (1907)
+[   83.469385] BTRFS info (device nvme0n1p5): first mount of filesystem 9e0bb896-5341-4ea3-a757-3d21bf08e21c
+[   83.478923] BTRFS info (device nvme0n1p5): using crc32c (crc32c-lib) checksum algorithm
+[   83.490979] BTRFS info (device nvme0n1p5): enabling ssd optimizations
+[   83.495342] BTRFS info (device nvme0n1p5): turning on async discard
+[   83.499671] BTRFS info (device nvme0n1p5): enabling free space tree
+[   83.524882] FAT-fs (nvme0n1p3): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   83.549174] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   83.584392] EXT4-fs (nvme0n1p7): mounted filesystem c262e6de-aa9f-49d7-8e6e-1cedb9e3b6ac r/w with ordered data mode. Quota mode: none.
+Generating grub configuration file ...
+Found theme: /usr/share/grub/themes/breeze/theme.txt
+Found linux image: /boot/vmlinuz-linux-neptune-616
+Found initrd image: /boot/amd-ucode.img /boot/initramfs-linux-neptune-616.img
+Found fallback initrd image(s) in /boot:  amd-ucode.img initramfs-linux-neptune-616-fallback.img
+realpath: /dev/disk/by-partsets/self/rootfs: No such file or directory
+Adding boot menu entry for UEFI Firmware Settings ...
+done
+Installing grub configuration file at /efi/EFI/steamos/grub.cfg
+[   84.875274] EXT4-fs (nvme0n1p7): unmounting filesystem c262e6de-aa9f-49d7-8e6e-1cedb9e3b6ac.
+[   84.915016] BTRFS info (device nvme0n1p5): last unmount of filesystem 9e0bb896-5341-4ea3-a757-3d21bf08e21c
+:: Finalizing EFI system partition
++ 'steamos-chroot' '--no-overlay' '--disk' '/dev/nvme0n1' '--partset' 'A' '--' 'steamcl-install' '--flags' 'restricted' '--force-extra-removable'
+[   85.011770] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p4 (259:4) scanned by mount (2224)
+[   85.023573] BTRFS info (device nvme0n1p4): first mount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
+[   85.035070] BTRFS info (device nvme0n1p4): using crc32c (crc32c-lib) checksum algorithm
+[   85.064165] BTRFS info (device nvme0n1p4): enabling ssd optimizations
+[   85.067894] BTRFS info (device nvme0n1p4): turning on async discard
+[   85.072701] BTRFS info (device nvme0n1p4): enabling free space tree
+[   85.107892] FAT-fs (nvme0n1p2): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   85.133796] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   85.171748] EXT4-fs (nvme0n1p6): mounted filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4 r/w with ordered data mode. Quota mode: none.
+ESP vfat c12a7328-f81f-11d2-ba4b-00a0c93ec93b on /dev/nvme0n1 GPT#1 PARTUUID=a874c6d8-4f6b-4359-ab75-314482a6d000 (/esp)
+Replacing boot entry Boot0002 @ /efi/steamos/steamcl.efi
+'/usr/lib/steamos-efi/x86_64-efi/steamcl.efi' -> '/esp/efi/steamos/steamcl.efi'
+'/usr/share/steamos-efi/steamcl-version' -> '/esp/efi/steamos/steamcl-version'
+'/usr/bin/steamos-bootconf' -> '/esp/efi/steamos/steamos-bootconf'
+'/usr/share/steamos-efi/default.pf2' -> '/esp/efi/steamos/fonts/default.pf2'
+Installing bootloader to /esp/efi/boot/bootx64.efi
+'/usr/lib/steamos-efi/x86_64-efi/steamcl.efi' -> '/esp/efi/boot/bootx64.efi'
+'/usr/share/steamos-efi/default.pf2' -> '/esp/efi/boot/fonts/default.pf2'
+Enabling flag @ /efi/steamos/steamcl-restricted
+-> '/esp/efi/steamos/steamcl-restricted'
+Enabling flag @ /efi/boot/steamcl-restricted
+-> '/esp/efi/boot/steamcl-restricted'
+Creating Boot0003 SteamOS
+efibootmgr: ** Warning ** : Boot0002 has same label SteamOS
+[   85.787663] EXT4-fs (nvme0n1p6): unmounting filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4.
+[   85.854091] BTRFS info (device nvme0n1p4): last unmount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
+Reimaging complete.
+Choose Proceed to reboot now, or Cancel to stay in the repair image.
++ 'systemctl' 'reboot'
+[stub] systemctl reboot  (no systemd in this chroot; ignored)
+[guest] repair_device.sh all exited 0
+[guest] marking slot A as the boot target (steamos-bootconf set-mode first-boot)
+[   85.963071] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p4 (259:4) scanned by mount (2375)
+[   85.971626] BTRFS info (device nvme0n1p4): first mount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
+[   85.976761] BTRFS info (device nvme0n1p4): using crc32c (crc32c-lib) checksum algorithm
+[   85.991048] BTRFS info (device nvme0n1p4): enabling ssd optimizations
+[   85.995982] BTRFS info (device nvme0n1p4): turning on async discard
+[   86.000787] BTRFS info (device nvme0n1p4): enabling free space tree
+[   86.030636] FAT-fs (nvme0n1p2): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   86.055813] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   86.090886] EXT4-fs (nvme0n1p6): mounted filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4 r/w with ordered data mode. Quota mode: none.
+[   86.140153] EXT4-fs (nvme0n1p6): unmounting filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4.
+[   86.172704] BTRFS info (device nvme0n1p4): last unmount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
+[   86.252771] BTRFS: device label rootfs devid 1 transid 67 /dev/nvme0n1p4 (259:4) scanned by mount (2440)
+[   86.260091] BTRFS info (device nvme0n1p4): first mount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
+[   86.268186] BTRFS info (device nvme0n1p4): using crc32c (crc32c-lib) checksum algorithm
+[   86.289914] BTRFS info (device nvme0n1p4): enabling ssd optimizations
+[   86.296509] BTRFS info (device nvme0n1p4): turning on async discard
+[   86.301947] BTRFS info (device nvme0n1p4): enabling free space tree
+[   86.336015] FAT-fs (nvme0n1p2): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   86.360046] FAT-fs (nvme0n1p1): utf8 is not a recommended IO charset for FAT filesystems, filesystem will be case sensitive!
+[   86.400098] EXT4-fs (nvme0n1p6): mounted filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4 r/w with ordered data mode. Quota mode: none.
+--- /esp/SteamOS/conf/A.conf ---
+boot-requested-at: 20260824151744
+boot-other: 0
+boot-other-disabled: 0
+boot-attempts: 0
+boot-count: 0
+boot-time: 0
+image-invalid: 0
+verbose: 0
+update: 0
+update-disabled: 0
+update-window-start: 0
+update-window-end: 0
+loader: 
+partitions: 
+title: A
+comment: [2026-08-24 08:17:44 -0700] bootconf mode: first-boot
+[   86.490301] EXT4-fs (nvme0n1p6): unmounting filesystem bebdd93e-ed20-46fe-9096-ef029eca21d4.
+[   86.525744] BTRFS info (device nvme0n1p4): last unmount of filesystem 02b97234-6a27-458c-843e-a2825b9652be
+[guest] unmounting
+[   86.559032] EXT4-fs (vdb5): unmounting filesystem 196d9b7b-2861-4943-a2f4-8c2cb5c4c43e.
+[   86.570984] EXT4-fs (vdb4): unmounting filesystem 6dd5f411-9f94-4bf5-9b8c-18d5c52cea39.
+NVKVM-GUEST-RESULT: 0
+[   87.610827] ACPI: PM: Preparing to enter system sleep state S5
+[   87.616514] reboot: Power down

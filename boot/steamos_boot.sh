@@ -13,9 +13,15 @@
 #                                 inside a chroot of a DIFFERENT image -- which is
 #                                 exactly what the update hook does. Give it the
 #                                 new image's root and it provisions that image.
-#   boot                          Part 2. Part 1, then load nvkvm, validate, hand
-#                                 over to the desktop.
-#   validate                      Health check only.
+#   --driver-version VERSION      Optional host/container NVIDIA version. The
+#                                 disposable installer passes this because it
+#                                 has no loaded nvkvm module of its own. Without
+#                                 it, read the version nvkvm exposes in procfs.
+#   boot                          Part 2. Part 1, then load nvkvm, check it, and
+#                                 return so the desktop can start. It does NOT
+#                                 verify the desktop -- see validate() below for
+#                                 exactly what is and is not established.
+#   validate                      nvkvm health check only. Never a desktop check.
 #
 # Options
 #   --root DIR              operate on this root instead of /
@@ -42,8 +48,21 @@ NVKVM_SHARE_TAG="${NVKVM_SHARE_TAG:-nvkvm}"
 # every update. /run is tmpfs, always writable, exists before any partition is
 # mounted, and never survives a boot -- exactly what a mount point should be.
 NVKVM_SHARE_MNT="${NVKVM_SHARE_MNT:-/run/nvkvm}"
+NVKVM_DATA_TAG="${NVKVM_DATA_TAG:-data}"
+NVKVM_DATA_MNT=""
 MODULE_NAME=nvkvm-guest
 MODULE_MOD=nvkvm_guest
+
+# The kernel-supplied paths validate() reads, named once. Overridable only so
+# test/run_tests.sh can point them at a fake /proc and /sys and exercise the
+# failure classes on a machine with no nvkvm at all; nothing on any real path
+# sets these.
+PROC_MODULES="${NVKVM_PROC_MODULES:-/proc/modules}"
+DEV_NVIDIACTL="${NVKVM_DEV_NVIDIACTL:-/dev/nvidiactl}"
+DRM_CLASS_DIR="${NVKVM_DRM_CLASS_DIR:-/sys/class/drm}"
+# The Vulkan loader searches BOTH of these and nvidia-installer writes to /etc.
+# MEASURED -- checking only /usr/share reports a healthy install as broken.
+VULKAN_ICD_PATHS="${NVKVM_VULKAN_ICD_PATHS:-/etc/vulkan/icd.d/nvidia_icd.json /usr/share/vulkan/icd.d/nvidia_icd.json}"
 
 # Upstream steamos-nvidia-installer's tested trim set, reused verbatim
 # (steamos-nvidia-installer.sh:479). libnvidia-ngx is deliberately NOT here --
@@ -53,8 +72,10 @@ TRIM_RE='libcuda|libcudadebugger|libnvidia-nvvm|libnvidia-opencl|libnvoptix|nvid
 PROFILE="${NVKVM_PROFILE:-steamos}"
 RUN_CACHE_DIR=""          # set by --old-run-file, else derived below
 RUN_CACHE_KEEP=2
+DRIVER_VERSION=""         # explicit host/container version, never hardcoded
 ROOT=/
 MODULE_REBUILT=0          # set when this run actually rebuilt the .ko
+MODULE_LOAD_REFRESHED=0   # avoid unloading/reloading twice during `boot`
 
 # All diagnostics go to STDERR. `log` used to write to stdout, and helpers return
 # their result via stdout -- so `run="$(locate_or_fetch_run ...)"` captured the log
@@ -110,7 +131,38 @@ mount_9p_share() {
     mount -t 9p -o trans=virtio,version=9p2000.L,ro,msize=512000 \
           "$NVKVM_SHARE_TAG" "$NVKVM_SHARE_MNT" 2>/dev/null
 }
-repo_commit() { git -C "$NVKVM_SHARE_MNT" rev-parse HEAD 2>/dev/null; }
+repo_commit() {
+    git -C "$NVKVM_SHARE_MNT" rev-parse HEAD 2>/dev/null \
+        || cat "$NVKVM_SHARE_MNT/.nvkvm-source-id" 2>/dev/null
+}
+
+# The operator data share is independent of the read-only source share. Mount
+# tag `data` at the interactive user's ~/data when present; a hand-written QEMU
+# command without that tag must still boot. Do this only for the running root:
+# mounting it below an offline update root would leave a nested mount that can
+# prevent Valve's update machinery from unmounting the staged slot.
+mount_data_share() {
+    NVKVM_DATA_MNT=""
+    [ "$ROOT" = / ] || { log "data: offline target; deferring the optional 9p mount to first boot"; return 1; }
+    local u home
+    for u in deck user; do
+        home="$(awk -F: -v n="$u" '$1==n{print $6}' /etc/passwd)"
+        [ -n "$home" ] && break
+    done
+    [ -n "${home:-}" ] || { warn "data: no deck/user home found; optional share not mounted"; return 1; }
+    NVKVM_DATA_MNT="$home/data"
+    mkdir -p "$NVKVM_DATA_MNT"
+    if mountpoint -q "$NVKVM_DATA_MNT" 2>/dev/null; then return 0; fi
+    modprobe 9pnet_virtio 2>/dev/null || true
+    if mount -t 9p -o trans=virtio,version=9p2000.L,msize=512000 \
+             "$NVKVM_DATA_TAG" "$NVKVM_DATA_MNT" 2>/dev/null; then
+        log "data: mounted tag '$NVKVM_DATA_TAG' at $NVKVM_DATA_MNT"
+        return 0
+    fi
+    NVKVM_DATA_MNT=""
+    log "data: optional 9p tag '$NVKVM_DATA_TAG' absent; boot continues"
+    return 1
+}
 
 # The record of which commit the module was built from lives NEXT TO the .ko, so
 # the two cannot drift apart: delete the module and the record goes with it.
@@ -156,10 +208,17 @@ ensure_build_deps() {
     local missing=()
     in_target sh -c 'command -v gcc  >/dev/null 2>&1' || missing+=(gcc)
     in_target sh -c 'command -v make >/dev/null 2>&1' || missing+=(make)
+    # SteamOS ships glibc at runtime but omits its development headers. gcc can
+    # therefore build the kernel module while every userspace validation probe
+    # fails at its first #include <stdio.h>. Reinstalling the already-owned
+    # glibc package restores those headers; the package snapshot logic will not
+    # remove glibc afterward because it was present before this run.
+    [ -r "$(rp /usr/include/stdio.h)" ] || missing+=(glibc)
     [ ${#missing[@]} -eq 0 ] && { log "core build tools present"; return 0; }
     steamos_unlock; ensure_pacman_keyring || return 1
     log "installing core build tools: ${missing[*]}"
-    in_target pacman -S --noconfirm --needed "${missing[@]}" \
+    # Do not use --needed: glibc may be installed while its headers are absent.
+    in_target pacman -S --noconfirm "${missing[@]}" \
         || { err "could not install core build tools"; return 1; }
 }
 
@@ -281,9 +340,9 @@ build_and_install_module() {
     cp -a "$src" "$scratch/src" 2>/dev/null || { err "could not stage source"; build_area_down; return 1; }
     local build_rel="$scratch_rel/src/guest" logf; logf="$(rp "$scratch_rel/build.log")"
 
-    local attempt rc=1 need
+    local rc=1 need
     local t0; t0="$(date +%s)"
-    for attempt in 1 2 3 4; do
+    for _ in 1 2 3 4; do
         if in_target sh -c "make -C '$kdir' M='$build_rel' modules" >"$logf" 2>&1; then rc=0; break; fi
         if need="$(pkg_for_build_failure "$logf")"; then
             log "build needs '$need' -- installing and retrying"
@@ -316,16 +375,46 @@ build_and_install_module() {
 
 # ── NVIDIA userspace ─────────────────────────────────────────────────────────
 host_driver_version() {
-    # Read from the RUNNING system on purpose: this is the HOST driver as nvkvm
-    # exposes it, and it is what the new image must match too.
+    # An explicit value is used by the disposable Alpine installer. Otherwise
+    # read from the RUNNING system on purpose: this is the HOST driver as nvkvm
+    # exposes it, and it is what an A/B update target must match too.
+    if [ -n "$DRIVER_VERSION" ]; then
+        printf '%s\n' "$DRIVER_VERSION"
+        return 0
+    fi
     awk '{for(i=1;i<=NF;i++) if ($i ~ /^[0-9]+\.[0-9]+/) {print $i; exit}}' \
         /proc/driver/nvidia/version 2>/dev/null
+}
+
+load_nvkvm_module() {
+    [ "$MODULE_LOAD_REFRESHED" = 0 ] || return 0
+    if [ "$MODULE_REBUILT" != 1 ] && grep -qw "$MODULE_MOD" "$PROC_MODULES" 2>/dev/null; then
+        MODULE_LOAD_REFRESHED=1
+        return 0
+    fi
+    if [ "$MODULE_REBUILT" = 1 ] && grep -qw "$MODULE_MOD" "$PROC_MODULES" 2>/dev/null; then
+        log "module was rebuilt this run -- unloading the resident copy first"
+        rmmod "$MODULE_NAME" 2>/dev/null \
+            || warn "could not unload the running module; a reboot may be needed"
+    fi
+    if modprobe "$MODULE_NAME" 2>/dev/null; then
+        MODULE_LOAD_REFRESHED=1
+        return 0
+    fi
+    warn "modprobe $MODULE_NAME failed"
+    return 1
 }
 installed_userspace_version() {
     in_target sh -c 'ls /usr/lib/libnvidia-glcore.so.* 2>/dev/null | head -1' \
         | sed 's/.*libnvidia-glcore\.so\.//'
 }
-run_cache() { printf '%s' "${RUN_CACHE_DIR:-/home/deck/.local/share/nvkvm/nvidia-runs}"; }
+run_cache() {
+    # Offline provisioning runs before SteamOS creates the deck account and its
+    # home. Caching below /home/deck here creates that directory as root; the
+    # first-boot homedir unit then leaves it root-owned and gamescope cannot
+    # create ~/.config. Keep installer-owned state at the top of /home instead.
+    printf '%s' "${RUN_CACHE_DIR:-/home/.nvkvm-nvidia-runs}"
+}
 
 locate_or_fetch_run() {
     local ver="$1"
@@ -498,7 +587,9 @@ install_nvidia_userspace() {
 }
 
 # ── Optional SSH access, gated by the presence of a key file ─────────────────
-# The OPERATOR drops an authorized_keys into the repo's data/ folder on the HOST;
+# The OPERATOR drops authorized_keys into the separate `data` 9p share on the
+# HOST. It is mounted at the interactive user's ~/data; its presence is the
+# switch, and the private key never crosses into the guest.
 # that file's presence IS the switch. No flag, no default to pick:
 #   absent  -> sshd is not started at all
 #   present -> the key is installed and sshd is enabled
@@ -514,12 +605,14 @@ install_nvidia_userspace() {
 # operator also adds a QEMU hostfwd, e.g.
 #   -netdev user,id=net0,hostfwd=tcp::15022-:22
 configure_ssh() {
-    local keysrc="$NVKVM_SHARE_MNT/data/authorized_keys"
-    local rootkeysrc="$NVKVM_SHARE_MNT/data/root_authorized_keys"
+    local keysrc="${NVKVM_DATA_MNT:-/nonexistent}/authorized_keys"
+    local rootkeysrc="${NVKVM_DATA_MNT:-/nonexistent}/root_authorized_keys"
 
     if [ ! -r "$keysrc" ] && [ ! -r "$rootkeysrc" ]; then
-        log "ssh: no data/authorized_keys on the share -- sshd left disabled"
+        log "ssh: no authorized_keys on the optional data share -- sshd left disabled"
         in_target systemctl disable sshd.service 2>/dev/null || true
+        rm -f "$(rp /etc/sudoers.d/10-nvkvm-ssh)" \
+              "$(rp /etc/sudoers.d/zz-nvkvm-ssh)"
         return 0
     fi
 
@@ -580,6 +673,35 @@ SSHCONF
         awk -F: -v u="$cand" '$1==u{f=1} END{exit !f}' "$(rp /etc/passwd)" && { iu="$cand"; break; }
     done
     [ -n "$iu" ] && _install_authkeys "$iu" "$keysrc"
+
+    # The container helper logs in as the interactive account. Give that
+    # key-authenticated account non-interactive administrative access so host
+    # automation can inspect kernel logs and repair the guest without planting
+    # a password. Keep this coupled to the interactive user's key: a root-only
+    # key does not silently change the deck/user sudo policy.
+    if [ -n "$iu" ] && [ -r "$keysrc" ]; then
+        if ! in_target sh -c 'command -v sudo >/dev/null 2>&1 && command -v visudo >/dev/null 2>&1'; then
+            log "ssh: installing sudo for passwordless guest administration"
+            ensure_pacman_keyring || return 1
+            in_target pacman -S --noconfirm --needed sudo \
+                || { err "ssh: could not install sudo"; return 1; }
+        fi
+        mkdir -p "$(rp /etc/sudoers.d)"
+        rm -f "$(rp /etc/sudoers.d/10-nvkvm-ssh)"
+        printf '%s ALL=(ALL:ALL) NOPASSWD: ALL\n' "$iu" \
+            > "$(rp /etc/sudoers.d/zz-nvkvm-ssh)"
+        chmod 0440 "$(rp /etc/sudoers.d/zz-nvkvm-ssh)"
+        if ! in_target visudo -cf /etc/sudoers.d/zz-nvkvm-ssh >/dev/null; then
+            rm -f "$(rp /etc/sudoers.d/zz-nvkvm-ssh)"
+            err "ssh: generated sudoers policy failed validation"
+            return 1
+        fi
+        log "ssh: '$iu' has key-gated passwordless sudo"
+    else
+        rm -f "$(rp /etc/sudoers.d/10-nvkvm-ssh)" \
+              "$(rp /etc/sudoers.d/zz-nvkvm-ssh)"
+    fi
+
     # Root access is a separate, explicit decision via a differently-named file.
     _install_authkeys root "$rootkeysrc"
 
@@ -589,6 +711,40 @@ SSHCONF
 }
 
 # ── Desktop config + in-image stub ───────────────────────────────────────────
+write_sddm_session_config() {
+    # The SteamOS recovery image may select `gamescope-wayland.desktop` as the
+    # SDDM autologin session. That is not this deployment's desktop model:
+    # Plasma/KWin owns the desktop and Steam launches gamescope for games.
+    #
+    # This is also operationally load-bearing on a VM. MEASURED on SteamOS
+    # 3.8.14: gamescope-session.service is Type=notify with TimeoutStartSec=5.
+    # Its nvkvm/Vulkan startup missed that deadline, systemd SIGKILLed gamescope
+    # and both Xwaylands, and SDDM autologin retried every ~16 seconds. Each
+    # retry created fresh NVIDIA RM clients; after enough forced teardown cycles
+    # the host's 256 MiB BAR1 VA was exhausted and even bare-metal vkCreateDevice
+    # failed with NV_ERR_NO_MEMORY until the NVIDIA driver was reset. Selecting
+    # the intended Plasma session prevents that destructive retry loop.
+    #
+    # `zz-` deliberately wins over both the image's /usr/lib configuration and
+    # /etc/sddm.conf.d/steamos.conf. Set only Session: SteamOS remains the owner
+    # of the autologin user and relogin policy.
+    local sddm_override
+    sddm_override="$(rp /etc/sddm.conf.d/zz-nvkvm-plasma.conf)"
+    if [ "$PROFILE" = steamos ] \
+       && [ -e "$(rp /usr/share/wayland-sessions/plasma.desktop)" ]; then
+        mkdir -p "$(dirname "$sddm_override")"
+        cat > "$sddm_override" <<'SDDM'
+[Autologin]
+Session=plasma.desktop
+SDDM
+        log "desktop session: Plasma/KWin (gamescope remains available to Steam)"
+    else
+        rm -f "$sddm_override"
+        [ "$PROFILE" != steamos ] \
+            || warn "Plasma Wayland session is absent; leaving SteamOS's SDDM session unchanged"
+    fi
+}
+
 write_desktop_config() {
     steamos_unlock
     mkdir -p "$(rp /etc/modules-load.d)" "$(rp /etc/modprobe.d)" "$(rp /etc/systemd/system)" "$(rp /etc/environment.d)"
@@ -638,20 +794,143 @@ UNIT
     # This is a WORKAROUND for a real nvkvm KMS gap; the durable fix is a cursor plane.
     printf 'KWIN_FORCE_SW_CURSOR=1\n' > "$(rp /etc/environment.d/91-nvkvm-cursor.conf)"
 
+    # do_install() is shared by live boot, fresh `--install-only --root`, and
+    # the A/B update hook. Keeping this here makes every convergence reassert
+    # Plasma instead of relying on a one-off edit to the current image.
+    write_sddm_session_config
+
     in_target systemctl enable nvkvm-drm-env.service 2>/dev/null || true
     log "desktop configuration written"
 }
 
+# Copy ONE file from the share into the image, then PROVE it landed intact.
+#
+# install(1) and cp(1) create the destination with O_CREAT|O_TRUNC before they
+# have written a single byte, so ANY failure after that point leaves a
+# destination that exists, has the right name, and is EMPTY. MEASURED, on a
+# deliberately-full ext2 image with /usr/local/sbin already present:
+#
+#   $ install -m 0755 src dst
+#   install: cannot install 'src' to 'dst': No space left on device
+#   $ ls -l dst
+#   -rw------- 1 root root 0 ... dst
+#
+# and the SteamOS rootfs is the ~5 GB partition this whole script fights for
+# room on. The same shape comes out of a short/failed read off the 9p share, and
+# out of a source file on the share that is itself zero-length.
+#
+# A 0-byte /usr/local/sbin/nvkvm-recovery.sh is the worst outcome this script
+# can produce: execve() on an empty file returns ENOEXEC, so nvkvm-boot.service
+# fails 203/EXEC on EVERY boot; every `[ -e ]`/`ls` check says it is installed;
+# and nothing anywhere says why. So verify against the source, and delete
+# whatever does not match rather than leaving the remains in place -- an absent
+# file is at least honest, and the next converge run re-plants it.
+plant_file() {   # <src> <dst> <mode>
+    local src="$1" dst="$2" mode="$3" ssz dsz
+    [ -r "$src" ] || { err "plant: source not readable: $src"; return 1; }
+    if [ ! -s "$src" ]; then
+        err "plant: source is ZERO-LENGTH: $src"
+        err "plant: the 9p share is broken; refusing to plant an empty $(basename "$dst")."
+        return 1
+    fi
+    mkdir -p "$(dirname "$dst")" || { err "plant: could not create $(dirname "$dst")"; return 1; }
+    if ! install -m "$mode" "$src" "$dst"; then
+        err "plant: install failed for $dst -- removing the truncated remains."
+        err "plant: usual cause is no room left on the target rootfs."
+        rm -f "$dst"
+        return 1
+    fi
+    # cmp, not just a size test: a short read off 9p can leave a file that is
+    # non-empty and still wrong.
+    if ! cmp -s "$src" "$dst"; then
+        ssz="$(wc -c <"$src" 2>/dev/null)"; dsz="$(wc -c <"$dst" 2>/dev/null)"
+        err "plant: $dst does not match its source (${dsz:-?} bytes planted, ${ssz:-?} expected) -- removing it."
+        rm -f "$dst"
+        return 1
+    fi
+    return 0
+}
+
+# ── Validation probes ────────────────────────────────────────────────────────
+# nvkvm-pv's tests/validate.sh runs 30 checks and 24 of them are C probes it
+# compiles at run time. This image has no compiler: remove_added_packages()
+# strips gcc and make immediately below, because the toolchain and the NVIDIA
+# userspace do not both fit on a 5 GB rootfs. MEASURED on the produced image --
+# "30 total: 5 PASS, 1 FAIL, 24 SKIP", every skip "no C compiler on PATH". On
+# the shipped artifact the validator could only ever check bring-up; it could
+# never test CUDA, Vulkan, EGL or GL, and the result read as basically fine.
+#
+# So build the probes here, while gcc is still installed, and ship the binaries.
+# They dlopen() libcuda/libvulkan/libEGL and link only -ldl and -lm, so at run
+# time they need nothing but libc -- and building them IN the target root means
+# that is the IMAGE's libc, which a host-side build could not promise.
+#
+# The placement is the point and is deliberately builder-agnostic: do_install()
+# is what every path into an image runs -- the offline image builder,
+# `nvkvm-recovery.sh plant` into a freshly staged slot, a live guest converging
+# at boot, and whatever builder replaces the current one. Nothing here depends
+# on any one builder's structure.
+#
+# Non-fatal by design. Without the probes validate.sh reports CANNOT VALIDATE
+# rather than a false pass -- a bad outcome, but not a broken image, and not
+# worth failing a provisioning run over.
+NVKVM_PROBE_DIR_IN_IMAGE=/usr/local/lib/nvkvm/probes
+build_validation_probes() {
+    local src="$NVKVM_SHARE_MNT/tests/validate.sh" probe
+    if [ ! -r "$src" ]; then
+        warn "no tests/validate.sh on the share -- the image will ship with no validation"
+        warn "probes, and validate.sh on it will report CANNOT VALIDATE."
+        return 0
+    fi
+    for probe in cuda_probe vk_probe gl_probe; do
+        [ -x "$(rp "$NVKVM_PROBE_DIR_IN_IMAGE/$probe")" ] || break
+    done
+    if [ "$probe" = gl_probe ] && [ -x "$(rp "$NVKVM_PROBE_DIR_IN_IMAGE/$probe")" ]; then
+        log "validation probes already present in $NVKVM_PROBE_DIR_IN_IMAGE"
+        return 0
+    fi
+    if ! in_target sh -c 'command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1'; then
+        warn "no compiler in the target root; shipping without validation probes"
+        return 0
+    fi
+    steamos_unlock
+    # The share is NOT visible inside the chroot on the offline path (the bind
+    # lives at the HOST's /run/nvkvm, and chroot resolves that path inside the
+    # image). Stage the script in first, exactly as build_and_install_module()
+    # stages the module sources, then run it from a path the chroot can see.
+    local staged=/tmp/nvkvm-validate.sh
+    mkdir -p "$(rp /tmp)" "$(rp "$NVKVM_PROBE_DIR_IN_IMAGE")"
+    if ! cp -f "$src" "$(rp "$staged")"; then
+        warn "could not stage validate.sh into the target root; no probes built"
+        return 0
+    fi
+    chmod 0755 "$(rp "$staged")"
+    if in_target bash "$staged" --build-probes "$NVKVM_PROBE_DIR_IN_IMAGE"; then
+        log "validation probes built into $NVKVM_PROBE_DIR_IN_IMAGE (validate.sh needs no compiler on this image)"
+    else
+        warn "could not build the validation probes. validate.sh on this image will report"
+        warn "CANNOT VALIDATE instead of testing CUDA/Vulkan/GL. Needs an nvkvm-pv whose"
+        warn "tests/validate.sh understands --build-probes."
+    fi
+    rm -f "$(rp "$staged")"
+}
+
 install_stub() {
     local img_dir="$NVKVM_SHARE_MNT/boot/image"
-    [ -d "$img_dir" ] || { warn "in-image sources not found at $img_dir"; return 1; }
+    [ -d "$img_dir" ] || { err "in-image sources not found at $img_dir"; return 1; }
     steamos_unlock
-    install -D -m 0755 "$img_dir/nvkvm-recovery.sh"      "$(rp /usr/local/sbin/nvkvm-recovery.sh)"
-    install -D -m 0644 "$img_dir/nvkvm-boot.service"      "$(rp /etc/systemd/system/nvkvm-boot.service)"
-    install -D -m 0644 "$img_dir/nvkvm-plant-stub.path"   "$(rp /etc/systemd/system/nvkvm-plant-stub.path)"
-    install -D -m 0644 "$img_dir/nvkvm-plant-stub.service" "$(rp /etc/systemd/system/nvkvm-plant-stub.service)"
+    local rc=0
+    plant_file "$img_dir/nvkvm-recovery.sh"       "$(rp /usr/local/sbin/nvkvm-recovery.sh)"             0755 || rc=1
+    plant_file "$img_dir/nvkvm-boot.service"      "$(rp /etc/systemd/system/nvkvm-boot.service)"        0644 || rc=1
+    plant_file "$img_dir/nvkvm-plant-stub.path"   "$(rp /etc/systemd/system/nvkvm-plant-stub.path)"     0644 || rc=1
+    plant_file "$img_dir/nvkvm-plant-stub.service" "$(rp /etc/systemd/system/nvkvm-plant-stub.service)" 0644 || rc=1
+    if [ "$rc" != 0 ]; then
+        err "in-image stub NOT installed. Until this is fixed nvkvm-boot.service"
+        err "cannot run, and a provisioned image will not converge on its own."
+        return 1
+    fi
     in_target systemctl enable nvkvm-boot.service nvkvm-plant-stub.path 2>/dev/null || true
-    log "in-image stub + recovery installed"
+    log "in-image stub + recovery installed (verified byte-for-byte against the share)"
 }
 
 # ── Part 1 ───────────────────────────────────────────────────────────────────
@@ -668,6 +947,9 @@ do_install() {
         err "Start QEMU with: -virtfs local,path=<nvkvm-pv>,mount_tag=$NVKVM_SHARE_TAG,security_model=none,readonly=on"
         return 1
     fi
+    # Optional by design. A QEMU invocation without mount_tag=data must reach
+    # the desktop; it merely has no ~/data and no key-triggered SSH access.
+    mount_data_share || true
     local kver want have
     kver="$(target_kver)"
     want="$(repo_commit)"; have="$(built_commit "${kver:-none}")"
@@ -684,13 +966,26 @@ do_install() {
         log "module up to date at $want"
     fi
 
+    # LAST CHANCE TO USE A COMPILER. Everything below this line, and everything
+    # on the finished image, runs without one.
+    build_validation_probes
+
     # Free the toolchain before the driver install -- they do not both fit.
     remove_added_packages
+
+    # On a normal SteamOS boot there is no reason to pass a version: build/load
+    # nvkvm first and let its procfs bridge report the host value. Install-only
+    # cannot touch running-kernel state and was preflighted below instead.
+    if [ "$CMD" = boot ] && [ "$ROOT" = / ] && [ -z "$(host_driver_version)" ]; then
+        log "host driver version not visible yet -- loading nvkvm before NVIDIA userspace convergence"
+        load_nvkvm_module || rc=1
+    fi
 
     local hv iv
     hv="$(host_driver_version)"; iv="$(installed_userspace_version)"
     if [ -z "$hv" ]; then
-        warn "could not read the host driver version from /proc/driver/nvidia/version"
+        err "could not determine the host NVIDIA driver version"
+        rc=1
     elif [ "$hv" != "$iv" ]; then
         log "NVIDIA userspace mismatch (host=$hv guest=${iv:-none}) -- installing"
         local run
@@ -715,32 +1010,121 @@ do_install() {
 
     write_desktop_config || rc=1
     configure_ssh || rc=1
-    install_stub || true
+    # NOT `|| true`. A silently-failed plant is how a 0-byte
+    # /usr/local/sbin/nvkvm-recovery.sh ships: 203/EXEC on every boot, from a run
+    # that reported rc=0. This does not endanger the update path -- the plant
+    # unit declares SuccessExitStatus=0 1 and nvkvm-recovery.sh's own `plant`
+    # subcommand still always exits 0 (design note 3).
+    install_stub || rc=1
     prune_run_cache
     log "=== Part 1 finished (rc=$rc) ==="
     return $rc
 }
 
-# ── Validation: three distinct failure classes ───────────────────────────────
-# 0 ok | 2 protocol mismatch | 3 module will not load | 4 userspace broken
+# ── Validation ───────────────────────────────────────────────────────────────
+# WHAT THIS FUNCTION CAN SEE, AND WHAT IT CANNOT. Read this before adding a
+# caller that prints anything cheerful on the strength of a 0 from here.
+#
+# IT CHECKS
+#   - the kernel log carries no nvkvm protocol-version mismatch      (CLASS 2)
+#   - the guest module is loaded                                     (CLASS 3)
+#   - the kernel has not faulted inside the guest module             (CLASS 5)
+#   - /dev/nvidiactl exists AND can actually be OPENED               (CLASS 5)
+#   - the NVIDIA userspace the chosen profile needs is installed     (CLASS 4)
+#   - a DRM node bound to the nvidia driver exists (graphics only)   (CLASS 6)
+#
+# IT DOES NOT CHECK THE DESKTOP, AND IT STRUCTURALLY CANNOT.
+# This runs from nvkvm-boot.service, which is ordered
+# `Before=display-manager.service sddm.service`. At the moment it returns, no
+# compositor has been started. It cannot know whether one comes up, whether it
+# crash-loops, or whether the session lands on nvkvm's DRM node or the emulated
+# VGA. MEASURED, twice in one week: this printed
+# `validation OK -- handing over to the desktop` while kwin was crash-looping
+# and no desktop existed, and on another boot while the guest module was
+# oopsing on every open. Both times the message stopped people looking.
+#
+# So the rule for callers: report what was verified, name what was not, and
+# never let the word "desktop" appear next to a 0 from this function.
+#
+# Return: 0 ok | 2 protocol mismatch | 3 module will not load
+#         4 userspace broken | 5 module loaded but not usable
+#         6 no DRM node bound to the nvidia driver
+#
+# VALIDATE_UNVERIFIED collects things this run could not observe at all (a
+# restricted kernel log, say). It is NOT a failure — it is the part of the
+# verdict that has no evidence behind it, and callers print it so a pass is
+# never mistaken for a complete pass.
+VALIDATE_UNVERIFIED=""
+
+# The one operation the desktop is about to perform. `[ -e ]` proves a device
+# node exists; it proves nothing about whether opening it works, and "the node
+# is there" is exactly what was true on the boot where every open oopsed.
+# Runs in a subshell so a failed redirection cannot take this script with it.
+can_open_device() {   # <path>
+    ( exec 9<"$1" ) 2>/dev/null
+}
+
 validate() {
-    local dmesgtxt; dmesgtxt="$(dmesg 2>/dev/null | tail -400)"
-    if printf '%s' "$dmesgtxt" | grep -q 'protocol version mismatch'; then
+    VALIDATE_UNVERIFIED=""
+    local dmesgtxt dmesg_ok=1
+    dmesgtxt="$(dmesg 2>/dev/null)" || dmesg_ok=0
+    [ -n "$dmesgtxt" ] || dmesg_ok=0
+    if [ "$dmesg_ok" = 0 ]; then
+        # Silently finding nothing in a log you cannot read is indistinguishable
+        # from finding nothing in a clean one. Say which it was.
+        VALIDATE_UNVERIFIED="$VALIDATE_UNVERIFIED
+  - the kernel log is unreadable (kernel.dmesg_restrict?), so the protocol-mismatch
+    and module-fault checks below did not actually run"
+    fi
+
+    # Deliberately searches the WHOLE log, not `tail -400`: on a boot that logs
+    # a lot the mismatch line scrolls out of a 400-line window and the check
+    # silently passes.
+    if printf '%s\n' "$dmesgtxt" | grep -q 'protocol version mismatch'; then
         err "CLASS 2: nvkvm PROTOCOL VERSION MISMATCH."
-        printf '%s' "$dmesgtxt" | grep 'protocol version mismatch' | tail -2 >&2
+        printf '%s\n' "$dmesgtxt" | grep 'protocol version mismatch' | tail -2 >&2
         err "The guest module and the host QEMU were built from different commits."
         err "Rebuild BOTH from the same nvkvm-pv checkout (the 9p share is that checkout)."
         return 2
     fi
-    if ! grep -qw "$MODULE_MOD" /proc/modules 2>/dev/null; then
+    if ! grep -qw "$MODULE_MOD" "$PROC_MODULES" 2>/dev/null; then
         err "CLASS 3: $MODULE_NAME is NOT LOADED."
-        printf '%s' "$dmesgtxt" | grep -i nvkvm | tail -3 >&2
+        printf '%s\n' "$dmesgtxt" | grep -i nvkvm | tail -3 >&2
         err "Built, but the kernel refused it. Usually a vermagic/kernel mismatch"
         err "(check 'modinfo -F vermagic' against 'uname -r'), or nvkvm's virtio"
         err "device is absent from the QEMU command line."
         return 3
     fi
-    [ -e /dev/nvidiactl ] || { err "CLASS 4: module loaded but /dev/nvidiactl is missing"; return 4; }
+
+    # Loaded is not the same as working. An oops or WARN inside the module
+    # annotates its frames with `[nvkvm_guest]`, which nothing else prints --
+    # `Modules linked in:` lists the bare name, without brackets. Require a
+    # fault marker as well, so a stray annotation cannot invent a failure.
+    if [ "$dmesg_ok" = 1 ] \
+       && printf '%s\n' "$dmesgtxt" | grep -qE '\[nvkvm_guest[] ]' \
+       && printf '%s\n' "$dmesgtxt" | grep -qE 'BUG:|Oops:|kernel BUG at|general protection fault|WARNING: CPU'; then
+        err "CLASS 5: the kernel FAULTED inside $MODULE_NAME. It is loaded and it is broken."
+        printf '%s\n' "$dmesgtxt" | grep -E '\[nvkvm_guest[] ]|BUG:|Oops:' | tail -6 >&2
+        err "Anything that opens the device may take the machine down. Do not treat"
+        err "this system as working because the module is listed in /proc/modules."
+        return 5
+    fi
+
+    [ -e "$DEV_NVIDIACTL" ] || { err "CLASS 4: module loaded but $DEV_NVIDIACTL is missing"; return 4; }
+
+    # THE check that the desktop's first move actually works. This is the exact
+    # operation that NULL-deref'd on a guest with no nvkvm virtio device, from
+    # ksplashqml, seconds after this function had returned 0.
+    log "opening $DEV_NVIDIACTL to check the module actually works"
+    if ! can_open_device "$DEV_NVIDIACTL"; then
+        err "CLASS 5: $DEV_NVIDIACTL exists but cannot be OPENED."
+        printf '%s\n' "$dmesgtxt" | grep -i nvkvm | tail -5 >&2
+        err "The module is loaded and its device node is there, but the thing every"
+        err "GL/CUDA client does first fails. Usually nvkvm's virtio device is absent"
+        err "from the QEMU command line (look for 'host GPU discovery failed')."
+        return 5
+    fi
+
     # Profile-aware. A trimmed profile HAS no libcuda, so checking for it would
     # report a healthy system as broken.
     if [ "$PROFILE" = compute ]; then
@@ -751,13 +1135,41 @@ validate() {
     else
         ldconfig -p 2>/dev/null | grep -q libGLX_nvidia \
             || { err "CLASS 4: libGLX_nvidia missing (Vulkan/GL stack incomplete)"; return 4; }
-        # The loader searches BOTH /etc/vulkan/icd.d and /usr/share/vulkan/icd.d,
-        # and nvidia-installer writes to /etc. MEASURED -- checking only
-        # /usr/share reports a perfectly healthy install as broken.
-        [ -e /etc/vulkan/icd.d/nvidia_icd.json ] || [ -e /usr/share/vulkan/icd.d/nvidia_icd.json ] \
-            || { err "CLASS 4: NVIDIA Vulkan ICD manifest missing from both loader paths"; return 4; }
+        local icd icd_found=0
+        for icd in $VULKAN_ICD_PATHS; do [ -e "$icd" ] && { icd_found=1; break; }; done
+        [ "$icd_found" = 1 ] \
+            || { err "CLASS 4: NVIDIA Vulkan ICD manifest missing from every loader path ($VULKAN_ICD_PATHS)"; return 4; }
+
+        # The compositor opens a DRM node, not /dev/nvidiactl -- and
+        # write_desktop_config()'s whole job is to point KWIN_DRM_DEVICES at the
+        # one whose driver is "nvidia". If no such node exists, the session
+        # cannot be on nvkvm no matter how healthy everything above looks. This
+        # is a prerequisite for the desktop, not a check OF the desktop.
+        local c drv found=0
+        for c in "$DRM_CLASS_DIR"/card[0-9]*; do
+            [ -e "$c/device/driver" ] || continue
+            drv="$(basename "$(readlink -f "$c/device/driver")" 2>/dev/null)"
+            [ "$drv" = nvidia ] && { found=1; break; }
+        done
+        if [ "$found" = 0 ]; then
+            err "CLASS 6: no /dev/dri node is bound to the nvidia driver."
+            err "Everything above passed, but a compositor has nothing of ours to open,"
+            err "so the session would land on the emulated VGA. Check that the guest"
+            err "module registered a DRM device (dmesg | grep -i drm)."
+            return 6
+        fi
     fi
     return 0
+}
+
+# What validate() actually established, in words, for a caller to print. Kept
+# next to validate() so the two cannot drift: if you add a check up there, say
+# so down here, and if you remove one, stop claiming it.
+validate_verified_summary() {
+    printf 'module loaded and not faulting, %s opens' "$DEV_NVIDIACTL"
+    [ "$PROFILE" = compute ] && printf ', libcuda present, nvidia-smi enumerates a GPU' \
+                             || printf ', GL/Vulkan userspace installed, a DRM node is bound to nvidia'
+    printf '\n'
 }
 
 # ── Part 2 ───────────────────────────────────────────────────────────────────
@@ -768,15 +1180,26 @@ do_boot() {
     fi
     do_install || warn "converge reported problems; continuing to validation"
 
-    # If this run rebuilt the module, a stale copy may already be resident from an
-    # earlier boot; force it out so the new one is what actually loads.
-    if [ "$MODULE_REBUILT" = 1 ] && grep -qw "$MODULE_MOD" /proc/modules 2>/dev/null; then
-        log "module was rebuilt this run -- unloading the resident copy first"
-        rmmod "$MODULE_NAME" 2>/dev/null || warn "could not unload the running module; a reboot may be needed"
-    fi
-    modprobe "$MODULE_NAME" 2>/dev/null || warn "modprobe $MODULE_NAME failed"
+    load_nvkvm_module || true
 
-    validate && { log "validation OK -- handing over to the desktop"; return 0; }
+    if validate; then
+        # Say what was actually established, and say -- every time, not only
+        # when something looks wrong -- what this check is incapable of seeing.
+        # The previous wording was "validation OK -- handing over to the
+        # desktop", and it printed that while kwin was crash-looping and no
+        # desktop existed. A validator that over-claims is worse than none,
+        # because it stops people looking.
+        log "nvkvm checks passed: $(validate_verified_summary)"
+        if [ -n "$VALIDATE_UNVERIFIED" ]; then
+            warn "...but this run could NOT verify:$VALIDATE_UNVERIFIED"
+        fi
+        log "NOT CHECKED: whether the desktop starts. This unit is ordered before"
+        log "display-manager.service, so no compositor has run yet. If the screen"
+        log "stays black, check the session, not nvkvm:"
+        log "  systemctl status display-manager; journalctl -b -u display-manager"
+        log "  journalctl -b --user-unit plasma-kwin_wayland   # as the desktop user"
+        return 0
+    fi
 
     err "nvkvm validation FAILED (class above). The desktop will start on the emulated VGA."
     err "Run 'nvkvm-recovery.sh menu', or boot with nvkvm.skip=1 to skip this entirely."
@@ -787,6 +1210,13 @@ do_boot() {
 }
 
 # ── Entry point ──────────────────────────────────────────────────────────────
+# Regression tests source the functions above and stop here. Production never
+# sets this variable; keeping the guard next to argument parsing prevents a
+# sourced test from provisioning the machine running the test.
+if [ "${NVKVM_STEAMOS_BOOT_SOURCE_ONLY:-0}" = 1 ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 CMD=boot
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -795,11 +1225,20 @@ while [ $# -gt 0 ]; do
         validate)       CMD=validate; shift ;;
         --root)         ROOT="$2"; shift 2 ;;
         --profile)      PROFILE="$2"; shift 2 ;;
+        --driver-version) DRIVER_VERSION="$2"; shift 2 ;;
         --old-run-file) RUN_CACHE_DIR="$2"; shift 2 ;;
         *) err "unknown argument: $1"; exit 2 ;;
     esac
 done
 case "$PROFILE" in steamos|compute) ;; *) err "unknown profile '$PROFILE'"; exit 2 ;; esac
+if [ -n "$DRIVER_VERSION" ] && ! [[ "$DRIVER_VERSION" =~ ^[0-9]+([.][0-9]+)+$ ]]; then
+    err "invalid --driver-version '$DRIVER_VERSION'"
+    exit 2
+fi
+if [ "$CMD" = install ] && [ -z "$(host_driver_version)" ]; then
+    err "--install-only requires --driver-version VERSION when /proc/driver/nvidia/version is unavailable"
+    exit 1
+fi
 
 case "$CMD" in
     install)  do_install ;;

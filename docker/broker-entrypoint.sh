@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUNTIME_DIR=/run/host-runtime
+SOCKET=/run/nvkvm/steamos.sock
+BACKEND="${NVKVM_BROKER_BACKEND:-auto}"
+SIZE="${NVKVM_BROKER_SIZE:-1280x800}"
+SCALE="${NVKVM_BROKER_SCALE:-aspect}"
+
+die() { printf '[broker-container] ERROR: %s\n' "$*" >&2; exit 1; }
+log() { printf '[broker-container] %s\n' "$*" >&2; }
+
+[ -d "$RUNTIME_DIR" ] || die "$RUNTIME_DIR is not the host desktop runtime mount"
+[ -d /run/nvkvm ] || die "/run/nvkvm is not the shared broker-socket volume"
+
+desktop_uid="$(stat -c %u "$RUNTIME_DIR")"
+desktop_gid="$(stat -c %g "$RUNTIME_DIR")"
+case "$desktop_uid:$desktop_gid" in
+    *[!0-9:]*|:|*:|:*) die "could not determine the desktop uid/gid" ;;
+esac
+
+# Container uid 0 has no DAC_OVERRIDE after cap_drop=ALL, so it cannot inspect
+# a mode-0700 desktop runtime directory. Become its owner before looking for
+# Wayland. The marker also handles the unusual case of a root-owned session.
+if [ "${NVKVM_BROKER_DROPPED:-0}" != 1 ]; then
+    export NVKVM_BROKER_DROPPED=1
+    exec setpriv \
+        --reuid "$desktop_uid" --regid "$desktop_gid" --clear-groups \
+        --inh-caps=-all --ambient-caps=-all \
+        --no-new-privs \
+        "$0" "$@"
+fi
+
+if [ "$BACKEND" = auto ]; then
+    if [ -n "${WAYLAND_DISPLAY:-}" ] \
+       && [ -S "$RUNTIME_DIR/${WAYLAND_DISPLAY##*/}" ]; then
+        BACKEND=wayland
+    elif [ -n "${DISPLAY:-}" ] && [ -d /tmp/.X11-unix ]; then
+        BACKEND=x11
+    else
+        die "no usable Wayland or X11 display socket was mounted"
+    fi
+fi
+
+case "$BACKEND" in
+    wl|wayland)
+        BACKEND=wayland
+        export XDG_RUNTIME_DIR="$RUNTIME_DIR"
+        export WAYLAND_DISPLAY="${WAYLAND_DISPLAY##*/}"
+        [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] \
+            || die "Wayland socket $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY is absent"
+        ;;
+    x11)
+        [ -n "${DISPLAY:-}" ] || die "DISPLAY is empty for the X11 backend"
+        if [ -s /run/host-xauthority ]; then
+            export XAUTHORITY=/run/host-xauthority
+        else
+            unset XAUTHORITY
+            log "no Xauthority file was supplied; the X server must already allow this local uid"
+        fi
+        ;;
+    *) die "NVKVM_BROKER_BACKEND must be auto, wl, wayland, or x11" ;;
+esac
+
+extra=()
+[ "${NVKVM_BROKER_FULLSCREEN:-0}" = 1 ] && extra+=(--fullscreen)
+
+log "backend=$BACKEND desktop_uid=$desktop_uid desktop_gid=$desktop_gid socket=$SOCKET"
+log "the VMM has no display mount; CTRL+ALT+G toggles the broker input grab"
+
+# The shared volume is private to these two services. Mode 0666 avoids a
+# machine-specific desktop GID in Compose; SO_PEERCRED still admits only the
+# VMM's uid 0, and no unrelated container has the volume mounted. This script
+# is already running as the desktop uid with no effective/permitted caps.
+exec /usr/local/bin/nvkvm-display-broker \
+        --socket "$SOCKET" \
+        --socket-mode 0666 \
+        --allow-user root \
+        --backend "$BACKEND" \
+        --size "$SIZE" \
+        --scale "$SCALE" \
+        --title "SteamOS — nvkvm" \
+        --persist \
+        "${extra[@]}" "$@"

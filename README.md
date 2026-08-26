@@ -19,6 +19,36 @@ SteamOS is an interesting target precisely because nothing about it was built
 for this: it is immutable (read-only rootfs, atomic A/B updates), has no usable
 package manager, is AMD-first, and ships **no NVIDIA support at all**.
 
+## Quick start: two isolated containers
+
+On a graphical Linux PC with Docker Compose, `/dev/kvm`, the NVIDIA driver and
+NVIDIA Container Toolkit installed, the complete path is:
+
+```sh
+docker compose build
+docker compose up -d
+```
+
+Compose builds two images. `vmm` is the untrusted nvkvm/QEMU container: it has
+no host display socket, a read-only root filesystem, Docker seccomp,
+`no-new-privileges`, and only the four capabilities required to force nvkvm's
+uid+chroot+seccomp isolate mode. `broker` is the trusted, small display client:
+it receives the host Wayland/X11 mounts but no GPU-control device, VM disk,
+recovery image, or SSH key. A private tmpfs Unix socket is their sole shared
+mount.
+
+If `./nvkvm` is not a local nvkvm-pv checkout, the build clones
+[`reindertpelsma/nvkvm-pv`](https://github.com/reindertpelsma/nvkvm-pv) at
+`main`. The first start downloads and installs SteamOS into persistent volumes;
+later starts boot that qcow2 directly. Reach the guest with:
+
+```sh
+./steamos-ssh
+```
+
+See [the two-container deployment guide](docs/container-compose.md) for state,
+security boundaries, Wayland/X11 selection, optional host data, and overrides.
+
 > **This document is what is true now**, in brief.
 >
 > - **Reproducing it from scratch:** [`TUTORIAL.md`](TUTORIAL.md) — every
@@ -53,6 +83,16 @@ a much longer road.
 
 Five steps. Everything after step 4 is automatic and re-runnable.
 
+> **There is now a second, better way to get the disk image** —
+> [`install_steamos_vm.sh`](install_steamos_vm.sh), documented in
+> [`docs/vm-installer.md`](docs/vm-installer.md). It boots a throwaway Alpine VM
+> and lets **Valve's own installer** write a **real dual-slot A/B install** to a
+> blank disk, so the host needs no root at all (just `/dev/kvm`) and the result
+> can take SteamOS OTA updates — which is what finally makes the nvkvm update
+> hook testable. The steps below, and `build_steamos_image.sh`, modify Valve's
+> A-slot-only *recovery* image in place and cannot do that. Both paths still
+> work; the VM one is the one to grow.
+
 **If you are starting from a machine with nothing set up, use
 [`TUTORIAL.md`](TUTORIAL.md) instead** — it is the same path with the host
 build, the package lists, and every failure mode written out. What follows is
@@ -71,10 +111,11 @@ the at-a-glance version for someone who already has nvkvm-pv built.
 > *this* repo fails with `nvkvm guest source not found`. `boot/` here is a copy
 > of nvkvm-pv's `boot/`, published so the mechanism can be read on its own.
 >
-> **The share needs both halves.** The public `nvkvm-pv` does not currently ship
-> `boot/` (checked at `252bd44`, 2026-08-24), and `install_stub` needs
-> `<share>/boot/image/` for the systemd units — so copy this repo's `boot/` into
-> the checkout you share: `cp -r nvkvm-steamos/boot nvkvm-pv/`.
+> **The share needs both halves.** `install_stub` needs `<share>/boot/image/`
+> as well as `<share>/src/guest`. Current `nvkvm-pv` main supplies both, and the
+> Compose build overlays this repository's SteamOS policy automatically. If a
+> manual checkout lacks `boot/image/`, update it or copy this repo's `boot/`
+> into that checkout before provisioning.
 
 > **Steps 1 and 2 are one command if you want them to be:**
 > ```sh

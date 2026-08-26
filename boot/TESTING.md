@@ -8,6 +8,39 @@ This exercises everything except the 9p transport itself and an actual guest boo
 
 ---
 
+## AMENDMENT — 2026-08-25: standalone two-container deployment
+
+Rig: the physical RTX 4070 workstation, host driver 595.84, Docker Compose,
+GNOME/Wayland on the host, and the persisted genuine SteamOS A/B qcow2 from the
+earlier run. The Docker build had no local `./nvkvm`, so it cloned public
+`nvkvm-pv` main at `24b13f7d6f2b8773ef841309a691c98a777e065f` and built both
+patched QEMU and the broker from that checkout.
+
+**Proven in the published two-container layout:**
+
+- SteamOS boots to SDDM's `plasma.desktop`; `kwin_wayland`, Xwayland, and
+  `plasmashell` are live. The broker displays the 1920x1080 guest through its
+  Wayland backend, and its X11 backend was also exercised.
+- `nvidia-smi -L` reports the RTX 4070 and driver 595.84. The prebuilt probe
+  creates a Vulkan device and verifies a 4096-element compute dispatch; the EGL
+  probe creates an NVIDIA context and verifies both rendered pixels. CUDA is
+  intentionally absent from the trimmed `steamos` profile.
+- The VMM has no host display mount. QEMU has only `SETUID`, `SETGID`,
+  `SETPCAP`, and `SYS_CHROOT`; sampled isolate processes had distinct high
+  uid/gid values, root `/dev`, an empty capability bounding set,
+  `NoNewPrivs: 1`, and two seccomp filters. The broker had no GPU/KVM device,
+  no network, no VM state, and no effective or permitted capabilities.
+- Recreating the broker Wayland -> X11 -> Wayland preserved the guest boot ID
+  and left the VMM restart count at zero. Each broker received the cached
+  1920x1080 frame after reconnect, without waiting for a new guest flip.
+
+That restart test found one packaging defect before publication: the first VMM
+image lacked `libGL.so.1`, so libepoxy aborted QEMU when broker loss briefly
+activated QEMU's local fallback. Adding the `libgl1` runtime package fixed it;
+the repeated test above is against the corrected image.
+
+---
+
 ## AMENDMENT — 2026-08-23: a bare-metal run, and what it changed
 
 Everything above and below this line, unless a note says otherwise, was

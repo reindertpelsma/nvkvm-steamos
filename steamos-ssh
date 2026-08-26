@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Host-side shortcut into the SteamOS guest using the private key in its state
+# volume. Extra arguments become the remote command.
+set -euo pipefail
+exec docker compose exec vmm nvkvm-steamos-ssh "$@"
