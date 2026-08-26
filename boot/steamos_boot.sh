@@ -1016,6 +1016,22 @@ ensure_serial_console() {
         regen=1
     fi
 
+    # BELT AND BRACES: an unattended VM must never be able to sit at the boot
+    # menu.  Removing the serial terminal above fixes the cause we introduced,
+    # but GRUB_TIMEOUT=-1 ("wait forever") reaches the same dead end from a
+    # different direction -- and on a headless container start there is nobody
+    # to press a key either way.  Pin a finite timeout when it is missing or
+    # infinite, and leave any sane existing value alone.
+    local tmo; tmo="$(sed -n 's/^GRUB_TIMEOUT=//p' "$gd" 2>/dev/null | tail -1 | tr -d '\"'"'"' ')"
+    case "$tmo" in
+        ''|-1|*[!0-9-]*)
+            log "serial: pinning GRUB_TIMEOUT=5 (was '${tmo:-unset}' -- an unattended VM cannot answer a menu)"
+            sed -i '/^GRUB_TIMEOUT=/d' "$gd" 2>/dev/null
+            printf 'GRUB_TIMEOUT=5\n' >> "$gd" || warn "serial: could not pin GRUB_TIMEOUT"
+            regen=1
+            ;;
+    esac
+
     [ "$regen" = 1 ] || { log "serial: bootloader already correct for ttyS0"; return 0; }
 
     if in_target sh -c 'command -v update-grub >/dev/null 2>&1'; then
