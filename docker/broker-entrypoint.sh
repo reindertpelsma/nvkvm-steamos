@@ -24,12 +24,31 @@ esac
 # Wayland. The marker also handles the unusual case of a root-owned session.
 if [ "${NVKVM_BROKER_DROPPED:-0}" != 1 ]; then
     export NVKVM_BROKER_DROPPED=1
+    # CAP_SETUID/CAP_SETGID are kept ONLY so the broker can drop FURTHER once
+    # its window is up -- see NVKVM_BROKER_DROP_UID below.  It spends them on
+    # that one transition and clears the whole capability set immediately
+    # after, proving the drop took by checking setuid(0) now fails.  Everything
+    # else is still dropped here.
     exec setpriv \
         --reuid "$desktop_uid" --regid "$desktop_gid" --clear-groups \
-        --inh-caps=-all --ambient-caps=-all \
+        --inh-caps=+setuid,+setgid --ambient-caps=+setuid,+setgid \
         --no-new-privs \
         "$0" "$@"
 fi
+
+# A uid that owns nothing.
+#
+# Until the display connection exists the broker must BE the desktop user: the
+# runtime directory is mode 0700 and the Wayland socket lives inside it.  After
+# that, every resource it needs is an open fd, and staying the desktop user
+# only means retaining reach into that user's files, keys and autostart
+# directory for no benefit.
+#
+# `auto` lets the BROKER choose, because only it can read /proc/self/uid_map.
+# Under `dockerd --userns-remap` or sysbox-runc the container is given a mapped
+# range -- commonly 65536 uids -- and a uid outside it fails setuid() with
+# EINVAL.  A number picked here in shell cannot know that; the broker can.
+# Set NVKVM_BROKER_DROP_UID to pin one instead.
 
 if [ "$BACKEND" = auto ]; then
     if [ -n "${WAYLAND_DISPLAY:-}" ] \
@@ -64,6 +83,16 @@ esac
 
 extra=()
 [ "${NVKVM_BROKER_FULLSCREEN:-0}" = 1 ] && extra+=(--fullscreen)
+# Advertise only DRM_FORMAT_MOD_LINEAR, forcing the VMM to read frames back
+# into a linear buffer rather than handing over the guest's native tiling.
+# Set it to reproduce a cross-vendor host on a single-GPU one, or when a
+# compositor advertises a modifier it then fails to import.  Costs one GPU
+# transfer per frame.  An explicit boolean rather than an argv passthrough:
+# this process owns a window and input focus, and letting compose inject
+# arbitrary arguments into it is a widening for no benefit.
+[ "${NVKVM_BROKER_LINEAR_ONLY:-0}" = 1 ] && extra+=(--linear-only)
+[ -n "${NVKVM_BROKER_PRESENT_MODE:-}" ] && extra+=(--present-mode="$NVKVM_BROKER_PRESENT_MODE")
+extra+=(--drop-user "${NVKVM_BROKER_DROP_UID:-auto}")
 
 log "backend=$BACKEND desktop_uid=$desktop_uid desktop_gid=$desktop_gid socket=$SOCKET"
 log "the VMM has no display mount; CTRL+ALT+G toggles the broker input grab"
@@ -71,7 +100,9 @@ log "the VMM has no display mount; CTRL+ALT+G toggles the broker input grab"
 # The shared volume is private to these two services. Mode 0666 avoids a
 # machine-specific desktop GID in Compose; SO_PEERCRED still admits only the
 # VMM's uid 0, and no unrelated container has the volume mounted. This script
-# is already running as the desktop uid with no effective/permitted caps.
+# is already running as the desktop uid; the only caps still inheritable are
+# CAP_SETUID/CAP_SETGID, which the broker spends on the --drop-user transition
+# above and then clears.
 exec /usr/local/bin/nvkvm-display-broker \
         --socket "$SOCKET" \
         --socket-mode 0666 \

@@ -16,8 +16,10 @@ services:
     network_mode: none
     read_only: true
     cap_drop: [ALL]
-    # The entrypoint uses these only to become the owner of the mounted desktop
-    # runtime directory, then clears effective/permitted caps before execing.
+    # The entrypoint uses these to become the owner of the mounted desktop
+    # runtime directory, and keeps them inheritable across that one setpriv so
+    # the broker can drop again to NVKVM_BROKER_DROP_UID once its window is up.
+    # The broker clears the whole capability set right after that transition.
     cap_add: [SETUID, SETGID]
     security_opt:
       - no-new-privileges:true
@@ -28,6 +30,22 @@ services:
       NVKVM_BROKER_SIZE: ${NVKVM_BROKER_SIZE:-1280x800}
       NVKVM_BROKER_SCALE: ${NVKVM_BROKER_SCALE:-aspect}
       NVKVM_BROKER_FULLSCREEN: ${NVKVM_BROKER_FULLSCREEN:-0}
+      # 1 = advertise only LINEAR, so the VMM must detile through the guest's
+      # GPU instead of handing over its native tiling.  Needed when the host
+      # compositor scans out on a different GPU than the guest renders on --
+      # it cannot read NVIDIA tiling at any price -- and useful for forcing
+      # that path on a single-GPU host.
+      NVKVM_BROKER_LINEAR_ONLY: ${NVKVM_BROKER_LINEAR_ONLY:-0}
+      # auto | native | linear | shm -- which rung of the presentation ladder
+      # to offer.  auto walks it: the guest's own modifier, then a LINEAR
+      # dma-buf, then shared memory, which no compositor can refuse.
+      NVKVM_BROKER_PRESENT_MODE: ${NVKVM_BROKER_PRESENT_MODE:-}
+      # Leave empty to pick a random unowned uid per start (600000+, above
+      # the /etc/subuid ranges rootless containers allocate from).  The broker becomes
+      # it AFTER the display connection is open, so it keeps the window and
+      # input it already holds while losing all reach into the desktop user's
+      # files.
+      NVKVM_BROKER_DROP_UID: ${NVKVM_BROKER_DROP_UID:-}
     volumes:
       - broker-socket:/run/nvkvm
       # Trusted broker only. The untrusted VMM service has neither mount.
@@ -61,6 +79,14 @@ services:
       - no-new-privileges:true
     devices:
       - /dev/kvm:/dev/kvm
+      # The cross-vendor present path allocates a sealed memfd and exports it
+      # as a LINEAR dma-buf, so the same pages are both a pointer the guest's
+      # GPU reads back into and a buffer any compositor can import.  Without
+      # this node that path is unavailable and frames are dropped on a host
+      # whose compositor cannot take the guest's tiling.  /dev/udmabuf is
+      # root:kvm 0660 and this service already needs /dev/kvm, so it grants
+      # nothing new; QEMU also already uses udmabuf for virtio-gpu blobs.
+      - /dev/udmabuf:/dev/udmabuf
     deploy:
       resources:
         reservations:
