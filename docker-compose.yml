@@ -76,10 +76,10 @@ services:
   # socket is world-accessible (srw-rw-rw-) so it can be bind-mounted ALONE,
   # which is why this can run as nobody with no capabilities at all.
   audio:
-    image: nvkvm-steamos-broker:${NVKVM_IMAGE_TAG:-local}
+    image: nvkvm-steamos-audio:${NVKVM_IMAGE_TAG:-local}
     build:
       context: .
-      target: broker
+      target: audio
       args:
         NVKVM_REPOSITORY: ${NVKVM_REPOSITORY:-https://github.com/reindertpelsma/nvkvm-pv.git}
         NVKVM_REF: ${NVKVM_REF:-main}
@@ -92,7 +92,10 @@ services:
       - no-new-privileges:true
     volumes:
       - broker-socket:/run/nvkvm
-      - ${XDG_RUNTIME_DIR:-/run/user/1000}/pulse/native:/run/pulse/native
+      # The NATIVE pipewire socket, alone.  It is srw-rw-rw-, so it can be
+      # bind-mounted on its own -- mounting the runtime DIR would have brought
+      # the Wayland socket with it.
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/pipewire-0:/run/pw/pipewire-0
     restart: unless-stopped
 
   # Untrusted VMM. Its only path toward the desktop is broker-socket. It gets

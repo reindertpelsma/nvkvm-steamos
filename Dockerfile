@@ -76,14 +76,31 @@ RUN apt-get update -q && apt-get install -y --no-install-recommends \
         `# pw-cat: plays the guest's audio stream. The TRUSTED container holds` \
         `# the connection to the host's PipeWire; the VMM only ever writes to` \
         `# a fifo.` \
-        `# pacat: reads RAW pcm from a pipe.  pw-cat only grew --raw after` \
-        `# 24.04's pipewire, and without it it hands the file to libsndfile,` \
-        `# which must seek and therefore cannot read a fifo at all.` \
-        pulseaudio-utils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=nvkvm-build /opt/nvkvm/src/broker/nvkvm-display-broker /usr/local/bin/
 COPY docker/broker-entrypoint.sh /usr/local/bin/nvkvm-broker-entrypoint
-# The audio service runs from this same image; it needs its own entrypoint.
-COPY docker/audio-entrypoint.sh /usr/local/bin/nvkvm-audio-entrypoint
 ENTRYPOINT ["/usr/local/bin/nvkvm-broker-entrypoint"]
+
+
+# ── audio player ─────────────────────────────────────────────────────────────
+# Its own stage, and NOT the broker's base, for one reason: pw-cat only grew
+# --raw after 24.04's PipeWire, and --raw is the whole security argument.  With
+# it, the guest's bytes are opaque payload -- read() into a buffer, write to a
+# stream, no parser.  Without it pw-cat hands the file to libsndfile, a full
+# multi-format C parser with a CVE history (CVE-2021-3246, CVE-2022-33065),
+# which is precisely what must not touch attacker-controlled bytes.
+#
+# pw-cat rather than pacat because PulseAudio is in maintenance mode -- pacat.c
+# has had no functional change since 2018 and upstream carries no threat model
+# for a hostile input source -- while PipeWire is the actively developed stack
+# and is what the host actually runs.
+FROM ubuntu:26.04 AS audio
+
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update -q && apt-get install -y --no-install-recommends \
+        pipewire-bin \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY docker/audio-entrypoint.sh /usr/local/bin/nvkvm-audio-entrypoint
+ENTRYPOINT ["/usr/local/bin/nvkvm-audio-entrypoint"]
