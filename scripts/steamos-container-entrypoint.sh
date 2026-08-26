@@ -332,7 +332,7 @@ rm -f "$STATE_DIR/qmp.sock" "$SERIAL_SOCK"
 : > "$SERIAL_LOG.new" && mv -f "$SERIAL_LOG.new" "$SERIAL_LOG" 2>/dev/null || true
 tail -n +1 -F "$SERIAL_LOG" 2>/dev/null &
 log "serial: live on stdout, logged to $SERIAL_LOG, interactive on $SERIAL_SOCK"
-log "serial: attach with  docker compose exec steamos nvkvm-steamos-serial"
+log "serial: attach with  docker compose exec ${NVKVM_COMPOSE_SERVICE:-vmm} nvkvm-steamos-serial"
 log "booting SteamOS now; broker presence is not an ordering requirement"
 log "display socket: $BROKER_SOCKET"
 log "QEMU display backend: $QEMU_DISPLAY"

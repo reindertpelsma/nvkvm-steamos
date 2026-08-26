@@ -51,11 +51,27 @@ fi
 # Set NVKVM_BROKER_DROP_UID to pin one instead.
 
 if [ "$BACKEND" = auto ]; then
+    #
+    # VALIDATE, then let the BROKER choose.  This used to resolve auto itself
+    # and pass an explicit --backend, which defeated the broker's own fallback:
+    # nb_session_open() tries Wayland and falls through to X11 when it does not
+    # come up, but only while it is still being asked for "auto".
+    #
+    # That mattered because the test here is whether the socket EXISTS, not
+    # whether anything answers on it.  A Wayland socket outlives its
+    # compositor -- stopping GDM to run Xorg leaves one behind -- so the
+    # entrypoint committed to Wayland, the connect failed, and the container
+    # crash-looped on a machine with a perfectly good X server.  MEASURED
+    # exactly that way while testing the X11 backend.
+    #
+    # So keep the fail-fast for "nothing was mounted at all", which is a
+    # deployment mistake worth naming, and hand the actual choice to the code
+    # that can recover from a wrong guess.
     if [ -n "${WAYLAND_DISPLAY:-}" ] \
        && [ -S "$RUNTIME_DIR/${WAYLAND_DISPLAY##*/}" ]; then
-        BACKEND=wayland
+        log "auto: a Wayland socket is present; the broker will try it first"
     elif [ -n "${DISPLAY:-}" ] && [ -d /tmp/.X11-unix ]; then
-        BACKEND=x11
+        log "auto: no Wayland socket, but DISPLAY is set and X11 is mounted"
     else
         die "no usable Wayland or X11 display socket was mounted"
     fi
