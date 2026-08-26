@@ -936,13 +936,22 @@ ensure_clipboard_agent() {
     if in_target sh -c '[ -s /usr/bin/spice-vdagentd ] && [ -s /usr/bin/spice-vdagent ]'; then
         log "clipboard: spice-vdagent already present"
     else
-        local why="installing"
-        in_target sh -c 'command -v spice-vdagentd >/dev/null 2>&1' \
-            && why="reinstalling (present but zero-length -- lost to an unclean shutdown)"
+        local why="installing" repair=0
+        if in_target sh -c 'command -v spice-vdagentd >/dev/null 2>&1'; then
+            why="reinstalling (present but zero-length -- lost to an unclean shutdown)"
+            repair=1
+        fi
         log "clipboard: $why spice-vdagent"
         steamos_unlock
         ensure_pacman_keyring || { warn "clipboard: no pacman keyring; skipping"; return 0; }
-        in_target pacman -S --noconfirm spice-vdagent \
+        # The truncation takes pacman's own local DB entry with it (its mtree
+        # fails to parse), so pacman no longer recognises the files as its own
+        # and refuses with "exists in filesystem".  --overwrite is the repair,
+        # and it is scoped by the fact that exactly one package is being
+        # installed: the only paths it can touch are the ones that package ships.
+        local ow=()
+        [ "$repair" = 1 ] && ow=(--overwrite '*')
+        in_target pacman -S --noconfirm "${ow[@]}" spice-vdagent \
             || { warn "clipboard: could not install spice-vdagent; clipboard stays off"; return 0; }
         in_target sh -c '[ -s /usr/bin/spice-vdagentd ]' \
             || { warn "clipboard: spice-vdagentd is STILL zero-length after reinstall"; return 0; }
