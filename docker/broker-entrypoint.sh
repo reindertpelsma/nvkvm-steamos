@@ -13,8 +13,15 @@ log() { printf '[broker-container] %s\n' "$*" >&2; }
 [ -d "$RUNTIME_DIR" ] || die "$RUNTIME_DIR is not the host desktop runtime mount"
 [ -d /run/nvkvm ] || die "/run/nvkvm is not the shared broker-socket volume"
 
-desktop_uid="$(stat -c %u "$RUNTIME_DIR")"
-desktop_gid="$(stat -c %g "$RUNTIME_DIR")"
+# STAT THE SOCKET, NOT THE DIRECTORY.  Only the Wayland socket is bound in now
+# (the rest of the session runtime dir is not the broker's business), so
+# /run/host-runtime itself is created by the container runtime and owned by
+# root.  Stat'ing it would put us back at desktop_uid=0 -- the exact bug that
+# made the broker unable to reach the session it was pointed at.
+uid_probe="$RUNTIME_DIR/${WAYLAND_DISPLAY##*/}"
+[ -e "$uid_probe" ] || uid_probe="$RUNTIME_DIR"
+desktop_uid="$(stat -c %u "$uid_probe")"
+desktop_gid="$(stat -c %g "$uid_probe")"
 case "$desktop_uid:$desktop_gid" in
     *[!0-9:]*|:|*:|:*) die "could not determine the desktop uid/gid" ;;
 esac
