@@ -877,6 +877,50 @@ ExecStart=/bin/sh -c 'for i in $(seq 1 30); do for c in /sys/class/drm/card[0-9]
 [Install]
 WantedBy=multi-user.target
 UNIT
+    # NEVER BLANK THE GUEST'S HEAD.
+    #
+    # This display is a WINDOW on someone else's desktop.  The host already
+    # blanks its own screen and locks its own session; a second idle timer
+    # inside the guest protects nothing and can only do harm.
+    #
+    # MEASURED, and it is why this exists: after ~35 minutes idle the guest's
+    # output went to enabled=disabled in /sys/class/drm, kwin kept running at
+    # 0% CPU, and NOTHING brought it back -- not a new window (two konsoles
+    # opened and produced zero frames), not `systemctl restart
+    # display-manager`, not deleting ~/.local/share/kscreen.  kscreen-doctor's
+    # enable was refused: "The driver rejected the output configuration".  Only
+    # restarting the VM recovered it.  A blanked head that cannot be woken is
+    # indistinguishable from a hung VM, and that is exactly how it was reported.
+    #
+    # Waking depends on input reaching the guest, which depends on the broker
+    # window having focus -- so a user who looks away, or whose window is not
+    # focused, has no way back.  Removing the timer removes the dependency.
+    #
+    # System-wide (/etc/xdg) rather than per-user, so it survives a new user and
+    # is not something SteamOS's own profile management will rewrite under us.
+    cat > "$(rp /etc/xdg/powermanagementprofilesrc)" <<'PMPROF'
+[AC]
+icon=battery-charging
+
+[AC][SuspendSession]
+idleTime=0
+suspendType=0
+
+[Battery]
+icon=battery-060
+
+[Battery][SuspendSession]
+idleTime=0
+suspendType=0
+PMPROF
+    # And the lock screen, for the same reason: a locked guest behind an
+    # unfocused window is a VM the user cannot type into.
+    cat > "$(rp /etc/xdg/kscreenlockerrc)" <<'KSCREENLOCK'
+[Daemon]
+Autolock=false
+LockOnResume=false
+Timeout=0
+KSCREENLOCK
     # Cursor latency. MEASURED on SteamOS/Plasma (KWin Wayland) on a real RTX 4070:
     # pointer motion produced 621 GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT errors per 15s
     # (idle: 0), and the present rate did NOT rise -- so cursor updates were failing in
