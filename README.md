@@ -1,49 +1,56 @@
 # nvkvm-pv on SteamOS
 
-Run SteamOS as a KVM guest of
-[nvkvm-pv](https://github.com/reindertpelsma/nvkvm-pv), with the NVIDIA GPU
-still owned and usuable by the host.
+**Run SteamOS in a VM, play Steam games on your NVIDIA GPU — while the host keeps
+using the same GPU.** No VFIO, no second graphics card, no rebooting into a
+passthrough setup, and nothing unbound from your desktop.
 
-This repository is the SteamOS integration layer for nvkvm-pv. It contains the
-SteamOS image installer, boot/provisioning policy, the two-container display
-deployment, validation notes, and the raw evidence from the bring-up runs.
-nvkvm-pv remains the GPU paravirtualization implementation. 
+![Shadow of the Tomb Raider running under nvkvm on SteamOS](screenshots/tomb_raider_under_nvkvm_steamos.png)
 
-This project is a great test target for the possible capabilities of nvkvm-pv.
+*Shadow of the Tomb Raider, native Linux/Vulkan, in a SteamOS guest at 3760×2118 —
+GPU at 80%, 168 W, full boost clocks, while the host desktop is still running on
+the same RTX 4070.*
 
-## Current status
+| | |
+|---|---|
+| ![Portal 2](screenshots/portal2_nvkvm_steamos_qemu.jpg) | ![Game startup](screenshots/startup_of_a_game_nvkvm_steamos.png) |
+| Portal 2 in the guest | Launching from the SteamOS desktop |
 
-For running the full SteamOS-on-nvkvm stack, the supported path is the
-two-container Docker Compose deployment:
+## What this is
 
-- `vmm`: patched nvkvm/QEMU plus the SteamOS VM. It receives `/dev/kvm` and the
-  NVIDIA devices, but no host Wayland or X11 socket.
-- `broker`: the host desktop window and input bridge. It receives the host
-  Wayland/X11 mounts, but no `/dev/kvm`, GPU-control device, VM disk, recovery
-  image, source share, or SSH key.
+This repository is the **SteamOS integration layer** for
+[nvkvm-pv](https://github.com/reindertpelsma/nvkvm-pv). nvkvm-pv is the GPU
+paravirtualization implementation; this repo builds the SteamOS image, provisions
+it, and ships the deployment that puts a guest desktop in a window on your host.
 
-On first start the VMM downloads the SteamOS recovery image, boots a disposable
-Alpine installer VM, lets Valve's own installer create a real dual-slot A/B
-SteamOS qcow2, provisions that image with nvkvm's guest module and NVIDIA
-userspace matching the host driver, then boots Plasma.
+**It is not VFIO.** No real GPU device is bound to the VM and the host never loses
+the card. The guest talks to your host's NVIDIA driver through nvkvm — closer to
+how a CUDA container shares a GPU than to passthrough.
 
-Outside Docker, the preferred image path is
-[`install_steamos_vm.sh`](install_steamos_vm.sh). It uses the same disposable-VM
-installer directly and does not require host root. The manual loop/chroot path
-is still kept, but it does require root and is mainly useful when debugging the
-image surgery itself.
+SteamOS is a demanding test target for nvkvm-pv: a full Plasma desktop, a real
+compositor, games, audio, and a guest that expects to own its display. If it works
+here, it works.
 
-The default build context fetches `reindertpelsma/nvkvm-pv#main`. To test a
-local or review checkout explicitly:
+**Before you start:** NVIDIA only, Turing (GTX 16xx / RTX 20xx) or newer.
+Anti-cheat games will not work. This is experimental software — see
+[Known limits](#known-limits).
 
-```sh
-NVKVM_CONTEXT=/path/to/nvkvm-pv docker compose build
-```
+## Status
+
+| area | state |
+|---|---|
+| SteamOS desktop | SteamOS 3.8.14 boots as an nvkvm guest on an RTX 4070; Plasma renders on the NVIDIA GPU. |
+| Present path | GL zero-copy measured at 60 fps with `-vga none` — the visible desktop comes through nvkvm, not an emulated VGA fallback. A linear dma-buf path and a universal shm path cover hosts where the display is on an iGPU or AMD GPU while rendering happens on a discrete NVIDIA card, as on many laptops. |
+| Games | Shadow of the Tomb Raider, Portal 2, Stardew Valley and Planetary Annihilation launch and play under the broker. Minecraft is playable under SDL on a non-SteamOS Linux guest. |
+| Image creation | [`install_steamos_vm.sh`](install_steamos_vm.sh) creates a genuine dual-slot A/B SteamOS install using Valve's own installer, without host root. |
+| Container split | The VMM/broker separation is policy-tested; restarting the broker does not disturb the running VM. |
+
+Measured results, the display-backend matrix, open gaps and evidence links are in
+[`docs/status.md`](docs/status.md).
 
 ## Quick start
 
-Prerequisites: a graphical Linux session, Docker with the Compose plugin,
-working `/dev/kvm`, a loaded NVIDIA driver, and NVIDIA Container Toolkit.
+Prerequisites: a graphical Linux session, Docker with the Compose plugin, working
+`/dev/kvm`, a loaded NVIDIA driver, and the NVIDIA Container Toolkit.
 
 ```sh
 docker compose build
@@ -52,120 +59,132 @@ docker compose logs -f broker vmm
 ./steamos-ssh
 ```
 
-For persistent state, security boundaries, Wayland/X11 selection, published
-images, and configuration knobs, read
+On first start this downloads the SteamOS recovery image, boots a disposable
+installer VM, lets Valve's installer create a real dual-slot A/B qcow2, provisions
+it with nvkvm's guest module and NVIDIA userspace matching your host driver, then
+boots Plasma. It takes a while and needs no input.
+
+![The broker window before the guest attaches](screenshots/placeholder_nvkvm_broker.jpg)
+
+Persistent state, security boundaries, Wayland/X11 selection, published images and
+configuration knobs are documented in
 [`docs/container-compose.md`](docs/container-compose.md).
-
-## Build an image outside Docker
-
-Use this when you want a SteamOS qcow2 on the host instead of the full Compose
-deployment:
-
-```sh
-./install_steamos_vm.sh \
-  --repair steamdeck-oobe-repair-*.img \
-  --out steamos.qcow2
-```
-
-To provision that image for nvkvm in the same run, use an nvkvm-pv checkout as
-the read-only share:
-
-```sh
-./install_steamos_vm.sh \
-  --repair steamdeck-oobe-repair-*.img \
-  --out steamos.qcow2 \
-  --stages repair,provision \
-  --share /path/to/nvkvm-pv
-```
-
-This path needs `qemu-system-x86_64`, `qemu-img`, an OVMF package, common
-archive tools, `/dev/kvm`, and a loaded NVIDIA driver for the provisioning
-stage. It does not need `sudo`, `losetup`, host mounts, or a host chroot.
-
-For the full explanation and verified output, read
-[`docs/vm-installer.md`](docs/vm-installer.md). For the root-requiring manual
-recovery-image path, read [`docs/manual-install.md`](docs/manual-install.md).
-
-## What is proven
-
-| area | state |
-|---|---|
-| SteamOS desktop | SteamOS 3.8.14 boots as an nvkvm guest on the physical RTX 4070 test box; Plasma renders on the NVIDIA GPU. |
-| Present path | GL zero-copy was measured at 60 fps with `-vga none`; the visible desktop came through nvkvm, not an emulated VGA fallback. Linear dma-buf (and universal shm) fallback in case the display is on iGPU/AMD GPU but rendering needs to be on a discrete NVIDIA card such as common on many laptops. |
-| Games | Portal 2, Stardew Valley, Planetary Annihilation and tomb raider launches and plays under the GTK backend and the NVKVM broker (the docker-compose.yml setup). Minecraft is playable through nvkvm under SDL on the non-SteamOS Linux guest. |
-| Image creation | `install_steamos_vm.sh` creates a genuine dual-slot A/B SteamOS install using Valve's installer, without host root. |
-| Container split | The VMM/display-broker separation is policy-tested, and broker restart does not restart or disturb the VM. |
-
-Raw logs live in [`evidence-pc-20260823/`](evidence-pc-20260823/),
-[`evidence-vm-install-20260824/`](evidence-vm-install-20260824/), and
-[`boot/TESTING.md`](boot/TESTING.md). The condensed status and open issues are
-in [`docs/status.md`](docs/status.md).
-
-## What is not solved
-
-- The smooth SteamOS cursor currently depends on `KWIN_FORCE_SW_CURSOR=1`; a
-  real cursor plane in nvkvm is still the durable fix.
-- The VM installer now produces an A/B image that can exercise SteamOS update
-  behavior, but an end-to-end OTA update-hook run is not documented here yet.
-- nvkvm-pv is experimental and is not yet a fully mature hardened guest/host security boundary.
-  Do not use it for untrusted tenants. The steamOS QEMU VMM is placed in a tight sandboxed container without access to your display socket to significantly reduce the harm of a breakout. 
 
 ## FAQ
 
-**Is this a VFIO utility to bind the GPU to a VM?**
-No, there is no VFIO and no real GPU device is bound to the VM, your host GPU is genuinely shared with the VM similar to CUDA containers.
-The VM only has access to your GPU to do graphics and compute.
+**Is this a VFIO utility that binds the GPU to a VM?**
+No. There is no VFIO and no real GPU device is bound to the VM. Your host GPU is
+genuinely shared with the guest, similar to CUDA containers. The VM gets access to
+your GPU for graphics and compute; the host keeps using it throughout.
 
 **Will my GPU work?**
-Only NVIDIA GPUs work. Turing (GTX 16xx / RTX 20xx) or newer. Six architectures are tested, from GTX
-1660 to H100 — see tested platforms under nvkvm-pv. Pascal and older do not work.
+NVIDIA only, Turing (GTX 16xx / RTX 20xx) or newer. Six architectures are tested,
+from GTX 1660 to H100 — see the tested-platforms table in nvkvm-pv. Pascal and
+older do not work.
 
-**How much resources will the VM get from my GPU?**
-The VRAM and Cuda cores are shared, just like in cuda containers. If the VMM is put in a container, then it only has access what the container was provisioned with.
+**How much of my GPU does the VM get?**
+VRAM and CUDA cores are shared, as in CUDA containers. When the VMM runs in a
+container it can only reach what that container was provisioned with.
 
-**How can I enter fullscreen or let my in-game character follow my mouse movements**
-Press CTRL+ALT+F to enter fullscreen mode, press it again to exit.
-Press CTRL+ALT+G to enter Grab mode, in grab mode you will give up your keyboard and mouse to the guest until you press the shortcut again. For most first/second games to move your character, you need to enter grab mode. This will allow the guest to receive real mouse movements (dx/dy) instead of absolute coordinates over the guest window.
+**How do I go fullscreen, or make my in-game character follow the mouse?**
+`CTRL+ALT+F` toggles fullscreen. `CTRL+ALT+G` toggles grab mode, which hands your
+keyboard and mouse to the guest until you press it again. Most first- and
+third-person games need grab mode, because it delivers real relative mouse motion
+(dx/dy) instead of absolute coordinates over the guest window.
 
 **Will my GPU driver work?**
-Only the host driver matters, the guest will install the driver version for cuda userspace automatically thats installed on the host. Only the official NVIDIA GPU kernel driver is supported [https://github.com/nvidia/open-gpu-kernel-modules](https://github.com/nvidia/open-gpu-kernel-modules), most distros pre-install the open source driver if you have a Turing or newer GPU. Nouveau is not supported. A large ranges of drivers is supported, nvkvm-pv tracks 216 ogkm tags for ABI, not all driver versions have been equally throughly tested though. See the nvkvm-pv project for the support matrix.
+Only the host driver matters. The guest automatically installs the CUDA userspace
+matching whatever driver the host runs. Only NVIDIA's official kernel driver is
+supported ([open-gpu-kernel-modules](https://github.com/nvidia/open-gpu-kernel-modules));
+most distributions preinstall it for Turing and newer. Nouveau is not supported.
+nvkvm-pv tracks 216 OGKM tags for ABI, so a wide range of driver versions works,
+though not all are equally well tested — see the support matrix in nvkvm-pv.
 
-**Will my VM break if my host driver updates?**
-No, at VM boot it checks through nvkvm the host driver version and as soon as there is a mismatch, it automatically installs the official NVIDIA run for that driver version before proceeding. This means if your host distro updates your steamOS VM will automatically follow
+**Will the VM break when my host driver updates?**
+No. At boot the guest asks nvkvm for the host driver version, and on a mismatch it
+installs the official NVIDIA runfile for that version before continuing. Your
+guest follows your host automatically.
 
-**Will it follow SteamOS updates?**
-Yes, during an A/B update the boot script will ensure the new updated image gets the proper nvkvm, libcuda and cuda Vulkan libraries.
+**Does it survive SteamOS updates?**
+Yes. During an A/B update the boot script reprovisions the newly updated slot with
+nvkvm, libcuda and the CUDA/Vulkan libraries.
 
 **Is headless supported?**
-Possible, nvkvm-pv supports headless rendering desktops, that you can remotely connect to. However it hasn't been configured with the scripts in this repository
+nvkvm-pv supports headless rendering desktops you can connect to remotely, but the
+scripts in this repository are not configured for it.
 
 **Will anti-cheat work?**
-No, most anti-cheat usually breaks under VMs and this is a won't fix. Rigorous anti cheat deliberately only works on bare metal with full root access to your system, many use kernel modules.
-Games relying on anti cheat cannot be reliably sandboxed, you have to trust the vendor of the game that they have properly secured the game client to be resilient against possible untrusted multiplayer servers or players.
+No, and this is a won't-fix. Anti-cheat generally breaks under VMs by design —
+strict implementations deliberately require bare metal and full root access, often
+via kernel modules. Games that depend on it cannot be meaningfully sandboxed; you
+have to trust the vendor to have hardened the client against hostile servers and
+players.
 
-**Will DRM protected games work?**
-Likely, as DRM is not as strict as anti cheat and Steam uses your account to authenticate rather than the device.
+**Will DRM-protected games work?**
+Most likely. DRM is far less strict than anti-cheat, and Steam authenticates your
+account rather than the device.
 
-**Where is my game data stored and how can I increase disk space?**
-In a qcow2 disk image, which contains 2 read-only fixed size partitions containing the steamOS image called A/B, allowing for atomic updates with fallback to an older version if it fails to boot, and a home partition containing all your files and games, always sitting at the end that can grow unlimited. The docker container sets the size to atleast 64GiB and atmost 1024GiB at 60% of the free space on the host system. If the disk is too small then you can resize the disk and the last partition.
+**Where is my game data, and how do I get more disk space?**
+In a qcow2 image containing two fixed-size read-only SteamOS partitions (the A/B
+slots, which give atomic updates with fallback to the previous version if a boot
+fails) and a home partition at the end holding your files and games, which can
+grow. The Compose deployment sizes it to at least 64 GiB and at most 1024 GiB,
+targeting 60% of the host's free space. If it is too small, resize the disk and
+then the last partition.
 
-**How to copy and paste clipboard text?**
-If using the broker (the docker container setup) then copy/paste is through vdagent (QEMU SPICE). The broker only allows copy when the window is in focus, paste is only allowed on explicit consent (pressing CTRL+V or CTRL+SHIFT+V) during window focus (similar to Firefox/Safari), so pasting through menu options might not receive your host clipboard, press CTRL+V to send it to the guest even if the shortcut itself does nothing in the guest software.
+**How do I copy and paste?**
+Through vdagent (QEMU SPICE) when using the broker. Copy works while the window has
+focus; paste requires explicit consent — press `CTRL+V` or `CTRL+SHIFT+V` while
+focused, the same model Firefox and Safari use. Pasting from a right-click menu may
+therefore not receive the host clipboard: press `CTRL+V` to send it, even if that
+shortcut does nothing in the guest application itself.
 
-**Why are there multiple containers with VMM, broker and audio in docker-compose.yml (not steamOS specific)?**
-That primarily is to significantly improve the security of the system in case the VM is broken out. To play the guest OS with native performance, the VMM (the process managing your VM) needs access to the display window, headless game streaming would introduce unnecessarily lag and complexity. Mounting your display socket (wayland/X) would give the VMM full access to your display and inputs, effectively an almost host OS compromise. To reduce the risk, a broker is placed in a seperate container giving the VMM only access to the display contents and only access to the inputs when the window is in focus or if the user entered grab mode. This still allows zero copy rendering without lag. The rhird container is the same principle as for display but then for audio.
+**Why are there three containers — vmm, broker and audio?**
+Security, and it is not SteamOS-specific. For native performance the VMM needs the
+guest's frames on your display; streaming them headlessly would add latency and
+complexity. But mounting your Wayland or X11 socket into the VMM would grant it
+full access to your display and every input — close to a host compromise. So the
+broker runs in its own container and gives the VMM only the display *contents*,
+and input only while the window has focus or grab mode is on. Zero-copy rendering
+still works. The audio container applies the same principle to sound.
 
-Most QEMU breakouts/bugs (or nvkvm bugs) that end up in the VMM now strand in an unprivileged cuda container with most capabilities stripped and nowhere to attach a keylogger. A host kernel level breakout through KVM itself is far less likely.
+The effect: most QEMU or nvkvm breakouts land in an unprivileged CUDA container
+with most capabilities stripped and nowhere to attach a keylogger. A breakout
+through KVM into the host kernel is a far higher bar.
+
+## Known limits
+
+- The smooth SteamOS cursor currently depends on `KWIN_FORCE_SW_CURSOR=1`. A real
+  cursor plane in nvkvm is the durable fix.
+- The installer produces an A/B image that *can* exercise SteamOS update behaviour,
+  but an end-to-end OTA update-hook run is not documented here yet.
+- **nvkvm-pv is experimental and is not a hardened guest/host security boundary.**
+  Do not use it for untrusted tenants. The VMM is confined to a tight container
+  with no access to your display socket, which limits the damage of a breakout —
+  it does not eliminate it.
+
+## Build an image outside Docker
+
+For a SteamOS qcow2 on the host instead of the full Compose deployment:
+
+```sh
+./install_steamos_vm.sh --repair steamdeck-oobe-repair-*.img --out steamos.qcow2
+```
+
+This path needs `qemu-system-x86_64`, `qemu-img`, OVMF, common archive tools,
+`/dev/kvm`, and a loaded NVIDIA driver for provisioning — but no `sudo`,
+`losetup`, host mounts or chroot. Provisioning in the same run, the full option
+set and verified output are in [`docs/vm-installer.md`](docs/vm-installer.md).
 
 ## Docs
 
 | read | for |
 |---|---|
 | [`docs/container-compose.md`](docs/container-compose.md) | the supported runtime/deployment path |
-| [`docs/vm-installer.md`](docs/vm-installer.md) | the preferred non-Docker image builder and why it replaced loop/chroot for normal image creation |
-| [`docs/status.md`](docs/status.md) | measured results, display backend matrix, open gaps, and evidence links |
-| [`docs/manual-install.md`](docs/manual-install.md) | the root-requiring recovery-image provisioning path by hand; useful for debugging |
-| [`TUTORIAL.md`](TUTORIAL.md) | a full source-build walkthrough, kept as a low-level reference rather than the README path |
+| [`docs/vm-installer.md`](docs/vm-installer.md) | the non-Docker image builder, and why it replaced loop/chroot |
+| [`docs/status.md`](docs/status.md) | measured results, display backend matrix, open gaps, evidence links |
+| [`docs/manual-install.md`](docs/manual-install.md) | the root-requiring provisioning path by hand; useful for debugging |
+| [`TUTORIAL.md`](TUTORIAL.md) | a full source-build walkthrough, kept as a low-level reference |
 | [`boot/TESTING.md`](boot/TESTING.md) | chronological validation notes and regressions found on real rigs |
 | [`NOTES.md`](NOTES.md) | historical investigation log |
 | [`archive/`](archive/README.md) | superseded scripts kept for reference |
@@ -174,9 +193,9 @@ Most QEMU breakouts/bugs (or nvkvm bugs) that end up in the VMM now strand in an
 
 The SteamOS provisioning approach builds on
 [28allday/steamos-nvidia-installer](https://github.com/28allday/steamos-nvidia-installer),
-which established the offline NVIDIA-on-SteamOS pattern: operate on an
-unmounted rootfs, fetch exact `linux-neptune-*-headers` from Valve's mirror,
-build in a throwaway chroot, and survive atomic updates.
+which established the offline NVIDIA-on-SteamOS pattern: operate on an unmounted
+rootfs, fetch exact `linux-neptune-*-headers` from Valve's mirror, build in a
+throwaway chroot, and survive atomic updates.
 
-This project substitutes nvkvm's guest module into that pattern while keeping
-the NVIDIA userspace side intact.
+This project substitutes nvkvm's guest module into that pattern while keeping the
+NVIDIA userspace side intact.
