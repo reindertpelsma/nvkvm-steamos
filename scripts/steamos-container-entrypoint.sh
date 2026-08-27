@@ -408,7 +408,16 @@ on_term() {
 }
 trap on_term TERM INT
 
-export NVKVM_PRESENT_TIMING="${NVKVM_PRESENT_TIMING:-1}"
+# Per-second present statistics: OFF unless asked for.  This prints one line
+# every second for the life of the VM, straight into `docker compose` output,
+# which buries everything else in a long run.  Set NVKVM_PRESENT_TIMING=1 to
+# get it back while debugging the present path.
+# NOT `[ -n ... ] && export`: this script runs under `set -e`, so a bare test
+# that is false IS a failing command and would abort the entrypoint on the
+# common path -- the one where the variable is unset.
+if [ -n "${NVKVM_PRESENT_TIMING:-}" ]; then
+    export NVKVM_PRESENT_TIMING
+fi
 /opt/qemu-nvkvm/bin/qemu-system-x86_64 \
     -name nvkvm-steamos \
     -machine q35,accel=kvm -cpu host \
