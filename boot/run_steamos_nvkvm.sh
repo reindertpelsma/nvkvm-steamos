@@ -27,7 +27,10 @@ export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export DISPLAY="${DISPLAY:-:0}"
 export GDK_BACKEND="${GDK_BACKEND:-wayland}"
 export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
-export NVKVM_PRESENT_TIMING=1
+# Per-second present stats: opt-in, same as the container path.  This used to be
+# forced on here, which is why a run started through this script still printed a
+# line every second after the container default was fixed.
+[ -n "${NVKVM_PRESENT_TIMING:-}" ] && export NVKVM_PRESENT_TIMING
 [ -n "${NVKVM_PRESENT_MODE:-}" ] && export NVKVM_PRESENT_MODE
 
 # VGA=none -> decisive: nothing but nvkvm can be drawing.
