@@ -921,6 +921,32 @@ Autolock=false
 LockOnResume=false
 Timeout=0
 KSCREENLOCK
+    # And suspend itself, structurally.  MEASURED on the physical PC, 2026-08-27:
+    # QMP system_powerdown put the guest into S3 -- `query-status` returned
+    # {"status": "suspended", "running": false} and the vCPU time stopped
+    # advancing (15276 -> 15276 over 5s).  sshd stopped answering, the serial
+    # console went silent, QEMU never exited and the screen froze.  That is
+    # indistinguishable from a hung VM, and it is how it was reported.
+    #
+    # The path is three-layered: logind has HandlePowerKey=ignore, PowerDevil
+    # takes a *block* inhibitor on handle-power-key ("KDE handles power
+    # events"), and PowerDevil's built-in default for that button is sleep.
+    # Setting SuspendSession idleTime=0 above disables IDLE suspend only; the
+    # button is a separate action, and powerButtonAction did not change the
+    # outcome when tested.
+    #
+    # So remove the capability rather than the trigger.  A VM has nothing to
+    # gain from S3 -- there is no battery -- and the only wake path is QMP
+    # system_wakeup, which a user looking at a frozen window does not have.
+    # With these masked the same power-button event leaves the guest RUNNING
+    # (verified: status stayed "running" where it previously suspended).
+    for _t in sleep.target suspend.target hibernate.target hybrid-sleep.target; do
+        _dst="$(rp /etc/systemd/system/$_t)"
+        if [ "$(readlink -f "$_dst" 2>/dev/null)" = "/dev/null" ]; then
+            continue                      # already masked -- check before acting
+        fi
+        ln -sfn /dev/null "$_dst" && log "masked $_t (a suspended VM reads as a hung VM)"
+    done
     # Cursor latency. MEASURED on SteamOS/Plasma (KWin Wayland) on a real RTX 4070:
     # pointer motion produced 621 GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT errors per 15s
     # (idle: 0), and the present rate did NOT rise -- so cursor updates were failing in

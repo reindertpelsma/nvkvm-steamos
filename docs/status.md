@@ -68,6 +68,40 @@ fully playable for first-person games.
 
 ## Known open items
 
+### The guest cannot be shut down from outside (measured 2026-08-27)
+
+`system_powerdown` over QMP does **not** power the guest off, and never did.
+What it used to do was worse: the guest entered S3 and became unwakeable from
+the UI.  `query-status` returned `{"status": "suspended", "running": false}`
+with vCPU time frozen (15276 -> 15276 over 5s), sshd stopped answering, the
+serial console went silent and QEMU never exited.  A suspended VM is
+indistinguishable from a hung one, which is how it was reported at the time.
+`system_wakeup` over QMP recovers it fully -- SSH, presentation and even a
+resolution renegotiation to 3672x2070 all survived the round trip.
+
+The suspend half is **fixed**: `steamos_boot.sh` now masks `sleep.target`,
+`suspend.target`, `hibernate.target` and `hybrid-sleep.target`, so the same
+event leaves the guest running.  Verified on the physical PC.
+
+The poweroff half is **still open**.  The chain is logind
+`HandlePowerKey=ignore` -> PowerDevil holds a *block* inhibitor on
+`handle-power-key` ("KDE handles power events") -> its default action is sleep.
+Appending `powerButtonAction=4` under `[AC][HandleButtonEvents]` and restarting
+PowerDevil did **not** change the outcome (no serial output, guest stayed up),
+so the enum value is either wrong or PowerDevil is not acting on the ACPI event
+at all.  Not chased further.
+
+Consequence: `docker compose down` stops QEMU with SIGTERM while the guest is
+still running, so guest writes are not flushed.  That is the documented cause
+of files coming back **0-length with their mtime intact** -- and systemd
+reports a 0-byte unit as "masked", which reads like a deliberate mask and is
+not.
+
+Suggested fix, not yet implemented: have the vmm entrypoint trap SIGTERM and
+run `systemctl poweroff` in the guest over the container-managed SSH key
+(`nvkvm-steamos-ssh` already has it) before letting QEMU exit.  That bypasses
+the desktop's power handling entirely rather than negotiating with it.
+
 - SteamOS plus `sdl,gl=on` is a black window while the guest remains alive and
   QEMU reports presentation activity. The same nvkvm build renders the Linux
   guest under SDL, so this is guest/backend-specific rather than a blanket SDL
