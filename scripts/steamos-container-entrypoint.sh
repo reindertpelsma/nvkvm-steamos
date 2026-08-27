@@ -418,6 +418,20 @@ trap on_term TERM INT
 if [ -n "${NVKVM_PRESENT_TIMING:-}" ]; then
     export NVKVM_PRESENT_TIMING
 fi
+# The $DATA_DIR share below is mapped-xattr, NOT passthrough.  passthrough writes
+# the guest's uid/gid and MODE straight through to the host, and this QEMU runs as
+# uid 0.  With the documented NVKVM_STEAMOS_DATA=/absolute/host/path the share is a
+# user directory, so a guest that drops a `-rwsr-xr-x root` binary there leaves a
+# host escalation waiting for whoever runs it.  CAP_MKNOD is dropped so device
+# nodes are unreachable, but setting a setuid bit on a file you own needs no
+# capability.  mapped-xattr keeps guest ownership and mode in xattrs, so nothing
+# host-visible is really setuid.
+#
+# Keep comments OUT of the continued argument list below.  A `\`-continued line
+# followed by a `#` line ENDS the command there, and every later argument --
+# -display included -- is silently dropped: QEMU still starts, so nothing fails
+# loudly.  That is exactly what happened when this rationale lived inline.
+# Enforced by tests/no_comment_in_continuation.sh.
 /opt/qemu-nvkvm/bin/qemu-system-x86_64 \
     -name nvkvm-steamos \
     -machine q35,accel=kvm -cpu host \
@@ -432,14 +446,6 @@ fi
     -device virtio-nvgpu-pci-non-transitional,id=nvkvm0 \
     -device nvkvm-gpu,addr=7 \
     -virtfs local,path=/opt/nvkvm,mount_tag=nvkvm,security_model=none,readonly=on \
-    # mapped-xattr, NOT passthrough.  passthrough writes the guest's uid/gid and
-    # MODE straight through to the host, and this QEMU runs as uid 0.  With the
-    # documented NVKVM_STEAMOS_DATA=/absolute/host/path the share is a user
-    # directory, so a guest that drops a `-rwsr-xr-x root` binary there leaves a
-    # host escalation waiting for whoever runs it.  CAP_MKNOD is dropped so
-    # device nodes are unreachable, but setting a setuid bit on a file you own
-    # needs no capability.  mapped-xattr keeps guest ownership and mode in
-    # xattrs, so nothing host-visible is really setuid.
     -virtfs "local,path=$DATA_DIR,mount_tag=data,security_model=mapped-xattr" \
     -fw_cfg opt/ovmf/X-PciMmio64Mb,string=262144 \
     -device virtio-keyboard-pci -device virtio-tablet-pci -device virtio-mouse-pci \
