@@ -2,12 +2,14 @@
 
 Run SteamOS as a KVM guest of
 [nvkvm-pv](https://github.com/reindertpelsma/nvkvm-pv), with the NVIDIA GPU
-still owned by the host.
+still owned and usuable by the host.
 
 This repository is the SteamOS integration layer for nvkvm-pv. It contains the
 SteamOS image installer, boot/provisioning policy, the two-container display
 deployment, validation notes, and the raw evidence from the bring-up runs.
-nvkvm-pv remains the GPU paravirtualization implementation.
+nvkvm-pv remains the GPU paravirtualization implementation. 
+
+This project is a great test target for the possible capabilities of nvkvm-pv.
 
 ## Current status
 
@@ -89,8 +91,8 @@ recovery-image path, read [`docs/manual-install.md`](docs/manual-install.md).
 | area | state |
 |---|---|
 | SteamOS desktop | SteamOS 3.8.14 boots as an nvkvm guest on the physical RTX 4070 test box; Plasma renders on the NVIDIA GPU. |
-| Present path | GL zero-copy was measured at 60 fps with `-vga none`; the visible desktop came through nvkvm, not an emulated VGA fallback. |
-| Games | Portal 2 launches and plays under the GTK backend. Minecraft is playable through nvkvm under SDL on the non-SteamOS Linux guest. |
+| Present path | GL zero-copy was measured at 60 fps with `-vga none`; the visible desktop came through nvkvm, not an emulated VGA fallback. Linear dma-buf (and universal shm) fallback in case the display is on iGPU/AMD GPU but rendering needs to be on a discrete NVIDIA card such as common on many laptops. |
+| Games | Portal 2, Stardew Valley, Planetary Annihilation and tomb raider launches and plays under the GTK backend and the NVKVM broker (the docker-compose.yml setup). Minecraft is playable through nvkvm under SDL on the non-SteamOS Linux guest. |
 | Image creation | `install_steamos_vm.sh` creates a genuine dual-slot A/B SteamOS install using Valve's installer, without host root. |
 | Container split | The VMM/display-broker separation is policy-tested, and broker restart does not restart or disturb the VM. |
 
@@ -101,17 +103,59 @@ in [`docs/status.md`](docs/status.md).
 
 ## What is not solved
 
-- SteamOS under `sdl,gl=on` still shows a black window. SDL pointer lock works
-  on the non-SteamOS guest, so this is the gap between "renders" and "fully
-  playable SteamOS gaming".
-- `gtk,gl=on` renders SteamOS and Portal 2, but GTK does not deliver usable
-  pointer lock for mouse-look on the tested Wayland host.
 - The smooth SteamOS cursor currently depends on `KWIN_FORCE_SW_CURSOR=1`; a
   real cursor plane in nvkvm is still the durable fix.
 - The VM installer now produces an A/B image that can exercise SteamOS update
   behavior, but an end-to-end OTA update-hook run is not documented here yet.
-- nvkvm-pv is experimental and is not a hardened guest/host security boundary.
-  Do not use it for untrusted tenants.
+- nvkvm-pv is experimental and is not yet a fully mature hardened guest/host security boundary.
+  Do not use it for untrusted tenants. The steamOS QEMU VMM is placed in a tight sandboxed container without access to your display socket to significantly reduce the harm of a breakout. 
+
+## FAQ
+
+**Is this a VFIO utility to bind the GPU to a VM?**
+No, there is no VFIO and no real GPU device is bound to the VM, your host GPU is genuinely shared with the VM similar to CUDA containers.
+The VM only has access to your GPU to do graphics and compute.
+
+**Will my GPU work?**
+Only NVIDIA GPUs work. Turing (GTX 16xx / RTX 20xx) or newer. Six architectures are tested, from GTX
+1660 to H100 — see tested platforms under nvkvm-pv. Pascal and older do not work.
+
+**How much resources will the VM get from my GPU?**
+The VRAM and Cuda cores are shared, just like in cuda containers. If the VMM is put in a container, then it only has access what the container was provisioned with.
+
+**How can I enter fullscreen or let my in-game character follow my mouse movements**
+Press CTRL+ALT+F to enter fullscreen mode, press it again to exit.
+Press CTRL+ALT+G to enter Grab mode, in grab mode you will give up your keyboard and mouse to the guest until you press the shortcut again. For most first/second games to move your character, you need to enter grab mode. This will allow the guest to receive real mouse movements (dx/dy) instead of absolute coordinates over the guest window.
+
+**Will my GPU driver work?**
+Only the host driver matters, the guest will install the driver version for cuda userspace automatically thats installed on the host. Only the official NVIDIA GPU kernel driver is supported [https://github.com/nvidia/open-gpu-kernel-modules](https://github.com/nvidia/open-gpu-kernel-modules), most distros pre-install the open source driver if you have a Turing or newer GPU. Nouveau is not supported. A large ranges of drivers is supported, nvkvm-pv tracks 216 ogkm tags for ABI, not all driver versions have been equally throughly tested though. See the nvkvm-pv project for the support matrix.
+
+**Will my VM break if my host driver updates?**
+No, at VM boot it checks through nvkvm the host driver version and as soon as there is a mismatch, it automatically installs the official NVIDIA run for that driver version before proceeding. This means if your host distro updates your steamOS VM will automatically follow
+
+**Will it follow SteamOS updates?**
+Yes, during an A/B update the boot script will ensure the new updated image gets the proper nvkvm, libcuda and cuda Vulkan libraries.
+
+**Is headless supported?**
+Possible, nvkvm-pv supports headless rendering desktops, that you can remotely connect to. However it hasn't been configured with the scripts in this repository
+
+**Will anti-cheat work?**
+No, most anti-cheat usually breaks under VMs and this is a won't fix. Rigorous anti cheat deliberately only works on bare metal with full root access to your system, many use kernel modules.
+Games relying on anti cheat cannot be reliably sandboxed, you have to trust the vendor of the game that they have properly secured the game client to be resilient against possible untrusted multiplayer servers or players.
+
+**Will DRM protected games work?**
+Likely, as DRM is not as strict as anti cheat and Steam uses your account to authenticate rather than the device.
+
+**Where is my game data stored and how can I increase disk space?**
+In a qcow2 disk image, which contains 2 read-only fixed size partitions containing the steamOS image called A/B, allowing for atomic updates with fallback to an older version if it fails to boot, and a home partition containing all your files and games, always sitting at the end that can grow unlimited. The docker container sets the size to atleast 64GiB and atmost 1024GiB at 60% of the free space on the host system. If the disk is too small then you can resize the disk and the last partition.
+
+**How to copy and paste clipboard text?**
+If using the broker (the docker container setup) then copy/paste is through vdagent (QEMU SPICE). The broker only allows copy when the window is in focus, paste is only allowed on explicit consent (pressing CTRL+V or CTRL+SHIFT+V) during window focus (similar to Firefox/Safari), so pasting through menu options might not receive your host clipboard, press CTRL+V to send it to the guest even if the shortcut itself does nothing in the guest software.
+
+**Why are there multiple containers with VMM, broker and audio in docker-compose.yml (not steamOS specific)?**
+That primarily is to significantly improve the security of the system in case the VM is broken out. To play the guest OS with native performance, the VMM (the process managing your VM) needs access to the display window, headless game streaming would introduce unnecessarily lag and complexity. Mounting your display socket (wayland/X) would give the VMM full access to your display and inputs, effectively an almost host OS compromise. To reduce the risk, a broker is placed in a seperate container giving the VMM only access to the display contents and only access to the inputs when the window is in focus or if the user entered grab mode. This still allows zero copy rendering without lag. The rhird container is the same principle as for display but then for audio.
+
+Most QEMU breakouts/bugs (or nvkvm bugs) that end up in the VMM now strand in an unprivileged cuda container with most capabilities stripped and nowhere to attach a keylogger. A host kernel level breakout through KVM itself is far less likely.
 
 ## Docs
 
