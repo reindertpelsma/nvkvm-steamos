@@ -13,7 +13,15 @@ Type=oneshot
 RemainAfterExit=yes
 # Always the in-image entry point: it mounts the share, then hands over to the
 # share's steamos_boot.sh if that worked, or diagnoses precisely why it did not.
-ExecStart=/usr/local/sbin/nvkvm-recovery.sh boot
+#
+# SELF-HEAL A TRUNCATED ENTRY POINT.  execve() on a zero-length file returns
+# ENOEXEC, so a 0-byte nvkvm-recovery.sh fails this unit 203/EXEC on every boot
+# -- and because that script is itself the repair path, nothing downstream can
+# ever fix it: no provisioning, no module, no sshd, no picture, permanently.
+# MEASURED on a fresh install whose plant verified byte-for-byte and was then
+# lost to writeback.  If the file is missing or empty, mount the share and run
+# its copy directly, which re-plants a good one on the way through.
+ExecStart=/bin/sh -c 'if [ -s /usr/local/sbin/nvkvm-recovery.sh ]; then exec /usr/local/sbin/nvkvm-recovery.sh boot; fi; echo "nvkvm: /usr/local/sbin/nvkvm-recovery.sh is missing or zero-length -- recovering from the share" >&2; mkdir -p /run/nvkvm; mountpoint -q /run/nvkvm || mount -t 9p -o trans=virtio,version=9p2000.L,ro "${NVKVM_SHARE_TAG:-nvkvm}" /run/nvkvm 2>/dev/null; exec /run/nvkvm/boot/image/nvkvm-recovery.sh boot'
 StandardOutput=journal+console
 StandardError=journal+console
 # Never block boot on our own failure (design note 4).

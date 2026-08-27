@@ -249,6 +249,16 @@ if [ ! -e "$QCOW" ]; then
     sync
     mv -f "$QCOW_INSTALLING" "$QCOW"
     sync
+    # A NEW DISK MEANS A NEW HOST KEY.  Whatever sshd identity the old image
+    # had is gone, so a leftover known_hosts entry makes every
+    # `nvkvm-steamos-ssh` fail with "Host key verification failed" -- which
+    # reads as a compromised host rather than the reinstall it actually is.
+    # Drop the entry here, where we know the disk was just replaced, instead of
+    # weakening the check at connect time.
+    if [ -f "$STATE_DIR/ssh/known_hosts" ]; then
+        ssh-keygen -f "$STATE_DIR/ssh/known_hosts" \
+                   -R "[127.0.0.1]:${NVKVM_STEAMOS_SSH_PORT:-15022}" >/dev/null 2>&1 || true
+    fi
     log "install complete -- promoted to $(basename "$QCOW")"
 fi
 

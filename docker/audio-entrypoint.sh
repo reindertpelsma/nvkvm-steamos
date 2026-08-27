@@ -64,6 +64,8 @@ else
     log "WARNING: $PULSE_SOCK -- there is nothing to play to.  On a host with"
     log "WARNING: neither, point NVKVM_AUDIO_PW_SOCKET/NVKVM_AUDIO_PULSE_SOCKET"
     log "WARNING: at the right paths, or /dev/null to silence this."
+    log "WARNING: the guest still runs -- its audio is drained and discarded, which"
+    log "WARNING: is what keeps QEMU's main loop from blocking on a full fifo"
 fi
 
 # Hold it open read-write for the life of the container: opening a fifo for
@@ -95,7 +97,24 @@ while :; do
               --stream-name=nvkvm-guest \
               "$FIFO" >/dev/null 2>&1 || true
     else
-        sleep 30            # nothing to play to; do not spin
+        # NO PLAYER: DRAIN ANYWAY.  This branch used to sleep, which left the
+        # fifo with a holder but no reader -- and that FREEZES THE WHOLE VM.
+        # QEMU writes guest audio from its MAIN LOOP; once the 64 KiB pipe
+        # buffer fills, that write(2) blocks, and with it every timer, the
+        # display path and the monitor.
+        #
+        # MEASURED on a host whose session had no PipeWire and no PulseAudio
+        # socket: the guest booted, reached "Reached target Graphical
+        # Interface", opened the audio device, and stopped dead.  QEMU's main
+        # thread sat in anon_pipe_write, the vCPUs burned zero ticks, QMP went
+        # unanswered and the broker held an attached client that never sent a
+        # single ATTACH.  It looks exactly like a wedged bootloader, and cost a
+        # long detour through GRUB, OVMF and grub.cfg before the pipe turned up.
+        #
+        # A host with no audio server must degrade to SILENCE, never to a
+        # hung guest.  cat is a reader, so the buffer keeps emptying.
+        cat "$FIFO" >/dev/null 2>&1 || true
+        sleep 1
     fi
     sleep 1     # only reached if the player itself dies
 done

@@ -941,6 +941,22 @@ plant_file() {   # <src> <dst> <mode>
         rm -f "$dst"
         return 1
     fi
+    # FLUSH BEFORE VERIFYING, or the verification is a lie.  cmp reads the
+    # destination back through the page cache, so it passes on bytes that are
+    # still only in memory -- and if the machine goes down before writeback (an
+    # installer VM powering off the moment Part 1 returns, say) the file comes
+    # back ZERO-LENGTH with its mode and mtime intact.
+    #
+    # MEASURED: a fresh install logged "verified byte-for-byte against the
+    # share" and still shipped a 0-byte /usr/local/sbin/nvkvm-recovery.sh.  That
+    # file is what nvkvm-boot.service execs, so every boot failed 203/EXEC, no
+    # provisioning ran, sshd was never enabled and the guest never presented a
+    # frame -- and because the recovery script IS the self-repair path, nothing
+    # could repair it.  A silent truncation here disables everything downstream.
+    #
+    # Plain `sync`, not `sync "$dst"`: busybox in the installer environment does
+    # not take a file argument.
+    sync
     # cmp, not just a size test: a short read off 9p can leave a file that is
     # non-empty and still wrong.
     if ! cmp -s "$src" "$dst"; then
@@ -1180,6 +1196,50 @@ ensure_serial_console() {
         log "serial: removing GRUB's serial terminal (it stalls the boot at the menu)"
         sed -i '/^GRUB_TERMINAL_INPUT=.*serial/d; /^GRUB_TERMINAL_OUTPUT=.*serial/d; /^GRUB_SERIAL_COMMAND=/d' \
             "$gd" || warn "serial: could not strip GRUB's serial terminal lines"
+        regen=1
+    fi
+
+    # DO NOT GIVE GRUB A WORKING TERMINAL.  An earlier version of this set
+    # GRUB_TERMINAL_OUTPUT=console to silence
+    #     error: no suitable video mode found.
+    # (harmless in itself: GRUB prints it and carries on).  It worked -- and
+    # that was the problem.  With a terminal it could actually draw on, GRUB
+    # rendered its MENU over the serial line and waited for a keypress no
+    # unattended VM will ever send.  MEASURED: the boot stopped with the menu
+    # on the line, the vCPUs spinning in GRUB's input poll, until a CR was
+    # pushed into serial.sock by hand.
+    #
+    # So this deliberately leaves GRUB with nowhere to draw.  The cosmetic win
+    # was not worth a guest that needs a human to boot, and the error it hid is
+    # removed at its source by GRUB_GFXPAYLOAD_LINUX below anyway.  Strip the
+    # setting if a previous converge wrote it.
+    if grep -q '^GRUB_TERMINAL_OUTPUT=console$' "$gd" 2>/dev/null; then
+        log "serial: removing GRUB_TERMINAL_OUTPUT=console (it makes GRUB draw a menu and wait)"
+        sed -i '/^GRUB_TERMINAL_OUTPUT=console$/d' "$gd" 2>/dev/null
+        sed -i '/^# nvkvm: no VGA device in this VM, so gfxterm cannot start/d' "$gd" 2>/dev/null
+        regen=1
+    fi
+
+    # AND THE KERNEL HANDOFF, which is a second, separate way to demand a video
+    # mode.  GRUB_GFXPAYLOAD_LINUX=keep asks GRUB's linux loader to SET a mode
+    # and hand the kernel that framebuffer; with no video device the mode set
+    # fails with the same
+    #     error: no suitable video mode found.
+    # and prints the same error.  Also survivable on its own, but it is the
+    # second half of the same "this VM has no video device" mismatch: fixing
+    # only the terminal above leaves the error on the line anyway.
+    #
+    # SteamOS threads this option straight through -- /etc/grub.d/00_header has
+    #     steamenv_kernel_mode=${GRUB_GFXPAYLOAD_LINUX:-keep}
+    # -- so `text` is the supported way to say "do not set a mode".  Nothing is
+    # lost: the guest's real display is the nvkvm GPU, which does not exist
+    # until the kernel has loaded its driver, so there is no framebuffer worth
+    # keeping at this point in the boot.
+    if ! grep -q '^GRUB_GFXPAYLOAD_LINUX=text$' "$gd" 2>/dev/null; then
+        log "serial: setting GRUB_GFXPAYLOAD_LINUX=text (no video device to hand the kernel)"
+        sed -i '/^GRUB_GFXPAYLOAD_LINUX=/d' "$gd" 2>/dev/null
+        printf '\n# nvkvm: no video device, so GRUB must not try to set a mode for the kernel\nGRUB_GFXPAYLOAD_LINUX=text\n' >> "$gd" \
+            || warn "serial: could not set GRUB_GFXPAYLOAD_LINUX"
         regen=1
     fi
 
