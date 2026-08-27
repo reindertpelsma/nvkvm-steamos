@@ -162,6 +162,12 @@ services:
       # of it -- the VMM has to be on the staging path to have plain memory to
       # hand over in the first place.
       NVKVM_PRESENT_MODE: ${NVKVM_PRESENT_MODE:-}
+      # Per-second present statistics, OFF unless set.  Forwarded so the opt-in
+      # is actually reachable: the entrypoint honours this variable, but without
+      # a line here compose never passes it into the container and there is no
+      # supported way to turn the stats back on.  Empty is safe -- both the
+      # entrypoint and QEMU treat an empty value as off.
+      NVKVM_PRESENT_TIMING: ${NVKVM_PRESENT_TIMING:-}
       VM_MEM: ${STEAMOS_VM_MEM:-12G}
       VM_SMP: ${STEAMOS_VM_SMP:-8}
       # Empty = fit the host: 60% of the free space where the qcow2 lives,
