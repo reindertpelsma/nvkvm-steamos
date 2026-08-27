@@ -68,6 +68,46 @@ fully playable for first-person games.
 
 ## Known open items
 
+### Chromium GPU watchdogs kill processes when forwarding is slow (2026-08-27)
+
+Planetary Annihilation Titans crashed after ~20 minutes.  The crash is NOT a
+memory bug -- frame #0 of the core is:
+
+```
+content::GpuWatchdogThread::DeliberatelyTerminateToRecoverFromHang
+```
+
+That is Chromium killing its own GPU process on purpose because the GPU thread
+stopped responding inside the watchdog interval (~10-15s).  The dead process was
+`CoherentUI_Host --type=gpu-process`, which `nvidia-smi` had listed holding
+1473 MiB -- PA's browser-based UI layer, not its renderer.  The game's own `PA`
+process (735 MiB) was healthy.
+
+**This is a class, not a title.**  Coherent UI, CEF, Electron and the Steam
+overlay all ship the same watchdog.  Anything that makes a GPU operation exceed
+the interval turns into a *crash* rather than a stall, and the crash signature
+points at the application, not at us.  Expect it whenever forwarding latency
+spikes.
+
+Correlated in the same window, causality NOT established: the broker logged
+`frame: REUSE-IN-FLIGHT ... the compositor never released it` at 19:33:21 UTC
+and the watchdog fired at 19:35:13 UTC -- 112s later, far longer than a
+watchdog interval, so the buffer event is not the trigger.  Both are consistent
+with the HOST compositor stalling the present path.
+
+Not investigated: which forwarded operation is slow.  The guest also logged
+449,990 `signal interrupted forwarded ioctl wait` events against Xwayland
+(pid 1811) -- that path is handled correctly and returns the real response
+rather than -ERESTARTSYS (`src/guest/nvkvm_virtio.c:630-646`), so it is volume,
+not error.  Whether that volume costs latency is unmeasured.
+
+### spice-vdagent segfaults repeatedly (2026-08-27)
+
+Three SIGSEGV core dumps in one session (10:52, 11:10, 11:11 PDT), all
+`/usr/bin/spice-vdagent`, ~520-544 KiB each.  This is the clipboard agent the
+image installs, so it is ours to explain.  The broker still reports "clipboard
+agent present", so it restarts.  Not diagnosed.
+
 ### The guest cannot be shut down from outside (measured 2026-08-27)
 
 `system_powerdown` over QMP does **not** power the guest off, and never did.
