@@ -23,6 +23,19 @@ PULSE_SOCK="${NVKVM_PULSE_SOCKET:-/run/pulse/native}"
 # 0755, NOT the volume root: fs.protected_fifos refuses O_WRONLY on a fifo the
 # writer does not own inside a sticky world-writable directory, and the volume
 # root is drwxrwxrwt.  No sysctl change, just somewhere the rule does not apply.
+#
+# ADOPT NOTHING THE VMM MADE.  The volume root is 1777 and the vmm container
+# runs as uid 0 with it mounted rw, so the VMM can create $DIR first and choose
+# its mode.  Pre-created 0755 slips through unnoticed (GNU chmod elides the
+# syscall when the mode already matches); pre-created 0700 makes the chmod fail
+# under `set -e`, and with restart: unless-stopped this container then
+# crash-loops forever.  Refuse a directory we do not own rather than taking
+# whatever is there.
+if [ -e "$DIR" ] && [ "$(stat -c %u "$DIR" 2>/dev/null)" != "$(id -u)" ]; then
+    log "ERROR: $DIR exists and is not owned by uid $(id -u) -- refusing to adopt it."
+    log "ERROR: the VMM can reach this path; a directory it pre-created is not ours to use."
+    exit 1
+fi
 mkdir -p "$DIR" && chmod 0755 "$DIR"
 #
 # REATTACH, do not replace.  Recreating the fifo unconditionally means that
@@ -33,7 +46,11 @@ mkdir -p "$DIR" && chmod 0755 "$DIR"
 #
 # So keep an existing fifo and only create one when there is none, or when
 # something that is not a fifo is sitting in its place.
-if [ -p "$FIFO" ]; then
+# -p follows symlinks, so "there is already a fifo here" can be answered by an
+# inode of the VMM's choosing.  Require it to be a real fifo AND ours before
+# reusing it; anything else is replaced.
+if [ -p "$FIFO" ] && [ ! -L "$FIFO" ] \
+   && [ "$(stat -c %u "$FIFO" 2>/dev/null)" = "$(id -u)" ]; then
     log "reusing the existing fifo (a running VM may already hold it open)"
 else
     rm -f "$FIFO"
@@ -52,14 +69,33 @@ log "fifo ready at $FIFO"
 # supported product.  So: use the maintained client where it exists, and the
 # one that works where it does not.  Both are --raw, so the guest's bytes stay
 # opaque payload either way; only the client differs.
-if [ -S "$PW_SOCK" ]; then
-    PLAYER=pw
-    log "host offers pipewire; using pw-cat"
-elif [ -S "$PULSE_SOCK" ]; then
-    PLAYER=pulse
-    log "host offers pulseaudio only; using pacat"
-else
-    PLAYER=none
+#
+# RE-PROBED EVERY ITERATION, not decided once.  A socket outlives its server:
+# `systemctl --user restart pipewire`, a logout, or a session switch leaves the
+# file there with nothing behind it.  Deciding once meant PLAYER stayed `pw`
+# for the life of the container, pw-cat failed instantly on every iteration,
+# and NOBODY READ THE FIFO -- which is the wedge this script exists to prevent,
+# reached by a different route than the one 918b1e8 closed.  The sibling
+# entrypoint documents the same trap for the Wayland socket.
+pick_player() {
+    if [ -S "$PW_SOCK" ]; then
+        PLAYER=pw
+    elif [ -S "$PULSE_SOCK" ]; then
+        PLAYER=pulse
+    else
+        PLAYER=none
+    fi
+    if [ "$PLAYER" != "${PLAYER_LAST:-}" ]; then
+        case "$PLAYER" in
+            pw)    log "host offers pipewire; using pw-cat" ;;
+            pulse) log "host offers pulseaudio only; using pacat" ;;
+            none)  log "no audio server reachable; draining and discarding" ;;
+        esac
+        PLAYER_LAST="$PLAYER"
+    fi
+}
+pick_player
+if [ "$PLAYER" = none ]; then
     log "WARNING: no pipewire socket at $PW_SOCK and no pulse socket at"
     log "WARNING: $PULSE_SOCK -- there is nothing to play to.  On a host with"
     log "WARNING: neither, point NVKVM_AUDIO_PW_SOCKET/NVKVM_AUDIO_PULSE_SOCKET"
@@ -114,7 +150,16 @@ while :; do
         # A host with no audio server must degrade to SILENCE, never to a
         # hung guest.  cat is a reader, so the buffer keeps emptying.
         cat "$FIFO" >/dev/null 2>&1 || true
-        sleep 1
     fi
-    sleep 1     # only reached if the player itself dies
+    #
+    # NEVER LEAVE THE FIFO UNREAD, not even for a second.  QEMU's wav backend
+    # writes from its MAIN LOOP with a blocking fwrite, paced to real time at
+    # 48 kHz x 2ch x s16 = 192 kB/s, so a 64 KiB pipe fills in ~0.34 s.  A bare
+    # `sleep 1` between player restarts is therefore long enough to stall every
+    # QEMU timer, the display path and QMP.  Drain for the whole gap instead.
+    #
+    # fd 3 is the read-write holder opened above, so this reads without racing
+    # the open.  timeout bounds it so the loop still re-probes.
+    timeout 1 cat <&3 >/dev/null 2>&1 || true
+    pick_player
 done

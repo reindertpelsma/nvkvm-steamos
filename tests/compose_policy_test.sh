@@ -78,12 +78,26 @@ def mounts(service):
 
 bm = mounts(broker)
 vm = mounts(vmm)
-assert "/run/host-runtime" in bm and "/tmp/.X11-unix" in bm
+assert any(t.startswith("/run/host-runtime/") for t in bm) and "/tmp/.X11-unix" in bm
 assert "/run/host-runtime" not in vm and "/tmp/.X11-unix" not in vm
 assert bm["/run/nvkvm"] == ("volume", "broker-socket")
 assert vm["/run/nvkvm"] == ("volume", "broker-socket")
 assert vm["/var/lib/nvkvm-steamos"] == ("volume", "steamos-state")
 assert vm["/data"] == ("volume", "steamos-data")
+#
+# EXACT, like the audio container's. The vmm is the ONE service this design
+# assumes is hostile, and it was the one checked loosely: presence/absence spot
+# checks only, so adding /var/run/docker.sock or /:/host to it PASSED. A set
+# comparison is the only form that catches what nobody thought to forbid.
+assert set(vm) == {"/run/nvkvm", "/var/lib/nvkvm-steamos", "/data"}, vm
+#
+# And the broker: the session runtime directory must never come in wholesale --
+# only the single Wayland socket beneath it. /run/user/1000 also carries the
+# session D-Bus socket, the gpg agent, the keyring and the portals.
+assert set(bm) <= {"/run/nvkvm", "/tmp/.X11-unix", "/run/host-xauthority"} | {
+    t for t in bm if t.startswith("/run/host-runtime/")
+}, bm
+assert "/run/host-runtime" not in bm, "the whole runtime dir must not be mounted: " + repr(bm)
 
 am = mounts(audio)
 # The whole point of a separate audio container: it must NEVER see the display.

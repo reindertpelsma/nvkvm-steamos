@@ -76,8 +76,16 @@ services:
       # it), so it could not have reached the session's socket even if it had
       # found one; and the audio container below decided the host had no
       # PipeWire at all.  A dedicated name cannot be shadowed by accident.
-      - ${NVKVM_DESKTOP_RUNTIME_DIR:-/run/user/1000}:/run/host-runtime:rw
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # THE SOCKET, NOT THE WHOLE RUNTIME DIRECTORY.  /run/user/1000 also holds
+      # the session D-Bus socket, gnupg/S.gpg-agent, keyring/*, systemd/private
+      # and the flatpak documents portal.  Anything reaching code execution in
+      # the broker before its --drop-user transition would own the desktop
+      # session outright -- arbitrary commands via systemd --user
+      # StartTransientUnit or the portals, plus the user's gpg and ssh agents.
+      # The audio service two stanzas down already states this rule; the broker
+      # did not follow it.
+      - ${NVKVM_DESKTOP_RUNTIME_DIR:-/run/user/1000}/${WAYLAND_DISPLAY:-wayland-0}:/run/host-runtime/${WAYLAND_DISPLAY:-wayland-0}
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
       - ${XAUTHORITY:-/dev/null}:/run/host-xauthority:ro
     tmpfs:
       - /tmp:rw,nosuid,nodev,noexec,size=16m
