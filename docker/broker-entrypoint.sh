@@ -78,6 +78,30 @@ if [ "$BACKEND" = auto ]; then
 fi
 
 case "$BACKEND" in
+    auto)
+        #
+        # AND THIS BRANCH HAS TO EXIST.  Making the block above stop resolving
+        # auto was right -- only the broker can recover from a wrong guess --
+        # but "auto" then reached a case statement that only knew wayland and
+        # x11, so it fell to the catch-all and died with a message listing
+        # "auto" as one of the values it accepts.  MEASURED: the broker
+        # crash-looped on a freshly booted GNOME/Wayland session, printing its
+        # own probe result and then rejecting it.
+        #
+        # Prepare BOTH environments and pass auto through: the broker tries
+        # Wayland, then falls back to X11, and whichever it picks has what it
+        # needs already exported.
+        #
+        if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+            export XDG_RUNTIME_DIR="$RUNTIME_DIR"
+            export WAYLAND_DISPLAY="${WAYLAND_DISPLAY##*/}"
+        fi
+        if [ -s /run/host-xauthority ]; then
+            export XAUTHORITY=/run/host-xauthority
+        else
+            unset XAUTHORITY
+        fi
+        ;;
     wl|wayland)
         BACKEND=wayland
         export XDG_RUNTIME_DIR="$RUNTIME_DIR"

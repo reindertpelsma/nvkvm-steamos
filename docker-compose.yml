@@ -58,7 +58,16 @@ services:
     volumes:
       - broker-socket:/run/nvkvm
       # Trusted broker only. The untrusted VMM service has neither mount.
-      - ${XDG_RUNTIME_DIR:-/run/user/1000}:/run/host-runtime:rw
+      # NVKVM_DESKTOP_RUNTIME_DIR, DELIBERATELY NOT XDG_RUNTIME_DIR.  compose
+      # resolves ${...} against the environment of whoever runs it, and a shell
+      # variable beats anything in .env -- so on a stack that must be run as
+      # root this silently bound /run/user/0 instead of the desktop session's
+      # /run/user/1000.  MEASURED: the broker then found no Wayland socket AND
+      # derived desktop_uid=0 from this very mount (the uid is stat(1)ed off
+      # it), so it could not have reached the session's socket even if it had
+      # found one; and the audio container below decided the host had no
+      # PipeWire at all.  A dedicated name cannot be shadowed by accident.
+      - ${NVKVM_DESKTOP_RUNTIME_DIR:-/run/user/1000}:/run/host-runtime:rw
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${XAUTHORITY:-/dev/null}:/run/host-xauthority:ro
     tmpfs:
@@ -102,8 +111,10 @@ services:
       # legacy PulseAudio hosts have only pulse/native.  The player picks at
       # runtime.  On a host missing one, point its variable at /dev/null so
       # Docker does not create a stray directory in the runtime dir.
-      - ${NVKVM_AUDIO_PW_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/1000}/pipewire-0}:/run/pw/pipewire-0
-      - ${NVKVM_AUDIO_PULSE_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/1000}/pulse/native}:/run/pulse/native
+      # Same reason as the broker's runtime-dir mount above: not XDG_RUNTIME_DIR,
+      # which follows the invoking shell and is /run/user/0 under sudo.
+      - ${NVKVM_AUDIO_PW_SOCKET:-${NVKVM_DESKTOP_RUNTIME_DIR:-/run/user/1000}/pipewire-0}:/run/pw/pipewire-0
+      - ${NVKVM_AUDIO_PULSE_SOCKET:-${NVKVM_DESKTOP_RUNTIME_DIR:-/run/user/1000}/pulse/native}:/run/pulse/native
     restart: unless-stopped
 
   # Untrusted VMM. Its only path toward the desktop is broker-socket. It gets
