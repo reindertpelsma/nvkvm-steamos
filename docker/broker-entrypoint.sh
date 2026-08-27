@@ -143,7 +143,11 @@ extra+=(--drop-user "${NVKVM_BROKER_DROP_UID:-auto}")
 #
 # Needs QEMU's qemu-vdagent chardev on the VMM side and spice-vdagent in the
 # guest; without either, this is inert rather than broken.
-case "${NVKVM_BROKER_CLIPBOARD:-off}" in
+# Default consent, not off: this image is only ever run against the vmm
+# container, which supplies the qemu-vdagent chardev and a guest with
+# spice-vdagent installed.  The broker binary itself still defaults to off,
+# because a hand-rolled QEMU has no transport until you add one.
+case "${NVKVM_BROKER_CLIPBOARD:-consent}" in
     off)                       ;;
     guest-to-host|consent)     extra+=(--clipboard "$NVKVM_BROKER_CLIPBOARD") ;;
     *) die "NVKVM_BROKER_CLIPBOARD must be off, guest-to-host or consent" ;;

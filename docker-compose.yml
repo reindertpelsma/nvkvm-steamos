@@ -53,7 +53,16 @@ services:
       # (visibly, and only while this window has focus), and can never READ it
       # except at the instant you press the paste key -- ctrl+v, ctrl+shift+v
       # or shift+insert by default.  Works on both Wayland and X11.
-      NVKVM_BROKER_CLIPBOARD: ${NVKVM_BROKER_CLIPBOARD:-off}
+      # consent, NOT off -- and deliberately different from the broker's own
+      # default.  The broker ships off because a bare QEMU has no clipboard
+      # transport unless you add the qemu-vdagent chardev yourself, so enabling
+      # it there would advertise something that cannot work.  This container
+      # wires that chardev and installs spice-vdagent in the guest, so the
+      # opt-in has already happened by the time anyone reads this line.
+      #
+      # consent is still not "full": host->guest paste happens only on an
+      # explicit trigger and on nothing else.  off | guest-to-host | consent.
+      NVKVM_BROKER_CLIPBOARD: ${NVKVM_BROKER_CLIPBOARD:-consent}
       NVKVM_BROKER_CLIPBOARD_TRIGGER: ${NVKVM_BROKER_CLIPBOARD_TRIGGER:-}
     volumes:
       - broker-socket:/run/nvkvm
