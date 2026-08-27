@@ -68,6 +68,82 @@ fully playable for first-person games.
 
 ## Known open items
 
+### UNRESOLVED: Steam wipes its own install inside the guest (2026-08-27/28)
+
+The owner lost a Steam login and a 40 GB game install.  Steam re-bootstraps
+("unpacking Steam") on every launch and requires a fresh login each time.
+
+**The decisive observation, from the owner:** open Steam, log in, quit it
+*gracefully* from the tray, relaunch — and it is wiped again, **within a single
+boot, with no reboot involved.**  That eliminates the VM lifecycle, the shutdown
+path and anything this repo does at boot.
+
+**Steam's own log shows it starts with genuinely empty state**, not corrupt
+state:
+
+```
+[2026-08-27 15:04:08] Client beta changed from '' to 'steamdeck_stable'
+[2026-08-27 15:04:08] Failed to load cached hosts file (update_hosts_cached.vdf not found)
+```
+
+Consequence chain: no config -> logged out -> re-bootstrap -> no
+libraryfolders.vdf -> Steam does not know the game is installed -> offers a
+re-install.  Games are account-licensed but disk-resident, so a re-login must
+never uninstall anything; that it appears to is a symptom of the lost library
+index, not of deletion.
+
+**Ruled out, each by measurement, not argument:**
+- `/etc/machine-id` is stable across boots (read-only, unchanged since Aug 26).
+- Clock is correct and NTP-synchronised; no skew, no backwards jumps.
+- Filesystem loss: boot -4 (the session with the game) **ended cleanly** --
+  systemd unmounted in order and flushed the journal.  `lost+found` is empty.
+- Disk integrity: `qemu-img info` reports no backing file, no snapshots,
+  `corrupt: false`; 61.1 GiB genuinely allocated, so the game *was* written.
+- This repo's scripts: the only `rm -rf` calls are scoped to `/usr/lib` and
+  `/usr/lib/firmware/nvidia`; `/home/.nvkvm-build.img` is a 1 GB scratch FILE
+  that gets mkfs'd, never the partition.  Nothing here writes to `/home/deck`
+  except the `.ssh` authorized_keys installer.
+- `steamapps/common/FAKEGAME/blob` (64 MB) survived two reboots, so nothing is
+  deleting indiscriminately.
+
+**Two hypotheses raised and RETRACTED, recorded so they are not re-derived:**
+1. *Unclean-shutdown data loss.*  Wrong.  ext4 commits its journal every 5 s and
+   `data=ordered` writes data first; QEMU's default writeback cache honours
+   guest flushes, and killing QEMU on a live host does not lose committed
+   writes -- the host page cache survives the process.  Only host power loss
+   would, and the host never went down.
+2. *A marker-file "reproduction".*  Wrong, and a bad experiment: the markers
+   were written as **root** into Steam's own tree.  Steam legitimately cleans
+   foreign files out of its directory during bootstrap.  `deck`-owned markers
+   survived untouched.  Any future test MUST create files as the `deck` user.
+
+**Dead end for tooling:** the neptune kernel is built without `CONFIG_AUDIT`.
+`audit=1` reaches `/proc/cmdline` and `auditctl` still reports "audit support
+not in kernel", so syscall auditing cannot be used to name the deleter here.
+(systemd's `+AUDIT` means systemd links libaudit -- it says nothing about the
+kernel.)
+
+**Where to resume:** `~/.local/share/Steam/logs/` now exists and is populated.
+Read `bootstrap_log.txt` and `console-linux.txt` across one exit-and-relaunch
+cycle.  That needs no reboots, no markers and no kernel features this image
+lacks, and it should name whatever resets the install.
+
+Evidence bundle: `evidence-steam-wipe-20260828/` (guest boot table, boot -4
+tail proving the clean shutdown, Steam bootstrap log, and the DRM
+`enabled=disabled` capture).
+
+### The guest DRM output can come up `enabled=disabled` (2026-08-27)
+
+One boot in six came up with `card0-Virtual-1: status=connected enabled=disabled`
+and **zero flips** -- KWin logged `There are no outputs - creating placeholder
+screen` across every KDE component, so the session had no output to draw on.
+
+NOT a startup race in the obvious direction: the broker logged `client attached`
+at 20:41:48.56 UTC and KWin reported no outputs at 20:42:37 -- **49 seconds
+later**.  The display was present and the guest still saw nothing.  Root cause
+unknown.  A VM restart clears it; a fresh boot 16 s later had the output
+`enabled` with flips flowing.  Capture in `evidence-steam-wipe-20260828/drm-disabled/`.
+
 ### Chromium GPU watchdogs kill processes when forwarding is slow (2026-08-27)
 
 Planetary Annihilation Titans crashed after ~20 minutes.  The crash is NOT a

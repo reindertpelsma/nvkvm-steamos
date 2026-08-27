@@ -1,0 +1,400 @@
+Aug 27 13:58:35 steamdeck systemd[1]: Stopping Record System Boot/Shutdown in UTMP...
+Aug 27 13:58:35 steamdeck systemd[1]: Stopping Disk Manager...
+Aug 27 13:58:35 steamdeck systemd[1]: Stopping Daemon for power management...
+Aug 27 13:58:35 steamdeck systemd[1]: wireplumber-sysconf.service: Deactivated successfully.
+Aug 27 13:58:35 steamdeck systemd[1]: Stopped Hardware Specific Wireplumber Configuration.
+Aug 27 13:58:35 steamdeck systemd[1]: earlyoom.service: Deactivated successfully.
+Aug 27 13:58:35 steamdeck systemd[1]: Stopped Early OOM Daemon.
+Aug 27 13:58:35 steamdeck systemd[1]: avahi-daemon.service: Deactivated successfully.
+Aug 27 13:58:35 steamdeck udisksd[1755]: udisks daemon version 2.10.1 exiting
+Aug 27 13:58:35 steamdeck systemd[1]: Stopped Avahi mDNS/DNS-SD Stack.
+Aug 27 13:58:35 steamdeck systemd[1]: dmemcg-booster-system.service: Deactivated successfully.
+Aug 27 13:58:35 steamdeck systemd[1]: Stopped Service for enabling and controlling dmem cgroup limits for boosting foreground games, system-level.
+Aug 27 13:58:35 steamdeck systemd[1]: sshd.service: Deactivated successfully.
+Aug 27 13:58:35 steamdeck systemd[1]: Stopped OpenSSH Daemon.
+Aug 27 13:58:35 steamdeck systemd[1]: serial-getty@ttyS0.service: Deactivated successfully.
+Aug 27 13:58:35 steamdeck systemd[1]: Stopped Serial Getty on ttyS0.
+Aug 27 13:58:35 steamdeck gpu-trace[4230]: CRITICAL - Failed to setup logging
+Aug 27 13:58:35 steamdeck mkinitcpio[4227]: ==> Starting build: 'none'
+Aug 27 13:58:35 steamdeck mkinitcpio[4227]:   -> Running build hook: [sd-shutdown]
+Aug 27 13:58:35 steamdeck mkinitcpio[4227]: ==> Build complete.
+Aug 27 13:58:36 steamdeck systemd[1]: systemd-timesyncd.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped Network Time Synchronization.
+Aug 27 13:58:36 steamdeck systemd[1]: steamos-manager.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped SteamOS Manager Daemon.
+Aug 27 13:58:36 steamdeck systemd[1]: sddm.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped Simple Desktop Display Manager.
+Aug 27 13:58:36 steamdeck systemd[1]: rtkit-daemon.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped RealtimeKit Scheduling Policy Service.
+Aug 27 13:58:36 steamdeck systemd[1]: udisks2.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped Disk Manager.
+Aug 27 13:58:36 steamdeck systemd[1]: upower.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped Daemon for power management.
+Aug 27 13:58:36 steamdeck systemd[1]: spice-vdagentd.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped Agent daemon for Spice guests.
+Aug 27 13:58:36 steamdeck systemd[1]: accounts-daemon.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped Accounts Service.
+Aug 27 13:58:36 steamdeck systemd[1]: esp.mount: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Unmounted /esp.
+Aug 27 13:58:36 steamdeck systemd[1]: mkinitcpio-generate-shutdown-ramfs.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Finished Generate shutdown-ramfs.
+Aug 27 13:58:36 steamdeck systemd[1]: efi.mount: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Unmounted /efi.
+Aug 27 13:58:36 steamdeck systemd[1]: gpu-trace.service: Control process exited, code=exited, status=255/EXCEPTION
+Aug 27 13:58:36 steamdeck systemd[1]: systemd-random-seed.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped Load/Save OS Random Seed.
+Aug 27 13:58:36 steamdeck systemd[1]: systemd-update-utmp.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped Record System Boot/Shutdown in UTMP.
+Aug 27 13:58:36 steamdeck systemd[1]: gpu-trace.service: Failed with result 'exit-code'.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped GPU performance capture daemon.
+Aug 27 13:58:36 steamdeck systemd[1]: gpu-trace.service: Consumed 483ms CPU time, 74.7M memory peak.
+Aug 27 13:58:36 steamdeck systemd[1]: session-20.scope: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped Session 20 of User root.
+Aug 27 13:58:36 steamdeck systemd[1]: session-1.scope: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped Session 1 of User deck.
+Aug 27 13:58:36 steamdeck systemd[1]: session-1.scope: Consumed 82ms CPU time, 68.4M memory peak.
+Aug 27 13:58:36 steamdeck systemd[1]: Removed slice Slice /system/serial-getty.
+Aug 27 13:58:36 steamdeck systemd[1]: plymouth-deactivate.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped Deactivate Plymouth Boot Screen.
+Aug 27 13:58:36 steamdeck systemd[1]: Starting Show Plymouth Power Off Screen...
+Aug 27 13:58:36 steamdeck systemd[1]: plymouth-quit-wait.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped Hold until boot process finishes up.
+Aug 27 13:58:36 steamdeck systemd[1]: plymouth-quit.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped Terminate Plymouth Boot Screen.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopping SteamOS log submitter service - sends error logs to Valve...
+Aug 27 13:58:36 steamdeck systemd[1]: systemd-fsck@dev-disk-by\x2dpartsets-self-efi.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped File System Check on /dev/disk/by-partsets/self/efi.
+Aug 27 13:58:36 steamdeck systemd[1]: systemd-fsck@dev-disk-by\x2dpartsets-shared-esp.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped File System Check on /dev/disk/by-partsets/shared/esp.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopping User Manager for UID 0...
+Aug 27 13:58:36 steamdeck systemd[1]: Stopping User Manager for UID 1000...
+Aug 27 13:58:36 steamdeck systemd[4188]: Activating special unit Exit the Session...
+Aug 27 13:58:36 steamdeck systemd-logind[802]: Removed session 1.
+Aug 27 13:58:36 steamdeck systemd[1609]: Activating special unit Exit the Session...
+Aug 27 13:58:36 steamdeck systemd[4188]: Stopped target Main User Target.
+Aug 27 13:58:36 steamdeck systemd[4188]: Stopped target Basic System.
+Aug 27 13:58:36 steamdeck systemd[4188]: Stopped target Paths.
+Aug 27 13:58:36 steamdeck systemd[1]: steamos-log-submitter.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck kernel: fbcon: Taking over console
+Aug 27 13:58:36 steamdeck kded6[1901]: org.kde.pulseaudio: No object for name "alsa_loopback_device.alsa_output.pci-0000_00_0b.0.analog-stereo"
+Aug 27 13:58:36 steamdeck kded6[1901]: org.kde.pulseaudio: No object for name "alsa_loopback_device.alsa_output.pci-0000_00_0b.0.analog-stereo.monitor"
+Aug 27 13:58:36 steamdeck kded6[1901]: kf.notifications: Playing audio notification failed: File or data not found
+Aug 27 13:58:36 steamdeck kded6[1901]: org.kde.pulseaudio: No object for name "@DEFAULT_SINK@"
+Aug 27 13:58:36 steamdeck kded6[1901]: org.kde.pulseaudio: No object for name "@DEFAULT_SOURCE@"
+Aug 27 13:58:36 steamdeck systemd[1609]: Removed slice Slice /app/dbus-:1.1-org.kde.KSplash.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped target Main User Target.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped target plasma-workspace-wayland.target.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped target Startup of XDG autostart applications.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped SteamOS log submitter service - sends error logs to Valve.
+Aug 27 13:58:36 steamdeck systemd[1609]: Closed Socket to launch DrKonqi for a systemd-coredump crash.
+Aug 27 13:58:36 steamdeck kded6[1901]: org.kde.pulseaudio: No object for name "@DEFAULT_SINK@"
+Aug 27 13:58:36 steamdeck kded6[1901]: org.kde.pulseaudio: No object for name "@DEFAULT_SOURCE@"
+Aug 27 13:58:36 steamdeck systemd-logind[802]: Session 20 logged out. Waiting for processes to exit.
+Aug 27 13:58:36 steamdeck systemd[1]: Received SIGRTMIN+20 from PID 4405 (plymouthd).
+Aug 27 13:58:36 steamdeck systemd[4188]: Stopped Submitting pending crash events (file monitor).
+Aug 27 13:58:36 steamdeck systemd[4188]: Stopped target Sockets.
+Aug 27 13:58:36 steamdeck systemd[4188]: Stopped target Timers.
+Aug 27 13:58:36 steamdeck systemd[4188]: Closed HDMI CEC volume and mute control.
+Aug 27 13:58:36 steamdeck systemd[4188]: Closed GnuPG network certificate management daemon.
+Aug 27 13:58:36 steamdeck systemd[4188]: Closed GnuPG cryptographic agent and passphrase cache (access for web browsers).
+Aug 27 13:58:36 steamdeck systemd[4188]: Closed GnuPG cryptographic agent and passphrase cache (restricted).
+Aug 27 13:58:36 steamdeck systemd[4188]: Closed GnuPG cryptographic agent (ssh-agent emulation).
+Aug 27 13:58:36 steamdeck systemd-logind[802]: Removed session 20.
+Aug 27 13:58:36 steamdeck systemd[4188]: Closed GnuPG cryptographic agent and passphrase cache.
+Aug 27 13:58:36 steamdeck systemd[4188]: Closed GnuPG public key management service.
+Aug 27 13:58:36 steamdeck systemd[4188]: Closed p11-kit server.
+Aug 27 13:58:36 steamdeck dbus-broker[4208]: Dispatched 165 messages @ 1(±1)μs / message.
+Aug 27 13:58:36 steamdeck systemd[4188]: Stopping D-Bus User Message Bus...
+Aug 27 13:58:36 steamdeck wireplumber[1633]: wp-event-dispatcher: <WpAsyncEventHook:0x5561503a0190> failed: <WpSiStandardLink:0x556150753530> link failed: some node was destroyed before the link was created
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping Steam...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping IBus...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping Discover...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping KDE Connect...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping Accessibility services bus...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping dbus-:1.1-org.freedesktop.Notifications@1.service...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping dbus-:1.1-org.freedesktop.portal.IBus@0.service...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping dbus-:1.28-org.a11y.atspi.Registry@0.service...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping User preferences database...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping PipeWire filter chain daemon...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping gamemoded...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping nvkvm: mirror the Wayland clipboard into X11 for spice-vdagent...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping PipeWire PulseAudio...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping Xdg Desktop Portal For KDE...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping SteamOS Manager Daemon...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping Portal service (GTK/GNOME implementation)...
+Aug 27 13:58:36 steamdeck kded6[1901]: org.kde.pulseaudio: context kaput
+Aug 27 13:58:36 steamdeck kded6[1901]: org.kde.pulseaudio: No object for name "@DEFAULT_SINK@"
+Aug 27 13:58:36 steamdeck kded6[1901]: org.kde.pulseaudio: No object for name "@DEFAULT_SOURCE@"
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping Portal service...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping flatpak document portal service...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping sandboxed app permission store...
+Aug 27 13:58:36 steamdeck kernel: nvkvm: session 3 RING MAPPED gpa=0x4001f33000 bytes=65536 — 3-way OK (req.size=65536 resp.size=65536)
+Aug 27 13:58:36 steamdeck kernel: nvkvm: signal interrupted forwarded ioctl wait (count=131 pid=3560 isolate=25 txn=0x3b28)
+Aug 27 13:58:36 steamdeck kernel: nvkvm: signal interrupted forwarded ioctl wait (count=132 pid=3560 isolate=25 txn=0x3b2a)
+Aug 27 13:58:36 steamdeck kernel: nvkvm: signal interrupted forwarded ioctl wait (count=133 pid=3560 isolate=25 txn=0x3b2c)
+Aug 27 13:58:36 steamdeck systemd[1]: run-user-1000-doc.mount: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Unmounted /run/user/1000/doc.
+Aug 27 13:58:36 steamdeck kernel: nvkvm: signal interrupted forwarded ioctl wait (count=134 pid=3560 isolate=25 txn=0x3b2e)
+Aug 27 13:58:36 steamdeck kernel: nvkvm: signal interrupted forwarded ioctl wait (count=135 pid=3560 isolate=25 txn=0x3b30)
+Aug 27 13:58:36 steamdeck dbus-broker[1894]: Dispatched 182 messages @ 2(±4)μs / message.
+Aug 27 13:58:36 steamdeck steamos-manager[1703]: 2026-08-27T20:58:36.171351Z  INFO steamos_manager::daemon: Got SIGTERM, shutting down
+Aug 27 13:58:36 steamdeck steamos-manager[1703]: 2026-08-27T20:58:36.171382Z  INFO steamos_manager::daemon: Shutting down
+Aug 27 13:58:36 steamdeck steamos-manager[1703]: 2026-08-27T20:58:36.223760Z  INFO steamos_manager: Shutting down udev-monitor
+Aug 27 13:58:36 steamdeck steamos-manager[1703]: 2026-08-27T20:58:36.223843Z  INFO steamos_manager: Shutting down cecd-listener
+Aug 27 13:58:36 steamdeck steamos-manager[1703]: 2026-08-27T20:58:36.223908Z  INFO steamos_manager: Shutting down tdp-manager
+Aug 27 13:58:36 steamdeck steamos-manager[1703]: 2026-08-27T20:58:36.223926Z  INFO steamos_manager: Shutting down job-manager
+Aug 27 13:58:36 steamdeck steamos-manager[1703]: 2026-08-27T20:58:36.223952Z  INFO steamos_manager: Shutting down session-manager
+Aug 27 13:58:36 steamdeck steamos-manager[1703]: 2026-08-27T20:58:36.224013Z  INFO steamos_manager: Shutting down signal-relay
+Aug 27 13:58:36 steamdeck at-spi-bus-launcher[1881]: Failed to launch bus: Bus exited with code 0
+Aug 27 13:58:36 steamdeck systemd[4188]: Stopped D-Bus User Message Bus.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped PipeWire filter chain daemon.
+Aug 27 13:58:36 steamdeck systemd[4188]: Removed slice User Core Session Slice.
+Aug 27 13:58:36 steamdeck systemd[4188]: Closed D-Bus User Message Bus Socket.
+Aug 27 13:58:36 steamdeck kernel: nvkvm: signal interrupted forwarded ioctl wait (count=136 pid=3582 isolate=18 txn=0x3b72)
+Aug 27 13:58:36 steamdeck systemd[4188]: Removed slice User Application Slice.
+Aug 27 13:58:36 steamdeck systemd[4188]: Reached target Shutdown.
+Aug 27 13:58:36 steamdeck systemd[4188]: Finished Exit the Session.
+Aug 27 13:58:36 steamdeck systemd[4188]: Reached target Exit the Session.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped gamemoded.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped PipeWire PulseAudio.
+Aug 27 13:58:36 steamdeck systemd[1609]: at-spi-dbus-bus.service: Main process exited, code=exited, status=1/FAILURE
+Aug 27 13:58:36 steamdeck systemd[1609]: at-spi-dbus-bus.service: Failed with result 'exit-code'.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped Accessibility services bus.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped dbus-:1.28-org.a11y.atspi.Registry@0.service.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped nvkvm: mirror the Wayland clipboard into X11 for spice-vdagent.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped Portal service.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped sandboxed app permission store.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped flatpak document portal service.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped dbus-:1.1-org.freedesktop.portal.IBus@0.service.
+Aug 27 13:58:36 steamdeck systemd[1609]: dbus-:1.1-org.freedesktop.Notifications@1.service: Main process exited, code=exited, status=255/EXCEPTION
+Aug 27 13:58:36 steamdeck systemd[1609]: dbus-:1.1-org.freedesktop.Notifications@1.service: Failed with result 'exit-code'.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped dbus-:1.1-org.freedesktop.Notifications@1.service.
+Aug 27 13:58:36 steamdeck kernel: nvkvm: signal interrupted forwarded ioctl wait (count=137 pid=2289 isolate=19 txn=0x3b8d)
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped User preferences database.
+Aug 27 13:58:36 steamdeck kernel: nvkvm: signal interrupted forwarded ioctl wait (count=138 pid=2215 isolate=20 txn=0x3b93)
+Aug 27 13:58:36 steamdeck kernel: nvkvm: signal interrupted forwarded ioctl wait (count=139 pid=2182 isolate=16 txn=0x3b9b)
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped Portal service (GTK/GNOME implementation).
+Aug 27 13:58:36 steamdeck systemd[1609]: Removed slice Slice /app/dbus-:1.1-org.freedesktop.Notifications.
+Aug 27 13:58:36 steamdeck systemd[1609]: Removed slice Slice /app/dbus-:1.1-org.freedesktop.portal.IBus.
+Aug 27 13:58:36 steamdeck systemd[1609]: Removed slice Slice /app/dbus-:1.28-org.a11y.atspi.Registry.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping Multimedia Service Session Manager...
+Aug 27 13:58:36 steamdeck systemd[1609]: Requested transaction contradicts existing jobs: Transaction for dbus-:1.1-org.freedesktop.Notifications@2.service/start is destructive (gpg-agent.socket has 'stop' job queued, but 'start' is included in transaction).
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped Multimedia Service Session Manager.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopping PipeWire Multimedia Service...
+Aug 27 13:58:36 steamdeck kwin_wayland[1719]: kwin_screencast: PipeWire remote error:  connection error
+Aug 27 13:58:36 steamdeck (sd-pam)[4193]: pam_unix(systemd-user:session): session closed for user root
+Aug 27 13:58:36 steamdeck systemd-logind[802]: Removed session 21.
+Aug 27 13:58:36 steamdeck (sd-pam)[4193]: pam_systemd(systemd-user:session): Failed to release session: No session '21' known
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped PipeWire Multimedia Service.
+Aug 27 13:58:36 steamdeck systemd[1]: user@0.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped User Manager for UID 0.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopping User Runtime Directory /run/user/0...
+Aug 27 13:58:36 steamdeck steamos-manager[1703]: 2026-08-27T20:58:36.313902Z  INFO steamos_manager: Shutting down screenreader-setup
+Aug 27 13:58:36 steamdeck systemd[1]: Started Show Plymouth Power Off Screen.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped SteamOS Manager Daemon.
+Aug 27 13:58:36 steamdeck systemd[1]: Starting Tell Plymouth To Jump To initramfs...
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped KDE Connect.
+Aug 27 13:58:36 steamdeck systemd[1609]: app-org.kde.kdeconnect.daemon@autostart.service: Consumed 1.471s CPU time, 31M memory peak.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped Discover.
+Aug 27 13:58:36 steamdeck systemd[1609]: app-org.kde.discover.notifier@autostart.service: Consumed 1.468s CPU time, 34.1M memory peak.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped Xdg Desktop Portal For KDE.
+Aug 27 13:58:36 steamdeck systemd[1609]: plasma-xdg-desktop-portal-kde.service: Consumed 1.442s CPU time, 23.5M memory peak.
+Aug 27 13:58:36 steamdeck systemd[1609]: Stopped IBus.
+Aug 27 13:58:36 steamdeck systemd[1609]: app-ibus@autostart.service: Consumed 2.194s CPU time, 47.4M memory peak.
+Aug 27 13:58:36 steamdeck systemd[1]: user-runtime-dir@0.service: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Stopped User Runtime Directory /run/user/0.
+Aug 27 13:58:36 steamdeck systemd[1]: Removed slice User Slice of UID 0.
+Aug 27 13:58:36 steamdeck systemd[1]: Finished Tell Plymouth To Jump To initramfs.
+Aug 27 13:58:36 steamdeck systemd[1]: run-user-0.mount: Deactivated successfully.
+Aug 27 13:58:36 steamdeck systemd[1]: Unmounted /run/user/0.
+Aug 27 13:58:37 steamdeck systemd[1]: Requested transaction contradicts existing jobs: Transaction for upower.service/start is destructive (system-systemd\x2dgrowfs.slice has 'stop' job queued, but 'start' is included in transaction).
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped Steam.
+Aug 27 13:58:38 steamdeck systemd[1609]: app-steam@autostart.service: Consumed 37.153s CPU time, 4.6G memory peak.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped target Current graphical user session.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped target KDE Plasma Workspace.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping Consumer Electronics Control (CEC) Daemon...
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping Foreground app CPU weight booster...
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping Proxies GTK DBus menus to a Plasma readable format...
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping KAccess...
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping KActivityManager Activity manager Service...
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping KDE PolicyKit Authentication Agent...
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping Powerdevil...
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping Handle legacy xembed system tray icons...
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping Baloo File Indexer Daemon...
+Aug 27 13:58:38 steamdeck polkitd[1001]: Unregistered Authentication Agent for unix-session:1 (system bus name :1.72, object path /org/kde/PolicyKit1/AuthenticationAgent, locale en_US.UTF-8) (disconnected from bus)
+Aug 27 13:58:38 steamdeck kernel: nvkvm: signal interrupted forwarded ioctl wait (count=140 pid=2024 isolate=15 txn=0x3e84)
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped Foreground app CPU weight booster.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped Baloo File Indexer Daemon.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped Consumer Electronics Control (CEC) Daemon.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped KActivityManager Activity manager Service.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped Proxies GTK DBus menus to a Plasma readable format.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped Powerdevil.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped Handle legacy xembed system tray icons.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped KAccess.
+Aug 27 13:58:38 steamdeck systemd[1609]: plasma-kaccess.service: Consumed 1.295s CPU time, 22M memory peak.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped KDE PolicyKit Authentication Agent.
+Aug 27 13:58:38 steamdeck systemd[1609]: plasma-polkit-agent.service: Consumed 1.263s CPU time, 22.3M memory peak.
+Aug 27 13:58:38 steamdeck systemd[1609]: Removed slice User Background Tasks Slice.
+Aug 27 13:58:38 steamdeck systemd[1609]: background.slice: Consumed 4.232s CPU time, 107.1M memory peak.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped target KDE Plasma Workspace Core.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped target Session services which should run early before the graphical session is brought up.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping Service for enabling and controlling dmem cgroup limits for boosting foreground games, user-level...
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping KDE Daemon 6...
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping KDE Plasma Workspace...
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped Service for enabling and controlling dmem cgroup limits for boosting foreground games, user-level.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped KDE Daemon 6.
+Aug 27 13:58:38 steamdeck systemd[1609]: plasma-kded6.service: Consumed 1.812s CPU time, 60.3M memory peak.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped KDE Plasma Workspace.
+Aug 27 13:58:38 steamdeck systemd[1609]: plasma-plasmashell.service: Consumed 1.684s CPU time, 32.2M memory peak.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping KDE Session Management Server...
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopped KDE Session Management Server.
+Aug 27 13:58:38 steamdeck systemd[1609]: plasma-ksmserver.service: Consumed 1.398s CPU time, 23.8M memory peak.
+Aug 27 13:58:38 steamdeck systemd[1609]: Stopping KDE Window Manager...
+Aug 27 13:58:39 steamdeck systemd[1609]: Stopped KDE Window Manager.
+Aug 27 13:58:39 steamdeck systemd[1609]: plasma-kwin_wayland.service: Consumed 2.455s CPU time, 528.2M memory peak.
+Aug 27 13:58:39 steamdeck systemd[1609]: Stopped target Basic System.
+Aug 27 13:58:39 steamdeck systemd[1609]: Stopped target Paths.
+Aug 27 13:58:39 steamdeck systemd[1609]: Stopped Submitting pending crash events (file monitor).
+Aug 27 13:58:39 steamdeck systemd[1609]: Stopped target Sockets.
+Aug 27 13:58:39 steamdeck systemd[1609]: Stopped target Timers.
+Aug 27 13:58:39 steamdeck systemd[1609]: Closed HDMI CEC volume and mute control.
+Aug 27 13:58:39 steamdeck systemd[1609]: Closed GnuPG network certificate management daemon.
+Aug 27 13:58:39 steamdeck systemd[1609]: Closed GnuPG cryptographic agent and passphrase cache (access for web browsers).
+Aug 27 13:58:39 steamdeck systemd[1609]: Closed GnuPG cryptographic agent and passphrase cache (restricted).
+Aug 27 13:58:39 steamdeck systemd[1609]: Closed GnuPG cryptographic agent (ssh-agent emulation).
+Aug 27 13:58:39 steamdeck systemd[1609]: Closed GnuPG cryptographic agent and passphrase cache.
+Aug 27 13:58:39 steamdeck systemd[1609]: Closed GnuPG public key management service.
+Aug 27 13:58:39 steamdeck systemd[1609]: Closed p11-kit server.
+Aug 27 13:58:39 steamdeck systemd[1609]: Closed PipeWire PulseAudio.
+Aug 27 13:58:39 steamdeck systemd[1609]: Closed PipeWire Multimedia System Sockets.
+Aug 27 13:58:39 steamdeck dbus-broker[1629]: Dispatched 6534 messages @ 2(±3)μs / message.
+Aug 27 13:58:39 steamdeck systemd[1609]: Stopping D-Bus User Message Bus...
+Aug 27 13:58:39 steamdeck systemd[1609]: Stopped D-Bus User Message Bus.
+Aug 27 13:58:39 steamdeck systemd[1609]: Removed slice User Core Session Slice.
+Aug 27 13:58:39 steamdeck systemd[1609]: session.slice: Consumed 9.491s CPU time, 778.7M memory peak.
+Aug 27 13:58:39 steamdeck systemd[1609]: Closed D-Bus User Message Bus Socket.
+Aug 27 13:58:39 steamdeck systemd[1609]: Removed slice User Application Slice.
+Aug 27 13:58:39 steamdeck systemd[1609]: app.slice: Consumed 45.138s CPU time, 4.7G memory peak.
+Aug 27 13:58:39 steamdeck systemd[1609]: Reached target Shutdown.
+Aug 27 13:58:39 steamdeck systemd[1609]: Finished Exit the Session.
+Aug 27 13:58:39 steamdeck systemd[1609]: Reached target Exit the Session.
+Aug 27 13:58:39 steamdeck (sd-pam)[1614]: pam_unix(systemd-user:session): session closed for user deck
+Aug 27 13:58:39 steamdeck systemd-logind[802]: Removed session 2.
+Aug 27 13:58:39 steamdeck systemd[1]: user@1000.service: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped User Manager for UID 1000.
+Aug 27 13:58:39 steamdeck systemd[1]: user@1000.service: Consumed 59.263s CPU time, 5.6G memory peak.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopping Permit User Sessions...
+Aug 27 13:58:39 steamdeck systemd[1]: Stopping User Runtime Directory /run/user/1000...
+Aug 27 13:58:39 steamdeck systemd[1]: systemd-user-sessions.service: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped Permit User Sessions.
+Aug 27 13:58:39 steamdeck systemd[1]: run-user-1000.mount: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounted /run/user/1000.
+Aug 27 13:58:39 steamdeck systemd[1]: user-runtime-dir@1000.service: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped User Runtime Directory /run/user/1000.
+Aug 27 13:58:39 steamdeck systemd[1]: Removed slice User Slice of UID 1000.
+Aug 27 13:58:39 steamdeck systemd[1]: user-1000.slice: Consumed 59.355s CPU time, 5.6G memory peak.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped target Network.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped target Remote File Systems.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopping Network Manager...
+Aug 27 13:58:39 steamdeck NetworkManager[1020]: <info>  [1787864319.1446] caught SIGTERM, shutting down normally.
+Aug 27 13:58:39 steamdeck systemd[1]: steamos-create-homedir.service: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped Create UID 1000 homedir on first boot/after factory reset.
+Aug 27 13:58:39 steamdeck NetworkManager[1020]: <info>  [1787864319.1448] dhcp4 (enp0s2): canceled DHCP transaction
+Aug 27 13:58:39 steamdeck NetworkManager[1020]: <info>  [1787864319.1448] dhcp4 (enp0s2): activation: beginning transaction (timeout in 45 seconds)
+Aug 27 13:58:39 steamdeck NetworkManager[1020]: <info>  [1787864319.1448] dhcp4 (enp0s2): state changed no lease
+Aug 27 13:58:39 steamdeck systemd[1]: Stopping User Login Management...
+Aug 27 13:58:39 steamdeck NetworkManager[1020]: <info>  [1787864319.1449] manager: NetworkManager state is now CONNECTED_SITE
+Aug 27 13:58:39 steamdeck systemd[1]: Stopping Network Name Resolution...
+Aug 27 13:58:39 steamdeck systemd[1]: Requested transaction contradicts existing jobs: Transaction for NetworkManager-dispatcher.service/start is destructive (system-systemd\x2dzram\x2dsetup.slice has 'stop' job queued, but 'start' is included in transaction).
+Aug 27 13:58:39 steamdeck NetworkManager[1020]: <info>  [1787864319.1555] exiting (success)
+Aug 27 13:58:39 steamdeck systemd[1]: systemd-resolved.service: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped Network Name Resolution.
+Aug 27 13:58:39 steamdeck systemd[1]: systemd-sysctl.service: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped Apply Kernel Variables.
+Aug 27 13:58:39 steamdeck systemd[1]: systemd-coredump.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed Process Core Dump Socket.
+Aug 27 13:58:39 steamdeck systemd[1]: systemd-modules-load.service: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped Load Kernel Modules.
+Aug 27 13:58:39 steamdeck systemd[1]: systemd-logind.service: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped User Login Management.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped target User and Group Name Lookups.
+Aug 27 13:58:39 steamdeck systemd[1]: NetworkManager.service: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped Network Manager.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped target Preparation for Network.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopping firewalld - dynamic firewall daemon...
+Aug 27 13:58:39 steamdeck systemd[1]: firewalld.service: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped firewalld - dynamic firewall daemon.
+Aug 27 13:58:39 steamdeck systemd[1]: firewalld.service: Consumed 351ms CPU time, 72.9M memory peak.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopping Authorization Manager...
+Aug 27 13:58:39 steamdeck systemd[1]: polkit.service: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped Authorization Manager.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped target Basic System.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped target Path Units.
+Aug 27 13:58:39 steamdeck systemd[1]: nvkvm-plant-stub.path: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped Watch for a staged SteamOS update so nvkvm can provision the new image.
+Aug 27 13:58:39 steamdeck systemd[1]: systemd-ask-password-console.path: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped Dispatch Password Requests to Console Directory Watch.
+Aug 27 13:58:39 steamdeck systemd[1]: systemd-ask-password-wall.path: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped Forward Password Requests to Wall Directory Watch.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped target Slice Units.
+Aug 27 13:58:39 steamdeck systemd[1]: Removed slice User and Session Slice.
+Aug 27 13:58:39 steamdeck systemd[1]: user.slice: Consumed 1min 1.010s CPU time, 5.6G memory peak.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped target Socket Units.
+Aug 27 13:58:39 steamdeck systemd[1]: avahi-daemon.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed Avahi mDNS/DNS-SD Stack Activation Socket.
+Aug 27 13:58:39 steamdeck systemd[1]: cups.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed CUPS Scheduler.
+Aug 27 13:58:39 steamdeck systemd[1]: dirmngr@etc-pacman.d-gnupg.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed GnuPG network certificate management daemon for /etc/pacman.d/gnupg.
+Aug 27 13:58:39 steamdeck systemd[1]: Removed slice Slice /system/dirmngr.
+Aug 27 13:58:39 steamdeck systemd[1]: gpg-agent-browser@etc-pacman.d-gnupg.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed GnuPG cryptographic agent and passphrase cache (access for web browsers) for /etc/pacman.d/gnupg.
+Aug 27 13:58:39 steamdeck systemd[1]: Removed slice Slice /system/gpg-agent-browser.
+Aug 27 13:58:39 steamdeck systemd[1]: gpg-agent-extra@etc-pacman.d-gnupg.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed GnuPG cryptographic agent and passphrase cache (restricted) for /etc/pacman.d/gnupg.
+Aug 27 13:58:39 steamdeck systemd[1]: Removed slice Slice /system/gpg-agent-extra.
+Aug 27 13:58:39 steamdeck systemd[1]: gpg-agent-ssh@etc-pacman.d-gnupg.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed GnuPG cryptographic agent (ssh-agent emulation) for /etc/pacman.d/gnupg.
+Aug 27 13:58:39 steamdeck systemd[1]: Removed slice Slice /system/gpg-agent-ssh.
+Aug 27 13:58:39 steamdeck systemd[1]: gpg-agent@etc-pacman.d-gnupg.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed GnuPG cryptographic agent and passphrase cache for /etc/pacman.d/gnupg.
+Aug 27 13:58:39 steamdeck systemd[1]: Removed slice Slice /system/gpg-agent.
+Aug 27 13:58:39 steamdeck systemd[1]: keyboxd@etc-pacman.d-gnupg.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed GnuPG public key management service for /etc/pacman.d/gnupg.
+Aug 27 13:58:39 steamdeck systemd[1]: Removed slice Slice /system/keyboxd.
+Aug 27 13:58:39 steamdeck systemd[1]: spice-vdagentd.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed Activation socket for spice guest agent daemon.
+Aug 27 13:58:39 steamdeck systemd[1]: sshd-unix-local.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed OpenSSH Server Socket (systemd-ssh-generator, AF_UNIX Local).
+Aug 27 13:58:39 steamdeck systemd[1]: sshd-vsock.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed OpenSSH Server Socket (systemd-ssh-generator, AF_VSOCK).
+Aug 27 13:58:39 steamdeck systemd[1]: systemd-hostnamed.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed Hostname Service Socket.
+Aug 27 13:58:39 steamdeck systemd[1]: systemd-importd.socket: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Closed Disk Image Download Service Socket.
+Aug 27 13:58:39 steamdeck systemd[1]: systemd-tmpfiles-setup.service: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped Create System Files and Directories.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped target Local File Systems.
+Aug 27 13:58:39 steamdeck systemd[1]: efi.automount: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Unset automount efi.automount.
+Aug 27 13:58:39 steamdeck systemd[1]: esp.automount: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Unset automount esp.automount.
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounting /home/deck/data...
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounting SteamOS Offload - /nix...
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounting SteamOS Offload - /opt...
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounting SteamOS Offload - /root...
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounting /run/nvkvm...
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounting SteamOS Offload - /srv...
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounting Temporary Directory /tmp...
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounting SteamOS Offload - /var/cache/pacman...
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounting SteamOS Offload - /var/lib/docker...
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounting SteamOS Offload - /var/lib/flatpak...
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounting SteamOS Offload - /var/lib/steamos-log-submitter...
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounting SteamOS Offload - /var/lib/systemd/coredump...
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounting SteamOS Offload - /var/tmp...
+Aug 27 13:58:39 steamdeck systemd[1]: systemd-growfs@home.service: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopped Grow File System on /home.
+Aug 27 13:58:39 steamdeck systemd[1]: Removed slice Slice /system/systemd-growfs.
+Aug 27 13:58:39 steamdeck systemd[1]: Stopping Flush Journal to Persistent Storage...
+Aug 27 13:58:39 steamdeck systemd[1]: nix.mount: Deactivated successfully.
+Aug 27 13:58:39 steamdeck systemd[1]: Unmounted SteamOS Offload - /nix.

@@ -1,0 +1,17 @@
+===KSCREEN===
+===MODES===
+1920x1080
+2560x1600
+2560x1600
+1920x1440
+===DPMS===
+On
+===KWIN-JOURNAL===
+Aug 27 13:42:36 steamdeck kded6[1901]: org.kde.pulseaudio: No object for name "alsa_loopback_device.alsa_output.pci-0000_00_0b.0.analog-ster
+Aug 27 13:42:37 steamdeck org_kde_powerdevil[2016]: qt.qpa.wayland: There are no outputs - creating placeholder screen
+Aug 27 13:42:37 steamdeck polkit-kde-authentication-agent-1[2015]: qt.qpa.wayland: There are no outputs - creating placeholder screen
+Aug 27 13:42:38 steamdeck kdeconnectd[2095]: qt.qpa.wayland: There are no outputs - creating placeholder screen
+Aug 27 13:42:38 steamdeck plasma-fallback-session-restore[2116]: qt.qpa.wayland: There are no outputs - creating placeholder screen
+Aug 27 13:42:38 steamdeck DiscoverNotifier[2115]: qt.qpa.wayland: There are no outputs - creating placeholder screen
+Aug 27 13:42:38 steamdeck kimpanel-ibus-panel[2152]: qt.qpa.wayland: There are no outputs - creating placeholder screen
+Aug 27 13:42:39 steamdeck xdg-desktop-portal-kde[2213]: qt.qpa.wayland: There are no outputs - creating placeholder screen
