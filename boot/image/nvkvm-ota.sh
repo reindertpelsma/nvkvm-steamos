@@ -32,7 +32,10 @@ LOG=/var/log/nvkvm-ota.log
 SHARE_MNT="${NVKVM_SHARE_MNT:-/run/nvkvm}"
 SHARE_TAG="${NVKVM_SHARE_TAG:-nvkvm}"
 
-log()  { printf '[nvkvm-ota] %s\n' "$*" | tee -a "$LOG" >&2; }
+# Timestamped: this log is appended across boots, and without a clock there is
+# no way to tell a failure from this boot from one three reboots ago. That cost
+# real time on 2026-08-28.
+log()  { printf '[nvkvm-ota] %s %s\n' "$(date -Is 2>/dev/null)" "$*" | tee -a "$LOG" >&2; }
 fail() { log "ERROR: $*"; }
 
 # The share carries steamos_boot.sh; the image deliberately holds no copy, so
@@ -79,7 +82,14 @@ ota_umount_all() {
     for m in $OTA_MOUNTS; do
         mountpoint -q "$m" || continue
         umount "$m" 2>/dev/null && continue
-        umount -l "$m" 2>/dev/null && { log "lazily unmounted $m"; continue; }
+        # A lazy unmount detaches the tree but keeps the filesystem ALIVE until
+        # every reference drops, so btrfs goes on holding the device and the
+        # NEXT update cannot mount the slot rauc just rewrote. Use it only as a
+        # last resort, and never quietly.
+        umount -l "$m" 2>/dev/null && {
+            fail "had to LAZILY unmount $m -- the slot may stay busy until reboot"
+            continue
+        }
         fail "could not unmount $m -- the next OS update may fail on a busy slot"
         rc=1
     done
@@ -125,8 +135,39 @@ provision_other() {
     done
     mountpoint -q /home && { ota_mount -o bind /home "$mnt/home" \
         || fail "could not bind /home -- the build area falls back to the 5 GiB rootfs"; }
-    # A resolver, or pacman and curl cannot reach Valve's mirrors from inside.
-    [ -r /etc/resolv.conf ] && cp -f /etc/resolv.conf "$mnt/etc/resolv.conf" 2>/dev/null
+    #
+    # A RESOLVER, OR PACMAN CANNOT REACH VALVE'S MIRRORS.
+    #
+    # This was `cp -f /etc/resolv.conf ... 2>/dev/null` and failed twice over:
+    # the target slot is READ-ONLY at this point so the copy could not happen,
+    # and the error was discarded. The visible result was provisioning dying on
+    #     Could not resolve host: steamdeck-packages.steamos.cloud
+    # which reads like a network fault on a machine whose network is fine.
+    #
+    # Copying /etc/resolv.conf would have been wrong even if it had worked: on
+    # this guest it is systemd-resolved's stub (nameserver 127.0.0.53), which
+    # needs a resolved that the chroot has no reason to be talking to. The REAL
+    # upstream is in /run/systemd/resolve/resolv.conf -- here, QEMU's slirp
+    # forwarder at 10.0.2.3.
+    #
+    # Bind a tmpfs file over it instead: a bind mount is a VFS operation and
+    # works on a read-only filesystem, which is the same trick vm/guest-init.sh
+    # uses for exactly this reason.
+    #
+    local resolv=/run/nvkvm-ota-resolv.conf
+    if grep -h '^nameserver' /run/systemd/resolve/resolv.conf 2>/dev/null > "$resolv" \
+       && [ -s "$resolv" ]; then
+        :
+    elif resolvectl dns 2>/dev/null | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' \
+            | sed 's/^/nameserver /' > "$resolv" && [ -s "$resolv" ]; then
+        :
+    else
+        # QEMU user-mode networking always forwards DNS here; see guest-init.sh.
+        printf 'nameserver 10.0.2.3\n' > "$resolv"
+    fi
+    log "resolver for the chroot: $(tr '\n' ' ' < "$resolv")"
+    ota_mount -o bind "$resolv" "$mnt/etc/resolv.conf" \
+        || fail "no resolver in the target -- pacman will not reach the mirrors"
 
     log "provisioning the newly written slot at $mnt"
     # --install-only --root is the SAME call the Alpine installer makes. It owns
