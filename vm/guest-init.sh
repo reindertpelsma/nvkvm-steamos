@@ -359,31 +359,34 @@ provision_setup() {
     mount -t ext4 /dev/nvme0n1p8 "$CHROOT$TARGET_MNT/home" \
         || log "WARNING: could not mount the installed /home — build area falls back to the rootfs"
 
-    # steamos_boot.sh chroots into the target for pacman/curl/nvidia-installer.
-    mount -o bind /proc "$CHROOT$TARGET_MNT/proc" 2>/dev/null
-    mount -o bind /sys  "$CHROOT$TARGET_MNT/sys"  2>/dev/null
-    mount -o bind /dev  "$CHROOT$TARGET_MNT/dev"  2>/dev/null
-
-    # A resolver for both chroots. The installer always uses QEMU user-mode
-    # networking, whose DNS forwarder is 10.0.2.3. Do not copy the initramfs'
-    # /etc/resolv.conf: it can contain the build host's stub or LAN resolver,
-    # neither of which is necessarily reachable through slirp. Both /etc trees
-    # are read-only, so bind a file from tmpfs over them instead.
+    # THE TARGET'S OWN CHROOT IS NOT OUR JOB.
+    #
+    # This used to bind /proc, /sys, /dev and a resolver into the target as
+    # well. steamos_boot.sh does that itself now (chroot_setup), for every entry
+    # point that hands it an image root -- this installer, the OTA hook, and a
+    # repair at boot. One implementation, because when there were two the second
+    # got the same three things wrong three times running.
+    #
+    # What stays here is what only THIS caller can know: the target's own
+    # filesystems, mounted above, and the resolver for the REPAIR chroot we are
+    # about to run steamos_boot.sh inside.
+    #
+    # The installer always uses QEMU user-mode networking, whose DNS forwarder
+    # is 10.0.2.3. Do not copy the initramfs' /etc/resolv.conf: it can contain
+    # the build host's stub or LAN resolver, neither necessarily reachable
+    # through slirp. /etc is read-only, so bind a file from tmpfs over it.
     printf 'nameserver 10.0.2.3\n' > /run/resolv.conf
     mount -o bind /run/resolv.conf "$CHROOT/etc/resolv.conf" 2>/dev/null \
         || log "WARNING: no resolver in the repair chroot"
-    mount -o bind /run/resolv.conf "$CHROOT$TARGET_MNT/etc/resolv.conf" 2>/dev/null \
-        || log "WARNING: no resolver in the target chroot; pacman will fail to resolve"
 
     return 0
 }
 
 provision_teardown() {
-    umount "$CHROOT$TARGET_MNT/etc/resolv.conf" 2>/dev/null
+    # Only what provision_setup() still mounts: steamos_boot.sh unmounts its own
+    # chroot on its EXIT trap, and unmounting someone else's mounts is how a
+    # slot ends up busy for the next thing that needs it.
     umount "$CHROOT/etc/resolv.conf" 2>/dev/null
-    umount "$CHROOT$TARGET_MNT/dev"  2>/dev/null
-    umount "$CHROOT$TARGET_MNT/sys"  2>/dev/null
-    umount "$CHROOT$TARGET_MNT/proc" 2>/dev/null
     umount "$CHROOT$TARGET_MNT/home" 2>/dev/null
     umount "$CHROOT$TARGET_MNT" 2>/dev/null
     umount "$CHROOT$SHARE_MNT" 2>/dev/null

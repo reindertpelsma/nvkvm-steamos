@@ -58,7 +58,12 @@ disarm_other() {
     done
 }
 
-# Everything we mount into the target, unmounted in reverse on the way out.
+# What WE mount is only the image's own filesystems: the slot itself, and the
+# /home it shares. The execution environment inside that root -- /proc, /sys,
+# /dev, a resolver -- is steamos_boot.sh's job, because every entry point needs
+# it and a second implementation of it got the same three things wrong three
+# times in a row. See chroot_setup() there.
+#
 # A LEFTOVER MOUNT IS NOT A COSMETIC LEAK: rauc's own post-install handler
 # mounts the other slot to sync the var partitions, and if we still hold it the
 # whole update fails with
@@ -84,8 +89,8 @@ ota_umount_all() {
         umount "$m" 2>/dev/null && continue
         # A lazy unmount detaches the tree but keeps the filesystem ALIVE until
         # every reference drops, so btrfs goes on holding the device and the
-        # NEXT update cannot mount the slot rauc just rewrote. Use it only as a
-        # last resort, and never quietly.
+        # NEXT update cannot mount the slot rauc just rewrote. Last resort, and
+        # never quietly.
         umount -l "$m" 2>/dev/null && {
             fail "had to LAZILY unmount $m -- the slot may stay busy until reboot"
             continue
@@ -115,68 +120,18 @@ provision_other() {
         fail "could not mount the other slot ($dev)"
         rmdir "$mnt"; disarm_other; return 1
     fi
-
-    #
-    # THE TARGET NEEDS A REAL SYSTEM UNDERNEATH IT.
-    #
-    # steamos_boot.sh chroots in to run pacman, curl and the module build. The
-    # Alpine installer bind-mounts these before doing the same thing
-    # (vm/guest-init.sh); omitting them here is what made the first real OTA
-    # fail, with pacman reporting
-    #     error: could not determine filesystem mount points
-    # and the whole update then reported as a download failure.
-    #
-    # /home matters as much as /proc: it holds the module build area and the
-    # driver cache, and a 5 GiB rootfs has room for neither.
-    #
-    for d in proc sys dev; do
-        ota_mount -o bind "/$d" "$mnt/$d" \
-            || fail "could not bind /$d into the target (the build may fail)"
-    done
+    # /home is shared between the slots and holds the module build area and the
+    # driver cache; a 5 GiB rootfs has room for neither.
     mountpoint -q /home && { ota_mount -o bind /home "$mnt/home" \
-        || fail "could not bind /home -- the build area falls back to the 5 GiB rootfs"; }
-    #
-    # A RESOLVER, OR PACMAN CANNOT REACH VALVE'S MIRRORS.
-    #
-    # This was `cp -f /etc/resolv.conf ... 2>/dev/null` and failed twice over:
-    # the target slot is READ-ONLY at this point so the copy could not happen,
-    # and the error was discarded. The visible result was provisioning dying on
-    #     Could not resolve host: steamdeck-packages.steamos.cloud
-    # which reads like a network fault on a machine whose network is fine.
-    #
-    # Copying /etc/resolv.conf would have been wrong even if it had worked: on
-    # this guest it is systemd-resolved's stub (nameserver 127.0.0.53), which
-    # needs a resolved that the chroot has no reason to be talking to. The REAL
-    # upstream is in /run/systemd/resolve/resolv.conf -- here, QEMU's slirp
-    # forwarder at 10.0.2.3.
-    #
-    # Bind a tmpfs file over it instead: a bind mount is a VFS operation and
-    # works on a read-only filesystem, which is the same trick vm/guest-init.sh
-    # uses for exactly this reason.
-    #
-    local resolv=/run/nvkvm-ota-resolv.conf
-    if grep -h '^nameserver' /run/systemd/resolve/resolv.conf 2>/dev/null > "$resolv" \
-       && [ -s "$resolv" ]; then
-        :
-    elif resolvectl dns 2>/dev/null | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' \
-            | sed 's/^/nameserver /' > "$resolv" && [ -s "$resolv" ]; then
-        :
-    else
-        # QEMU user-mode networking always forwards DNS here; see guest-init.sh.
-        printf 'nameserver 10.0.2.3\n' > "$resolv"
-    fi
-    log "resolver for the chroot: $(tr '\n' ' ' < "$resolv")"
-    ota_mount -o bind "$resolv" "$mnt/etc/resolv.conf" \
-        || fail "no resolver in the target -- pacman will not reach the mirrors"
+        || fail "could not bind /home -- the build area falls back to the rootfs"; }
 
     log "provisioning the newly written slot at $mnt"
-    # --install-only --root is the SAME call the Alpine installer makes. It owns
-    # the read-only handling, the module build and arming the boot unit.
+    # THE SAME CALL THE ALPINE INSTALLER MAKES. It owns the read-only handling,
+    # the chroot it needs, the module build and arming the boot unit.
     "$SHARE_MNT/boot/steamos_boot.sh" --install-only --root "$mnt" >>"$LOG" 2>&1 || rc=$?
 
     # Belt and braces: --install-only verifies this itself and fails loudly, but
-    # this is the property the whole exercise exists to guarantee, so check it
-    # here too rather than trust an exit code across a chroot boundary.
+    # it is the property the whole exercise exists to guarantee.
     if [ ! -e "$mnt/etc/systemd/system/multi-user.target.wants/nvkvm-boot.service" ]; then
         fail "the new slot is NOT armed -- nvkvm-boot.service has no wants symlink"
         rc=1

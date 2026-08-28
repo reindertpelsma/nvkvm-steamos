@@ -81,24 +81,15 @@ mk_wrapper 1; "$work/w" >/dev/null 2>&1; st=$?
 [ -f "$work/otalog" ] && { echo "FAIL: provisioned after a FAILED update"; rc=1; } \
                       || echo "ok: a failed update does not provision"
 
-# --- the chroot the hook builds ------------------------------------------
-# The first real OTA failed because nvkvm-ota.sh mounted the new slot and
-# chrooted in WITHOUT /proc, /sys, /dev, so pacman died with "could not
-# determine filesystem mount points" -- and the whole update was then reported
-# to the user as a download failure.
+# --- what the hook still owns -------------------------------------------
+# The chroot the target needs (/proc, /sys, /dev, a resolver) is NOT here: it
+# belongs to steamos_boot.sh, which builds it for every entry point that hands
+# it an image root. See tests/chroot_ownership_test.sh. What the hook owns is
+# the image's OWN filesystems, which only the caller can identify.
 OTA="$DIR/boot/image/nvkvm-ota.sh"
-for d in proc sys dev; do
-    grep -qE "ota_mount -o bind \"/\$d\"|for d in proc sys dev" "$OTA" \
-        && { echo "ok: the target gets /$d bound in"; break; }
-done
-grep -q 'for d in proc sys dev' "$OTA" \
-    || { echo "FAIL: the hook does not bind /proc /sys /dev into the target"; rc=1; }
 grep -q 'ota_mount -o bind /home' "$OTA" \
-    && echo "ok: /home is bound in (the module build area does not fit in a 5 GiB rootfs)" \
-    || { echo "FAIL: /home is not bound in"; rc=1; }
-grep -q 'resolv.conf' "$OTA" \
-    && echo "ok: a resolver is provided, or pacman cannot reach the mirrors" \
-    || { echo "FAIL: no resolver in the chroot"; rc=1; }
+    && echo "ok: the hook provides the image's /home (the build area)" \
+    || { echo "FAIL: nobody mounts /home for the build area"; rc=1; }
 
 # A LEFTOVER MOUNT BREAKS THE UPDATE ITSELF: rauc's post-install handler mounts
 # the other slot to sync var, and fails with "already mounted or mount point

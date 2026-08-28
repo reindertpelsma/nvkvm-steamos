@@ -91,6 +91,89 @@ rp() { if [ "$ROOT" = "/" ]; then printf '%s' "$1"; else printf '%s%s' "${ROOT%/
 # Restoring only on the happy path leaves the filesystem writable after any
 # mid-script failure, which is a worse state than the one we started in.
 RO_PRIOR=unknown
+# ── The chroot a target image needs, provided once, here ────────────────────
+#
+# ROOT=/ means we are converging the LIVE system: everything is already there
+# and we must touch nothing.
+#
+# ROOT=<dir> means a caller mounted an image root and handed it to us. Before
+# pacman, curl or a module build can run inside it, it needs /proc, /sys, /dev
+# and a resolver.
+#
+# THIS BELONGS HERE, NOT IN THE CALLER. Every caller needs it, so every caller
+# implemented it: vm/guest-init.sh got it right, and the OTA hook -- a second
+# implementation of the same thing -- got it wrong three times running. Missing
+# binds (pacman: "could not determine filesystem mount points"), a resolver
+# copied onto a read-only tree with the error suppressed (pacman: "Could not
+# resolve host"), and a lazy unmount that left the slot busy for rauc. Every one
+# of those reached the user as "Unable to download the required update".
+#
+# The split with the caller is: WE provide the execution environment (kernel
+# filesystems, DNS); the CALLER provides the image's own filesystems (its root,
+# its /home), because only the caller knows which partitions those are.
+#
+# Idempotent by inspection, not by flag: anything already mounted is left alone
+# and is NOT torn down by us, so a caller that provided its own binds keeps
+# them. Whatever we mount, we unmount -- the leaked-mount failure above is
+# exactly what happens when that is not true.
+CHROOT_MOUNTS=""
+
+chroot_setup() {
+    [ "$ROOT" = "/" ] && return 0
+
+    local d t
+    for d in proc sys dev; do
+        t="$ROOT/$d"
+        [ -d "$t" ] || continue
+        mountpoint -q "$t" && continue          # the caller already provided it
+        if mount -o bind "/$d" "$t" 2>/dev/null; then
+            CHROOT_MOUNTS="$t $CHROOT_MOUNTS"   # prepend: unmount inner first
+        else
+            warn "chroot: could not bind /$d into the target; the build may fail"
+        fi
+    done
+
+    # A RESOLVER, or pacman and curl cannot reach Valve's mirrors from inside.
+    # Bound from tmpfs rather than copied: a bind is a VFS operation and works
+    # on the read-only target, and /etc/resolv.conf here is often
+    # systemd-resolved's 127.0.0.53 stub, which is not what a chroot should use.
+    t="$ROOT/etc/resolv.conf"
+    if [ -e "$ROOT/etc" ] && ! mountpoint -q "$t" 2>/dev/null; then
+        local rf=/run/nvkvm-chroot-resolv.conf
+        if ! grep -h '^nameserver' /run/systemd/resolve/resolv.conf 2>/dev/null > "$rf" \
+           || [ ! -s "$rf" ]; then
+            resolvectl dns 2>/dev/null \
+                | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' \
+                | sed 's/^/nameserver /' > "$rf" 2>/dev/null
+        fi
+        # QEMU user-mode networking always forwards DNS here; the installer has
+        # relied on it since the beginning (vm/guest-init.sh).
+        [ -s "$rf" ] || printf 'nameserver 10.0.2.3\n' > "$rf"
+        [ -e "$t" ] || : > "$t" 2>/dev/null
+        if mount -o bind "$rf" "$t" 2>/dev/null; then
+            CHROOT_MOUNTS="$t $CHROOT_MOUNTS"
+            log "chroot: resolver $(tr '\n' ' ' < "$rf")"
+        else
+            warn "chroot: no resolver in the target; pacman will not reach the mirrors"
+        fi
+    fi
+}
+
+chroot_teardown() {
+    local m
+    for m in $CHROOT_MOUNTS; do
+        mountpoint -q "$m" || continue
+        umount "$m" 2>/dev/null && continue
+        # NEVER quietly: a lazy unmount keeps the filesystem alive, so btrfs goes
+        # on holding the device and the next OS update cannot mount the slot it
+        # just wrote.
+        umount -l "$m" 2>/dev/null \
+            && warn "chroot: had to LAZILY unmount $m -- it may stay busy until reboot" \
+            || warn "chroot: could not unmount $m"
+    done
+    CHROOT_MOUNTS=""
+}
+
 capture_ro_state() {
     if [ "$ROOT" = "/" ]; then
         if steamos-readonly status >/dev/null 2>&1; then RO_PRIOR=ro; else RO_PRIOR=rw; fi
@@ -1669,7 +1752,8 @@ do_install() {
     local rc=0
     log "=== Part 1: converge (ROOT=$ROOT, profile=$PROFILE) ==="
     capture_ro_state
-    trap restore_ro_state EXIT
+    chroot_setup
+    trap 'chroot_teardown; restore_ro_state' EXIT
 
     PKGS_BEFORE="$(pkgs_snapshot)"
 
