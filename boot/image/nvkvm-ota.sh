@@ -86,7 +86,17 @@ ota_umount_all() {
     local m rc=0
     for m in $OTA_MOUNTS; do
         mountpoint -q "$m" || continue
-        umount "$m" 2>/dev/null && continue
+        # Try hard before resorting to lazy: -R takes submounts, and a short
+        # retry covers a process on its way out. A lazy unmount here is what
+        # breaks rauc's post-install handler and therefore the whole update.
+        _i=0
+        while [ "$_i" -lt 5 ]; do
+            mountpoint -q "$m" || break
+            umount -R "$m" 2>/dev/null && break
+            umount "$m" 2>/dev/null && break
+            _i=$((_i + 1)); sleep 1
+        done
+        mountpoint -q "$m" || continue
         # A lazy unmount detaches the tree but keeps the filesystem ALIVE until
         # every reference drops, so btrfs goes on holding the device and the
         # NEXT update cannot mount the slot rauc just rewrote. Last resort, and

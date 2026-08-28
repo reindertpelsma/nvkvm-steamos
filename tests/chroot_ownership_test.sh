@@ -45,6 +45,18 @@ grep -q "trap 'chroot_teardown; restore_ro_state' EXIT" "$BOOT" \
     && echo "ok: teardown runs on exit, including on failure" \
     || { echo "FAIL: chroot_teardown is not on the EXIT trap"; rc=1; }
 
+# a clean unmount must be TRIED HARD first: a lazy one breaks rauc's
+# post-install handler and therefore the OS update itself
+grep -q 'umount -R' "$BOOT" \
+    && echo "ok: teardown unmounts submounts recursively before giving up" \
+    || { echo "FAIL: no recursive unmount -- a submount under /dev holds the slot"; rc=1; }
+sed -n '/^chroot_umount_one()/,/^}/p' "$BOOT" | grep -q 'for i in 1 2 3 4 5' \
+    && echo "ok: it retries before resorting to lazy" \
+    || { echo "FAIL: no retry before the lazy fallback"; rc=1; }
+sed -n '/^chroot_umount_one()/,/^}/p' "$BOOT" | grep -q 'is held by' \
+    && echo "ok: a stuck mount names its holder" \
+    || { echo "FAIL: 'busy' is reported with no culprit -- unactionable"; rc=1; }
+
 # a lazy unmount keeps the filesystem alive; it must never be silent
 sed -n '/^chroot_teardown()/,/^}/p' "$BOOT" | grep -q 'LAZILY' \
     && echo "ok: a lazy unmount is reported, not treated as success" \

@@ -160,14 +160,46 @@ chroot_setup() {
     fi
 }
 
+#
+# A LAZY UNMOUNT IS A LAST RESORT, NOT A FALLBACK.
+#
+# It detaches the tree but keeps the filesystem ALIVE until every reference
+# drops, so btrfs goes on holding the device -- and rauc's post-install handler
+# then cannot mount the slot it just wrote:
+#     mount: /var/mnt: /dev/nvme0n1pN already mounted or mount point busy
+#     Post-install handler error: Child process exited with code 32
+# reported to the user as "Unable to download the required update".
+# OBSERVED end-to-end 2026-08-28: provisioning SUCCEEDED, the lazy unmount that
+# followed it broke the update anyway.
+#
+# So try hard first. -R takes submounts (something under the target's /dev is
+# the usual holder), and a short retry covers a process that is on its way out.
+#
+chroot_umount_one() {   # <mountpoint>
+    local m="$1" i
+    for i in 1 2 3 4 5; do
+        mountpoint -q "$m" || return 0
+        umount -R "$m" 2>/dev/null && return 0
+        umount "$m" 2>/dev/null && return 0
+        sleep 1
+    done
+    mountpoint -q "$m" || return 0
+    # Name the holder if we can; "busy" with no culprit is unactionable.
+    local holders
+    holders="$(for p in /proc/[0-9]*; do
+                   case "$(readlink "$p/cwd" 2>/dev/null)$(readlink "$p/root" 2>/dev/null)" in
+                       *"$m"*) printf '%s(%s) ' "${p#/proc/}" "$(cat "$p/comm" 2>/dev/null)" ;;
+                   esac
+               done)"
+    [ -n "$holders" ] && warn "chroot: $m is held by: $holders"
+    return 1
+}
+
 chroot_teardown() {
     local m
     for m in $CHROOT_MOUNTS; do
         mountpoint -q "$m" || continue
-        umount "$m" 2>/dev/null && continue
-        # NEVER quietly: a lazy unmount keeps the filesystem alive, so btrfs goes
-        # on holding the device and the next OS update cannot mount the slot it
-        # just wrote.
+        chroot_umount_one "$m" && continue
         umount -l "$m" 2>/dev/null \
             && warn "chroot: had to LAZILY unmount $m -- it may stay busy until reboot" \
             || warn "chroot: could not unmount $m"
