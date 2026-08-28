@@ -73,6 +73,7 @@ PROFILE="${NVKVM_PROFILE:-steamos}"
 RUN_CACHE_DIR=""          # set by --old-run-file, else derived below
 RUN_CACHE_KEEP=2
 DRIVER_VERSION=""         # explicit host/container version, never hardcoded
+DRIVER_VERSION_MISMATCH_WARNED=0
 ROOT=/
 MODULE_REBUILT=0          # set when this run actually rebuilt the .ko
 MODULE_LOAD_REFRESHED=0   # avoid unloading/reloading twice during `boot`
@@ -490,6 +491,30 @@ host_driver_version() {
     # read from the RUNNING system on purpose: this is the HOST driver as nvkvm
     # exposes it, and it is what an A/B update target must match too.
     if [ -n "$DRIVER_VERSION" ]; then
+        #
+        # AN EXPLICIT VERSION WINS, BUT SAY SO WHEN IT DISAGREES.
+        #
+        # --driver-version exists for the one case where the running system
+        # cannot answer: the disposable Alpine installer, which has no NVIDIA
+        # module loaded and so no /proc/driver/nvidia/version to read.
+        #
+        # When BOTH are available and they disagree, the explicit value still
+        # wins -- the caller may legitimately be provisioning an image for a
+        # different host driver than the one running right now -- but a silent
+        # override is how you end up with userspace built for a driver the host
+        # does not have, discovered much later as an unexplained CUDA failure.
+        # Warned once; host_driver_version() is called repeatedly.
+        #
+        local _running
+        _running="$(awk '{for(i=1;i<=NF;i++) if ($i ~ /^[0-9]+\.[0-9]+/) {print $i; exit}}' \
+                    /proc/driver/nvidia/version 2>/dev/null)"
+        if [ -n "$_running" ] && [ "$_running" != "$DRIVER_VERSION" ] \
+           && [ "$DRIVER_VERSION_MISMATCH_WARNED" != 1 ]; then
+            DRIVER_VERSION_MISMATCH_WARNED=1
+            warn "--driver-version says $DRIVER_VERSION but the running driver is $_running."
+            warn "  Using $DRIVER_VERSION as asked. If that was not deliberate, drop the"
+            warn "  flag and the running version is used instead."
+        fi
         printf '%s\n' "$DRIVER_VERSION"
         return 0
     fi
@@ -2055,7 +2080,23 @@ if [ -n "$DRIVER_VERSION" ] && ! [[ "$DRIVER_VERSION" =~ ^[0-9]+([.][0-9]+)+$ ]]
     exit 2
 fi
 if [ "$CMD" = install ] && [ -z "$(host_driver_version)" ]; then
-    err "--install-only requires --driver-version VERSION when /proc/driver/nvidia/version is unavailable"
+    #
+    # Two very different situations reach here, and the remedy differs.
+    #
+    # The Alpine installer legitimately has no NVIDIA module -- that is what the
+    # flag exists for. But a LIVE system landing here usually means nvkvm simply
+    # is not loaded, and telling that operator to invent a version number sends
+    # them the wrong way; they want the module. Say both.
+    #
+    err "no NVIDIA driver version available: /proc/driver/nvidia/version is unreadable"
+    if [ "$ROOT" = "/" ]; then
+        err "  On a running system this normally means nvkvm is not loaded. Try:"
+        err "      modprobe $MODULE_MOD && cat /proc/driver/nvidia/version"
+        err "  Provisioning without it would build userspace for a guessed driver."
+    fi
+    err "  If this host genuinely has no NVIDIA module -- the disposable installer"
+    err "  is the case this exists for -- pass the host's version explicitly:"
+    err "      --driver-version VERSION"
     exit 1
 fi
 
