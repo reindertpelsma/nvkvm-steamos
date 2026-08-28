@@ -58,7 +58,7 @@ QCOW_INSTALLING="$QCOW.installing"
 # remove.
 PINNED_RECOVERY="steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2"
 RECOVERY_BASE="https://steamdeck-images.steamos.cloud/recovery"
-LATEST=0
+PINNED=0
 INSTALL_SHELL=0
 QEMU_EXTRA=()
 
@@ -67,7 +67,8 @@ die() { log "ERROR: $*"; exit 1; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --latest)       LATEST=1; shift ;;
+        --pinned)       PINNED=1; shift ;;
+        --latest)       PINNED=0; shift ;;
         --setup-shell)  INSTALL_SHELL=1; shift ;;
         --)             shift; QEMU_EXTRA+=("$@"); break ;;
         *)              QEMU_EXTRA+=("$1"); shift ;;
@@ -108,16 +109,34 @@ ensure_ssh_key() {
     log "SSH: public key written for the interactive user and root; password login remains disabled"
 }
 
+# Valve publishes a STABLE ALIAS that 302s to the current image, so we do not
+# parse their directory listing.  Scraping HTML made every fresh install depend
+# on the page's shape; this depends only on a URL Valve's own download page uses.
+#
+# Note the alias is spelled `steamdeck-repair-latest` with no `-oobe-`, yet it
+# resolves to the -oobe- image (verified 2026-08-28:
+#   steamdeck-repair-latest.img.bz2 -> steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2
+#   steamdeck-oobe-repair-latest.img.bz2 -> 404
+# ).  That is independent confirmation that the OOBE image simply IS the current
+# official one, not a variant we picked by mistake.
+LATEST_ALIAS="steamdeck-repair-latest.img.bz2"
+
 latest_recovery_url() {
-    local listing name
-    listing="$(curl -fsSL "$RECOVERY_BASE/")" \
-        || die "could not read the SteamOS recovery index"
-    name="$(printf '%s\n' "$listing" \
-        | grep -oE 'steamdeck(-oobe)?-repair-[^"?<> ]+\.img\.bz2' \
-        | sed -E 's/^(.*-repair-)([0-9.]+-[0-9.]+)(\.img\.bz2)$/\2\t&/' \
-        | sort -Vu | tail -1 | cut -f2)"
-    [ -n "$name" ] || die "the recovery index contained no repair image (page shape changed?)"
-    printf '%s/%s\n' "$RECOVERY_BASE" "$name"
+    local resolved
+    # -I: headers only, so resolving costs nothing.  We want the FINAL url, both
+    # to name the cache file after the real version and so the log records which
+    # image an install actually used.
+    resolved="$(curl -fsIL -o /dev/null -w '%{url_effective}' \
+                     "$RECOVERY_BASE/$LATEST_ALIAS" 2>/dev/null)" || resolved=""
+    case "$resolved" in
+        *-repair-*.img.bz2) printf '%s\n' "$resolved" ;;
+        *)  # The alias is the one thing we depend on; if it moves, fall back to
+            # the pin rather than failing an install.  The pin is a known-good
+            # floor, not the intended version.
+            warn "latest-image alias did not resolve to an .img.bz2 (got '${resolved:-nothing}')"
+            warn "  falling back to the pinned image: $PINNED_RECOVERY"
+            printf '%s/%s\n' "$RECOVERY_BASE" "$PINNED_RECOVERY" ;;
+    esac
 }
 
 record_or_verify_checksum() {
@@ -139,12 +158,20 @@ record_or_verify_checksum() {
 
 prepare_recovery() {
     local url filename archive raw
-    url="${NVKVM_STEAMOS_RECOVERY_URL:-$RECOVERY_BASE/$PINNED_RECOVERY}"
-    if [ "$LATEST" = 1 ] || [ "${NVKVM_STEAMOS_LATEST:-0}" = 1 ]; then
-        url="$(latest_recovery_url)"
-        log "latest-image lookup selected: $url"
-    else
+    # LATEST BY DEFAULT.  A pin rots, and the rot is fatal rather than cosmetic:
+    # SteamOS 3.7.7 (May 2025) installs fine but provisioning cannot build the
+    # guest module on it, because pacman keyring init fails and its kernel's
+    # headers are no longer served.  MEASURED 2026-08-28 -- fourteen identical
+    # failures.  A pinned image left alone becomes that in about a year.
+    if [ -n "${NVKVM_STEAMOS_RECOVERY_URL:-}" ]; then
+        url="$NVKVM_STEAMOS_RECOVERY_URL"
+        log "using recovery URL from the environment: ${url##*/}"
+    elif [ "$PINNED" = 1 ] || [ "${NVKVM_STEAMOS_PINNED:-0}" = 1 ]; then
+        url="$RECOVERY_BASE/$PINNED_RECOVERY"
         log "using pinned recovery: ${url##*/}"
+    else
+        url="$(latest_recovery_url)"
+        log "latest recovery image: ${url##*/}"
     fi
     filename="${url##*/}"; filename="${filename%%\?*}"
     case "$filename" in *.img.bz2) ;; *) die "recovery URL must name an .img.bz2: $url" ;; esac
