@@ -865,7 +865,29 @@ SSHCONF
     # Root access is a separate, explicit decision via a differently-named file.
     _install_authkeys root "$rootkeysrc"
 
+    #
+    # ENABLING IS NOT STARTING.
+    #
+    # This script runs from nvkvm-boot.service, which is WantedBy
+    # multi-user.target -- so by the time it enables anything, systemd has
+    # already pulled in everything that target wanted. A unit enabled here gets
+    # its wants symlink and then sits inactive until the NEXT boot.
+    #
+    # OBSERVED on a fresh install 2026-08-28: sshd enabled, symlink present,
+    # multi-user.target active, and sshd never ran -- reported as "sshd is not
+    # started at boot". `systemctl show sshd` said ConditionResult=no, which
+    # reads like a failed condition but only means the unit was never attempted;
+    # the unit has no conditions at all.
+    #
+    # On a chroot (ROOT != /) there is no running systemd to start anything, so
+    # enabling is all that is possible and all that is wanted.
+    #
     in_target systemctl enable sshd.service 2>/dev/null || warn "ssh: could not enable sshd.service"
+    if [ "$ROOT" = "/" ] && ! systemctl is-active --quiet sshd.service; then
+        systemctl start sshd.service 2>/dev/null \
+            && log "ssh: sshd started now (enabling alone would have waited for the next boot)" \
+            || warn "ssh: sshd could not be started; it will come up on the next boot"
+    fi
     log "ssh: enabled. Reachable only once QEMU also has a hostfwd, e.g."
     log "ssh:   -netdev user,id=net0,hostfwd=tcp::15022-:22"
 }
