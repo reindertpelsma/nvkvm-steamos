@@ -81,5 +81,47 @@ mk_wrapper 1; "$work/w" >/dev/null 2>&1; st=$?
 [ -f "$work/otalog" ] && { echo "FAIL: provisioned after a FAILED update"; rc=1; } \
                       || echo "ok: a failed update does not provision"
 
-[ $rc -eq 0 ] && echo "PASS: the OTA hook is idempotent and status-preserving"
+# --- the chroot the hook builds ------------------------------------------
+# The first real OTA failed because nvkvm-ota.sh mounted the new slot and
+# chrooted in WITHOUT /proc, /sys, /dev, so pacman died with "could not
+# determine filesystem mount points" -- and the whole update was then reported
+# to the user as a download failure.
+OTA="$DIR/boot/image/nvkvm-ota.sh"
+for d in proc sys dev; do
+    grep -qE "ota_mount -o bind \"/\$d\"|for d in proc sys dev" "$OTA" \
+        && { echo "ok: the target gets /$d bound in"; break; }
+done
+grep -q 'for d in proc sys dev' "$OTA" \
+    || { echo "FAIL: the hook does not bind /proc /sys /dev into the target"; rc=1; }
+grep -q 'ota_mount -o bind /home' "$OTA" \
+    && echo "ok: /home is bound in (the module build area does not fit in a 5 GiB rootfs)" \
+    || { echo "FAIL: /home is not bound in"; rc=1; }
+grep -q 'resolv.conf' "$OTA" \
+    && echo "ok: a resolver is provided, or pacman cannot reach the mirrors" \
+    || { echo "FAIL: no resolver in the chroot"; rc=1; }
+
+# A LEFTOVER MOUNT BREAKS THE UPDATE ITSELF: rauc's post-install handler mounts
+# the other slot to sync var, and fails with "already mounted or mount point
+# busy" -> "Child process exited with code 32" if we still hold it.
+grep -q 'ota_umount_all || rc=1' "$OTA" \
+    && echo "ok: everything is unmounted before returning to the updater" \
+    || { echo "FAIL: the hook can return while still holding the slot"; rc=1; }
+grep -q "trap 'ota_umount_all" "$OTA" \
+    && echo "ok: a trap unmounts even on an unexpected exit" \
+    || { echo "FAIL: no cleanup trap -- an early return leaks the mount"; rc=1; }
+
+# inner mounts must come off before the slot they live in
+mounts="$(bash -c '
+OTA_MOUNTS=""
+mount() { return 0; }
+ota_mount() { local target="${@: -1}"; if mount "$@"; then OTA_MOUNTS="$target $OTA_MOUNTS"; return 0; fi; return 1; }
+ota_mount /dev/x /mnt/root
+ota_mount -o bind /proc /mnt/root/proc
+echo "$OTA_MOUNTS"')"
+case "$mounts" in
+    "/mnt/root/proc /mnt/root "*|"/mnt/root/proc /mnt/root") echo "ok: unmount order is inner-before-outer" ;;
+    *) echo "FAIL: unmount order is '$mounts' -- outer first would fail as busy"; rc=1 ;;
+esac
+
+[ $rc -eq 0 ] && echo "PASS: the OTA hook is idempotent, status-preserving and leaves no mounts"
 exit $rc

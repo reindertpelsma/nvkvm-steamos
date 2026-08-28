@@ -55,6 +55,38 @@ disarm_other() {
     done
 }
 
+# Everything we mount into the target, unmounted in reverse on the way out.
+# A LEFTOVER MOUNT IS NOT A COSMETIC LEAK: rauc's own post-install handler
+# mounts the other slot to sync the var partitions, and if we still hold it the
+# whole update fails with
+#     mount: /var/mnt: /dev/nvme0n1pN already mounted or mount point busy
+#     Post-install handler error: Child process exited with code 32
+# which is reported to the user as "Unable to download the required update",
+# naming the one thing that was not wrong. OBSERVED 2026-08-28.
+OTA_MOUNTS=""
+
+ota_mount() {   # <mount args...> <target>
+    local target="${@: -1}"          # the mount point is always the last arg
+    if mount "$@"; then
+        OTA_MOUNTS="$target $OTA_MOUNTS"   # prepend, so we unmount in reverse
+        return 0
+    fi
+    return 1
+}
+
+ota_umount_all() {
+    local m rc=0
+    for m in $OTA_MOUNTS; do
+        mountpoint -q "$m" || continue
+        umount "$m" 2>/dev/null && continue
+        umount -l "$m" 2>/dev/null && { log "lazily unmounted $m"; continue; }
+        fail "could not unmount $m -- the next OS update may fail on a busy slot"
+        rc=1
+    done
+    OTA_MOUNTS=""
+    return "$rc"
+}
+
 provision_other() {
     local dev=/dev/disk/by-partsets/other/rootfs
     local mnt rc=0
@@ -65,12 +97,36 @@ provision_other() {
         || { fail "steamos_boot.sh missing from the share"; disarm_other; return 1; }
 
     mnt="$(mktemp -d /tmp/nvkvm-ota.XXXXXX)" || return 1
+    trap 'ota_umount_all; rmdir "$mnt" 2>/dev/null' EXIT
+
     # subvolid=5 / subvol=/ on this platform, so the device mounts as the rootfs
     # directly and there is no subvolume to select.
-    if ! mount "$dev" "$mnt"; then
+    if ! ota_mount "$dev" "$mnt"; then
         fail "could not mount the other slot ($dev)"
         rmdir "$mnt"; disarm_other; return 1
     fi
+
+    #
+    # THE TARGET NEEDS A REAL SYSTEM UNDERNEATH IT.
+    #
+    # steamos_boot.sh chroots in to run pacman, curl and the module build. The
+    # Alpine installer bind-mounts these before doing the same thing
+    # (vm/guest-init.sh); omitting them here is what made the first real OTA
+    # fail, with pacman reporting
+    #     error: could not determine filesystem mount points
+    # and the whole update then reported as a download failure.
+    #
+    # /home matters as much as /proc: it holds the module build area and the
+    # driver cache, and a 5 GiB rootfs has room for neither.
+    #
+    for d in proc sys dev; do
+        ota_mount -o bind "/$d" "$mnt/$d" \
+            || fail "could not bind /$d into the target (the build may fail)"
+    done
+    mountpoint -q /home && { ota_mount -o bind /home "$mnt/home" \
+        || fail "could not bind /home -- the build area falls back to the 5 GiB rootfs"; }
+    # A resolver, or pacman and curl cannot reach Valve's mirrors from inside.
+    [ -r /etc/resolv.conf ] && cp -f /etc/resolv.conf "$mnt/etc/resolv.conf" 2>/dev/null
 
     log "provisioning the newly written slot at $mnt"
     # --install-only --root is the SAME call the Alpine installer makes. It owns
@@ -79,13 +135,15 @@ provision_other() {
 
     # Belt and braces: --install-only verifies this itself and fails loudly, but
     # this is the property the whole exercise exists to guarantee, so check it
-    # here too rather than trust a exit code across a chroot boundary.
+    # here too rather than trust an exit code across a chroot boundary.
     if [ ! -e "$mnt/etc/systemd/system/multi-user.target.wants/nvkvm-boot.service" ]; then
         fail "the new slot is NOT armed -- nvkvm-boot.service has no wants symlink"
         rc=1
     fi
 
-    umount "$mnt" 2>/dev/null || umount -l "$mnt" 2>/dev/null
+    # UNMOUNT BEFORE RETURNING, ALWAYS. rauc is not finished with this slot.
+    ota_umount_all || rc=1
+    trap - EXIT
     rmdir "$mnt" 2>/dev/null
 
     if [ "$rc" != 0 ]; then
