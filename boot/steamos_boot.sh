@@ -188,17 +188,45 @@ remove_added_packages() {
         || warn "could not fully remove the packages this run added"
 }
 
+#
+# TEST TRUST, NOT PRESENCE.
+#
+# This used to return early on `pacman-key --list-keys`, which succeeds as soon
+# as the keyring contains ANY key. A freshly written A/B slot contains 98 of
+# them and NONE are locally signed, so this returned "ready", the keyring was
+# never populated, and every subsequent package install failed:
+#
+#   error: spice-vdagent: signature from "GitLab CI Package Builder
+#          <ci-package-builder-1@steamos.cloud>" is unknown trust
+#
+# MEASURED on the laptop, 2026-08-28, after a SteamOS OTA. It also took out
+# ensure_kernel_headers() -- which installs its exact-match package with
+# `pacman -U` and hits the same wall -- so the guest module could not be built
+# at all. The build failure was then misreported downstream as a vermagic
+# mismatch, which is a much more interesting-looking wrong answer.
+#
+# A key is USABLE only once it is locally signed, which gpg reports as full (f)
+# or ultimate (u) validity on the uid. That is what we test.
+#
 ensure_pacman_keyring() {
-    in_target sh -c 'pacman-key --list-keys >/dev/null 2>&1' && return 0
-    log "initialising pacman keyring in the target root"
+    local trusted='gpg --homedir /etc/pacman.d/gnupg --list-keys --with-colons 2>/dev/null | grep -q "^uid:[fu]:"'
+
+    in_target sh -c "$trusted" && { log "pacman keyring: signatures are trusted"; return 0; }
+    log "pacman keyring holds no locally-signed keys; initialising and populating"
     in_target pacman-key --init >/dev/null 2>&1 || true
     local kr
     for kr in archlinux holo; do
         in_target sh -c "ls /usr/share/pacman/keyrings/${kr}.gpg >/dev/null 2>&1" \
             && in_target pacman-key --populate "$kr" >/dev/null 2>&1
     done
-    in_target sh -c 'pacman-key --list-keys >/dev/null 2>&1' \
-        || { err "pacman keyring could not be initialised"; return 1; }
+    if in_target sh -c "$trusted"; then
+        log "pacman keyring populated; package signatures now validate"
+        return 0
+    fi
+    err "pacman keyring has no locally-signed keys, so EVERY package install"
+    err "will fail with 'unknown trust' -- including the kernel headers, which"
+    err "means the guest module cannot be built at all."
+    return 1
 }
 
 # Minimum only -- deliberately NOT base-devel, which is a meta-package whose
