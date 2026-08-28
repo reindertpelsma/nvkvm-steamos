@@ -13,7 +13,7 @@ non-Docker image builder, read [`vm-installer.md`](vm-installer.md).
 
 ```sh
 sudo ./build_steamos_image.sh \
-  --src  steamdeck-oobe-repair-20260707.10-3.8.14.img \
+  --src  steamdeck-repair-20250521.10-3.7.7.img \
   --share ~/nvkvm/nvkvm-pv
 ```
 
@@ -41,8 +41,8 @@ Everything in this repository was measured against **SteamOS 3.8.14**, the OOBE
 recovery image dated 2026-07-07:
 
 ```sh
-curl -O https://steamdeck-images.steamos.cloud/recovery/steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2
-bunzip2 -k steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2      # -k: keep the .bz2
+curl -O https://steamdeck-images.steamos.cloud/recovery/steamdeck-repair-20250521.10-3.7.7.img.bz2
+bunzip2 -k steamdeck-repair-20250521.10-3.7.7.img.bz2      # -k: keep the .bz2
 ```
 
 That URL is a **pin, not the only option** — Valve publishes newer recovery
@@ -108,7 +108,7 @@ looks first — `<share>/nvidia/NVIDIA-Linux-x86_64-<ver>.run` — or pass
 ## 1. Copy the image
 
 ```sh
-cp --reflink=auto --sparse=always steamdeck-oobe-repair-20260707.10-3.8.14.img work.img
+cp --reflink=auto --sparse=always steamdeck-repair-20250521.10-3.7.7.img work.img
 ```
 
 Not a rename, not "just be careful". Provisioning writes ~2 GB into the rootfs,
@@ -211,7 +211,7 @@ lsblk -o NAME,PARTLABEL,FSTYPE,SIZE /dev/loop3
 blkid -p -s PART_ENTRY_NAME -o value /dev/loop3p3
 ```
 
-On the `steamdeck-oobe-repair` image the layout is
+On the `steamdeck-repair` image the layout is
 `1=esp 2=efi-A 3=rootfs-A (btrfs) 4=var-A (ext4) 5=home (ext4)`, so the rootfs is
 `p3`. **Do not carry that number anywhere.** A real installed SteamOS has both
 A/B slots (`rootfs-A` *and* `rootfs-B`, different numbers), Valve has changed the

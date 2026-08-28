@@ -36,10 +36,10 @@ then run `steamos_boot.sh --install-only` against the installed `rootfs-A`.
 
 ```bash
 # The install itself (this is the part that is verified end to end)
-./install_steamos_vm.sh --repair steamdeck-oobe-repair-*.img --out steamos.qcow2
+./install_steamos_vm.sh --repair steamdeck-repair-*.img --out steamos.qcow2
 
 # Install + nvkvm provisioning in one go (needs an NVIDIA build host, see below)
-./install_steamos_vm.sh --repair steamdeck-oobe-repair-*.img --out steamos.qcow2 \
+./install_steamos_vm.sh --repair steamdeck-repair-*.img --out steamos.qcow2 \
     --stages repair,provision --share ~/src/nvkvm-pv
 
 # Debugging: boot the guest to a busybox shell with everything attached
@@ -49,7 +49,7 @@ then run `steamos_boot.sh --install-only` against the installed `rootfs-A`.
 Host requirements: `qemu-system-x86_64`, `qemu-img`, `cpio`, `gzip`, `curl`,
 `tar`, an **OVMF** firmware package, and `/dev/kvm`. No root.
 
-## Verified output (2026-08-24, `steamdeck-oobe-repair-20260707.10-3.8.14.img`)
+## Verified output (2026-08-24, `steamdeck-repair-20250521.10-3.7.7.img`)
 
 `repair_device.sh all` ran to `Reimaging complete.` headless, and the disk it
 wrote is a genuine dual-slot install:

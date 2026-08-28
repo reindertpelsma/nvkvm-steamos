@@ -921,6 +921,32 @@ Autolock=false
 LockOnResume=false
 Timeout=0
 KSCREENLOCK
+    # REFUSE AN OOBE IMAGE.  VARIANT_ID=steamdeck-oobe ships steam-jupiter-oobe,
+    # whose /usr/bin/steam runs
+    #     rm -rf --one-file-system "$HOME"/.steam "$HOME"/.local/share/Steam
+    # UNCONDITIONALLY at every launch.  Its own comment says why: "On OOBE images
+    # we want to always start with a fresh steam per boot as we lack the proper
+    # steam overlay/repair code."  That is correct for the handful of boots
+    # before a real Deck's first OTA graduates it to VARIANT_ID=steamdeck; it is
+    # catastrophic for a machine anyone actually uses, destroying the Steam
+    # login, the library index and installed games on every start.
+    #
+    # MEASURED on the physical PC 2026-08-28: caught mid-act, the rm as a direct
+    # child of the launcher, with a 40 GB game install already lost to it.
+    #
+    # The cause is upstream of this script -- the wrong recovery image was
+    # fetched -- and the fix is to install from a plain steamdeck-repair-*.img
+    # rather than steamdeck-oobe-repair-*.img.  This check exists so an image
+    # built before that fix says so loudly instead of quietly eating data.
+    _variant="$(sed -n 's/^VARIANT_ID=//p' "$(rp /etc/os-release)" 2>/dev/null | tr -d '"')"
+    if [ "$_variant" = "steamdeck-oobe" ]; then
+        warn "THIS IS AN OOBE IMAGE (VARIANT_ID=steamdeck-oobe)."
+        warn "  /usr/bin/steam here DELETES ~/.steam and ~/.local/share/Steam on"
+        warn "  EVERY launch -- your Steam login, library and games will not survive."
+        warn "  Rebuild from a plain steamdeck-repair-*.img (NOT -oobe-), or let the"
+        warn "  guest take an OTA update to reach VARIANT_ID=steamdeck."
+    fi
+
     # And suspend itself, structurally.  MEASURED on the physical PC, 2026-08-27:
     # QMP system_powerdown put the guest into S3 -- `query-status` returned
     # {"status": "suspended", "running": false} and the vCPU time stopped

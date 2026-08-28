@@ -35,7 +35,20 @@ QCOW="${NVKVM_STEAMOS_QCOW:-$STATE_DIR/steamos.qcow2}"
 #                     or overwritten automatically -- not even when it is
 #                     corrupt.  Replacing that file is an operator decision.
 QCOW_INSTALLING="$QCOW.installing"
-PINNED_RECOVERY="steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2"
+# NOT an -oobe- image.  The OOBE images install VARIANT_ID=steamdeck-oobe, whose
+# steam-jupiter-oobe package ships a /usr/bin/steam that runs
+#     rm -rf --one-file-system "$HOME"/.steam "$HOME"/.local/share/Steam
+# UNCONDITIONALLY on every launch -- "we want to always start with a fresh steam
+# per boot as we lack the proper steam overlay/repair code", says its own
+# comment.  On a real Deck that variant survives only until the first OTA
+# graduates it to `steamdeck`; used as a daily driver it destroys the user's
+# login, library index and installed games on every single Steam start.
+# MEASURED 2026-08-28: caught in the act, `rm -rf` with the launcher as parent.
+#
+# The plain steamdeck-repair images install VARIANT_ID=steamdeck directly, with
+# steam-jupiter-stable and no such wrapper.  They are an older base (3.7.7 vs
+# 3.8.14) and update themselves forward, which is the normal path.
+PINNED_RECOVERY="steamdeck-repair-20250521.10-3.7.7.img.bz2"
 RECOVERY_BASE="https://steamdeck-images.steamos.cloud/recovery"
 LATEST=0
 INSTALL_SHELL=0
@@ -92,7 +105,7 @@ latest_recovery_url() {
     listing="$(curl -fsSL "$RECOVERY_BASE/")" \
         || die "could not read the SteamOS recovery index"
     name="$(printf '%s\n' "$listing" \
-        | grep -oE 'steamdeck-oobe-repair-[^"?<> ]+\.img\.bz2' \
+        | grep -oE 'steamdeck-repair-[^"?<> ]+\.img\.bz2' \
         | sort -Vu | tail -1)"
     [ -n "$name" ] || die "the recovery index contained no repair image (page shape changed?)"
     printf '%s/%s\n' "$RECOVERY_BASE" "$name"

@@ -30,7 +30,7 @@
 #
 # Usage:
 #   build_nvkvm_steamos_image.sh \
-#     --src /home/ubuntu/Downloads/steamdeck-oobe-repair-*.img \
+#     --src /home/ubuntu/Downloads/steamdeck-repair-*.img \
 #     --out /root/steamos-nvkvm/steamos-nvkvm.qcow2 \
 #     --ko /root/steamos-nvkvm/nvkvm-guest-neptune616.ko \
 #     --nvidia-run-extracted /root/steamos-nvkvm/nvidia-run/extracted \
@@ -113,8 +113,8 @@ qemu-nbd --connect="$NBD_DEV" "$OUT"
 sleep 1
 partprobe "$NBD_DEV" 2>/dev/null || true
 # This partition layout (1=esp 2=efi 3=rootfs-btrfs 4=var-ext4 5=home-ext4) is
-# specific to the steamdeck-oobe-repair image family this was built against
-# -- verified against `steamdeck-oobe-repair-20260707.10-3.8.14.img`. If the
+# specific to the steamdeck-repair image family this was built against
+# -- verified against `steamdeck-repair-20250521.10-3.7.7.img`. If the
 # source image's layout differs, this will mount the wrong thing; check
 # `lsblk` output below before trusting the rest of the run.
 lsblk "$NBD_DEV" >&2

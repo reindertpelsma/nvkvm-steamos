@@ -168,7 +168,7 @@ through KVM into the host kernel is a far higher bar.
 For a SteamOS qcow2 on the host instead of the full Compose deployment:
 
 ```sh
-./install_steamos_vm.sh --repair steamdeck-oobe-repair-*.img --out steamos.qcow2
+./install_steamos_vm.sh --repair steamdeck-repair-*.img --out steamos.qcow2
 ```
 
 This path needs `qemu-system-x86_64`, `qemu-img`, OVMF, common archive tools,
