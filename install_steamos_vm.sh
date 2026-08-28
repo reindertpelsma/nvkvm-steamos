@@ -258,7 +258,15 @@ if [[ ",$STAGES," == *,provision,* ]] || [ "$SHELL_MODE" = 1 ]; then
     EXTRA+=( -netdev "user,id=net0" -device "virtio-net-pci,netdev=net0" )
 fi
 
-QEMU=(
+# NVKVM_QEMU_NICE=N -- run the installer VM at a lower CPU priority. Unset by
+# default. The install is the longest, heaviest thing this VM ever does, so it
+# is where a host desktop most notices; see the same variable in
+# scripts/steamos-container-entrypoint.sh for the caveat about vCPU threads.
+QEMU=()
+if [ -n "${NVKVM_QEMU_NICE:-}" ] && command -v nice >/dev/null 2>&1; then
+    QEMU+=(nice -n "$NVKVM_QEMU_NICE")
+fi
+QEMU+=(
     qemu-system-x86_64
     -machine "q35,accel=kvm" -cpu host -smp "$CPUS" -m "$MEMORY"
     -drive "if=pflash,format=raw,unit=0,readonly=on,file=$OVMF_CODE"

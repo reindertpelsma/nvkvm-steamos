@@ -483,12 +483,39 @@ fi
 # capability.  mapped-xattr keeps guest ownership and mode in xattrs, so nothing
 # host-visible is really setuid.
 #
+# NVKVM_QEMU_NICE=N -- run QEMU at a lower CPU priority. UNSET by default, so
+# the default behaviour is unchanged.
+#
+# A VM doing something heavy saturates the host: a SteamOS OTA runs `desync`
+# with 112 download threads, which twice made an 8-core laptop unusable while
+# the guest was merely updating. `nice -n 10` keeps the host desktop
+# interactive at no meaningful cost to a download.
+#
+# BUT IT RENICES THE vCPU THREADS TOO, not just I/O, so it perturbs present
+# latency. Leave it unset when measuring anything about frame timing, or the
+# nice level is part of what is being measured.
+#
+# Deliberately not defaulted on: "the VM is slow" is a much harder thing to
+# debug than "my browser stutters during an install".
+# Exported, not just set: install_steamos_vm.sh is a CHILD of this script and
+# runs the heaviest QEMU of all, so it has to see the same setting.
+export NVKVM_QEMU_NICE="${NVKVM_QEMU_NICE:-}"
+_nice=()
+if [ -n "$NVKVM_QEMU_NICE" ]; then
+    if command -v nice >/dev/null 2>&1; then
+        _nice=(nice -n "$NVKVM_QEMU_NICE")
+        log "running QEMU at nice +$NVKVM_QEMU_NICE (host stays responsive; vCPUs are niced too)"
+    else
+        warn "NVKVM_QEMU_NICE=$NVKVM_QEMU_NICE but nice(1) is not installed; ignoring"
+    fi
+fi
+
 # Keep comments OUT of the continued argument list below.  A `\`-continued line
 # followed by a `#` line ENDS the command there, and every later argument --
 # -display included -- is silently dropped: QEMU still starts, so nothing fails
 # loudly.  That is exactly what happened when this rationale lived inline.
 # Enforced by tests/no_comment_in_continuation.sh.
-/opt/qemu-nvkvm/bin/qemu-system-x86_64 \
+"${_nice[@]}" /opt/qemu-nvkvm/bin/qemu-system-x86_64 \
     -name nvkvm-steamos \
     -machine q35,accel=kvm -cpu host \
     -m "${VM_MEM:-12G}" -smp "${VM_SMP:-8}" \
