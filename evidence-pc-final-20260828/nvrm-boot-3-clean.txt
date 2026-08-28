@@ -1,0 +1,60 @@
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: 1
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 61C27F000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: 2
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 28BD7F000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: 3
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr BAD00000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: 4
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 1D2A91000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: 5
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 14A964000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: 6
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 69A468000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: 7
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 29DF40000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: 8
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 1F4087000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: 9
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 1F4089000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: b
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 1F408E000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: c
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 209D7F000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: d
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr B7BE0000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: e
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 1CAB25000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: f
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 251D4A000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: 11
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 1D3FD1000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: 12
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 801F7C000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: 1c
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 1F01C1000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: 1e
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 1F01BC000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: beef00de
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr 125BE5000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d00b37: hResource: beefc360
+Aug 28 02:50:36 claude kernel: NVRM: clientUnmapResourceRefMappings: hContext: beef0004 at addr FBBB0000
+Aug 28 02:50:36 claude kernel: NVRM: nvAssertFailedNoLog: Assertion failed: 0 @ rs_client.c:1194
