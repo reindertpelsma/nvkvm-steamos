@@ -757,7 +757,25 @@ SSHCONF
         local h; h="$(rp "$home")"
         [ -d "$h" ] || { warn "ssh: home '$home' for $u does not exist"; return 0; }
         mkdir -p "$h/.ssh"
-        cp -f "$src" "$h/.ssh/authorized_keys"
+        # MERGE, DO NOT OVERWRITE.  This used to be `cp -f`, which destroyed every
+        # key the operator had added by hand -- on EVERY boot, because /root and
+        # /home live on the persistent partition and survive an A/B slot switch
+        # while this script re-runs each time.  Reported as "I have to constantly
+        # re-add my key at every boot", and that is exactly what it was.
+        #
+        # Keys from the data share are rewritten inside a marked block, so they
+        # still track the share exactly (removing one there removes it here).
+        # Anything outside the block is the operator's and is preserved.
+        {
+            if [ -f "$h/.ssh/authorized_keys" ]; then
+                sed '/^# BEGIN nvkvm-managed$/,/^# END nvkvm-managed$/d' \
+                    "$h/.ssh/authorized_keys"
+            fi
+            echo "# BEGIN nvkvm-managed"
+            cat "$src"
+            echo "# END nvkvm-managed"
+        } > "$h/.ssh/authorized_keys.nvkvm-new"
+        mv -f "$h/.ssh/authorized_keys.nvkvm-new" "$h/.ssh/authorized_keys"
         # sshd SILENTLY ignores keys with loose permissions -- a running sshd that
         # rejects a perfectly good key, with nothing useful client-side. Set these
         # explicitly; files copied off a 9p mount will not have them by default.
