@@ -68,81 +68,151 @@ fully playable for first-person games.
 
 ## Known open items
 
-### UNRESOLVED: Steam wipes its own install inside the guest (2026-08-27/28)
+### RESOLVED: Steam wiped its own install inside the guest (2026-08-27/28)
 
-The owner lost a Steam login and a 40 GB game install.  Steam re-bootstraps
-("unpacking Steam") on every launch and requires a fresh login each time.
+**Root cause: Valve's own `steam-jupiter-oobe` package, not nvkvm and not the
+VM.**  On OOBE recovery images `/usr/bin/steam-jupiter` is a wrapper that opens
+with
 
-**The decisive observation, from the owner:** open Steam, log in, quit it
-*gracefully* from the tray, relaunch — and it is wiped again, **within a single
-boot, with no reboot involved.**  That eliminates the VM lifecycle, the shutdown
-path and anything this repo does at boot.
-
-**Steam's own log shows it starts with genuinely empty state**, not corrupt
-state:
-
-```
-[2026-08-27 15:04:08] Client beta changed from '' to 'steamdeck_stable'
-[2026-08-27 15:04:08] Failed to load cached hosts file (update_hosts_cached.vdf not found)
+```bash
+( # On OOBE images we want to always start with a fresh steam per boot as we
+  # lack the proper steam overlay/repair code
+  rm -rf --one-file-system "$STEAM_LINKS" "$STEAM_DIR" )
+exec /usr/lib/steam/steam -steamdeck -skipinitialbootstrap "$@"
 ```
 
-Consequence chain: no config -> logged out -> re-bootstrap -> no
-libraryfolders.vdf -> Steam does not know the game is installed -> offers a
-re-install.  Games are account-licensed but disk-resident, so a re-login must
-never uninstall anything; that it appears to is a symptom of the lost library
-index, not of deletion.
+Every launch deleted the library before Steam started.  This is deliberate
+Valve behaviour for factory/out-of-box images, and it is why the owner lost a
+login and a 40 GB install.  It is not documented on the download page, and the
+default download button offers exactly this image.
 
-**Ruled out, each by measurement, not argument:**
-- `/etc/machine-id` is stable across boots (read-only, unchanged since Aug 26).
-- Clock is correct and NTP-synchronised; no skew, no backwards jumps.
-- Filesystem loss: boot -4 (the session with the game) **ended cleanly** --
-  systemd unmounted in order and flushed the journal.  `lost+found` is empty.
-- Disk integrity: `qemu-img info` reports no backing file, no snapshots,
-  `corrupt: false`; 61.1 GiB genuinely allocated, so the game *was* written.
-- This repo's scripts: the only `rm -rf` calls are scoped to `/usr/lib` and
-  `/usr/lib/firmware/nvidia`; `/home/.nvkvm-build.img` is a 1 GB scratch FILE
-  that gets mkfs'd, never the partition.  Nothing here writes to `/home/deck`
-  except the `.ssh` authorized_keys installer.
-- `steamapps/common/FAKEGAME/blob` (64 MB) survived two reboots, so nothing is
-  deleting indiscriminately.
+**Fixes, in order of preference (both shipped):**
+1. Install the **plain (non-OOBE) repair image**.  `steamos-container-entrypoint.sh`
+   resolves it through Valve's stable `steamdeck-repair-latest` alias, sorting
+   on the VERSION field rather than the filename, with a pinned fallback.
+2. If an OOBE image is used anyway, `steamos_boot.sh` comments out that single
+   `rm -rf` and leaves a marker in the file, then lets Valve's own OOBE setup
+   flow run instead of hijacking the session with an SDDM override.
 
-**Two hypotheses raised and RETRACTED, recorded so they are not re-derived:**
-1. *Unclean-shutdown data loss.*  Wrong.  ext4 commits its journal every 5 s and
-   `data=ordered` writes data first; QEMU's default writeback cache honours
-   guest flushes, and killing QEMU on a live host does not lose committed
-   writes -- the host page cache survives the process.  Only host power loss
-   would, and the host never went down.
+**Verified on the physical PC, 2026-08-28** (RTX 4070, driver 595.84): log into
+Steam, quit gracefully via "Exit Steam" from the tray icon, relaunch.  The
+install survives -- 2.5 GB under `~/.local/share/Steam` with
+`config/loginusers.vdf` intact, where before it was recreated empty.  The
+guest's live wrapper carries the guard and contains zero unguarded
+`rm -rf --one-file-system`.
+
+**The decisive clue, from the owner,** was that a graceful quit and relaunch
+wiped the install *within a single boot, with no reboot involved* -- which
+eliminated the VM lifecycle, the shutdown path and everything this repo does at
+boot, and pointed at the launcher itself.  The owner also maintained throughout
+that this was not normal SteamOS behaviour, which was correct and was the reason
+the search continued past several plausible dead ends.
+
+**Ruled out along the way, each by measurement** (kept so they are not
+re-derived): stable `/etc/machine-id`; correct NTP-synced clock; clean unmount
+and journal flush on the boot that held the game, with an empty `lost+found`;
+`qemu-img info` reporting no snapshots, `corrupt: false`, 61.1 GiB genuinely
+allocated; this repo's `rm -rf` calls all scoped to `/usr/lib`; and a 64 MB
+`FAKEGAME/blob` surviving two reboots, so nothing was deleting indiscriminately.
+
+**Two hypotheses raised and RETRACTED:**
+1. *Unclean-shutdown data loss.*  Wrong.  ext4 commits its journal every 5 s,
+   `data=ordered` writes data first, QEMU's writeback cache honours guest
+   flushes, and killing QEMU on a live host does not lose committed writes --
+   the host page cache survives the process.  Only host power loss would, and
+   the host never went down.
 2. *A marker-file "reproduction".*  Wrong, and a bad experiment: the markers
-   were written as **root** into Steam's own tree.  Steam legitimately cleans
+   were written as **root** into Steam's own tree, and Steam legitimately cleans
    foreign files out of its directory during bootstrap.  `deck`-owned markers
    survived untouched.  Any future test MUST create files as the `deck` user.
 
 **Dead end for tooling:** the neptune kernel is built without `CONFIG_AUDIT`.
-`audit=1` reaches `/proc/cmdline` and `auditctl` still reports "audit support
-not in kernel", so syscall auditing cannot be used to name the deleter here.
-(systemd's `+AUDIT` means systemd links libaudit -- it says nothing about the
-kernel.)
+`audit=1` reaches `/proc/cmdline` but `auditctl` still reports "audit support
+not in kernel", so syscall auditing cannot name a deleter on this image.
+(systemd's `+AUDIT` only means systemd links libaudit.)
 
-**Where to resume:** `~/.local/share/Steam/logs/` now exists and is populated.
-Read `bootstrap_log.txt` and `console-linux.txt` across one exit-and-relaunch
-cycle.  That needs no reboots, no markers and no kernel features this image
-lacks, and it should name whatever resets the install.
+Evidence bundle: `evidence-steam-wipe-20260828/`.
 
-Evidence bundle: `evidence-steam-wipe-20260828/` (guest boot table, boot -4
-tail proving the clean shutdown, Steam bootstrap log, and the DRM
-`enabled=disabled` capture).
+### RESOLVED: the guest DRM output coming up `enabled=disabled` (2026-08-27/28)
 
-### The guest DRM output can come up `enabled=disabled` (2026-08-27)
-
-One boot in six came up with `card0-Virtual-1: status=connected enabled=disabled`
-and **zero flips** -- KWin logged `There are no outputs - creating placeholder
+Some boots came up with `card0-Virtual-1: status=connected enabled=disabled` and
+**zero flips** -- KWin logged `There are no outputs - creating placeholder
 screen` across every KDE component, so the session had no output to draw on.
+It was never a startup race in the obvious direction: the broker logged
+`client attached` 49 seconds *before* KWin reported no outputs.
 
-NOT a startup race in the obvious direction: the broker logged `client attached`
-at 20:41:48.56 UTC and KWin reported no outputs at 20:42:37 -- **49 seconds
-later**.  The display was present and the guest still saw nothing.  Root cause
-unknown.  A VM restart clears it; a fresh boot 16 s later had the output
-`enabled` with flips flowing.  Capture in `evidence-steam-wipe-20260828/drm-disabled/`.
+**Root cause: the host ran out of GPU virtual address space.**  With the host
+wedged, guest allocations fail; NVIDIA's EGL reports a refused ioctl as
+`GL_OUT_OF_MEMORY`; KWin cannot build its scene buffer, so it never completes a
+modeset, so the output stays `disabled` and nothing ever flips.  No component
+in that chain reports the real error.
+
+Confirmed on 2026-08-28: with `alloc VA space` errors in the host kernel log the
+guest could not display at all; after a host reboot, with **zero** such errors
+and host Vulkan healthy, the *same commit* rendered the SteamOS desktop and
+Steam normally.  The historical one-in-six intermittency is consistent with a
+partially-exhausted host, though that specific earlier occurrence was not
+measured at the time.
+
+The VA exhaustion itself is a separate open bug, tracked below.  It **is**
+inherent to nvkvm, and it scales with the number of client *teardowns* rather
+than with elapsed time -- which is why one 9-hour session holding a single game
+open leaked almost nothing while shorter sessions that start and stop many
+clients collapse the host.
+
+Capture in `evidence-steam-wipe-20260828/drm-disabled/`.
+
+### OPEN: host BAR1 address-space leak, 59 mappings per guest client teardown
+
+The host runs out of **GPU BAR1 aperture address space** (not VRAM) until no
+process on the machine can create a Vulkan device.  It is the cause of the
+`enabled=disabled` display failure above, and it is nvkvm-specific.
+
+```
+clientUnmapResourceRefMappings: Failed to auto-unmap (status=0x23) hClient c1d003f3: hResource: 40
+```
+`status=0x23` is `NV_ERR_INVALID_CLIENT`: RM's teardown sweep cannot release the
+mapping, so it is never freed.  BAR1 on the test host is only **256 MiB**
+(Resizable BAR off), which is likely why this box noticed first.
+
+**Deterministic reproduction** -- run `vkcube` in the guest for 60 s and kill it:
+
+| client | teardown | new failed auto-unmaps |
+|---|---|---|
+| `vkcube` in guest | SIGKILL | **+59** |
+| `vkcube` in guest | clean SIGTERM | **+59** |
+| same `vkcube` binary **on the host** | SIGKILL | **0** |
+| host CUDA, 10 Kata GPU containers | clean | **0** |
+
+Clean and abnormal exit leak identically, so abnormal teardown is not the
+trigger.  It scales with client teardowns, not with time: a long session holding
+one game open leaks little; repeated launch/quit cycles collapse the host.
+
+**Nothing surfaces it.**  While wedged, `nvidia-smi` reported BAR1 Used = 59 MiB
+of 256 MiB -- the leak consumes address space without being accounted as used.
+Watch this instead (kernel VA errors lag the real failure by ~7 minutes):
+
+```
+journalctl -k -b 0 --no-pager | grep -c "Failed to auto-unmap"
+```
+Use `journalctl`, **not `dmesg`** -- its ring buffer rotates and under-counts.
+
+**Recovery needs no reboot:** `rmmod nvidia_drm nvidia_modeset nvidia_uvm nvidia`
+then `modprobe` restores Vulkan.  (That measurement was confounded by stopping
+`gdm` first, so it does not yet separate the reload from killing the compositor.)
+
+**Ruled out by measurement:** idle guests, 45 clean isolates, 15 SIGKILLed
+isolates, continuous rendering -- all return exactly to baseline.  Kata alone and
+Kata concurrent with the VM both leak zero.
+
+**Narrowed to fd/client identity.**  Every map uses the same per-client
+`h_device=0xbeef0004` (NV20_SUBDEVICE_0), 895 maps against 376 unmaps, and the
+failing client was torn down via the implicit fd-close path.  The suspicion is
+that nvkvm spreads one guest device file across several host opens, so the
+client owning the mapping context is not the client RM tears down.
+
+Full investigation, evidence and tooling live in the `nvkvm-pv` repo under
+`docs/investigations/va-space-leak/` (branch `va-space-leak`).
 
 ### Chromium GPU watchdogs kill processes when forwarding is slow (2026-08-27)
 
@@ -170,6 +240,14 @@ Correlated in the same window, causality NOT established: the broker logged
 and the watchdog fired at 19:35:13 UTC -- 112s later, far longer than a
 watchdog interval, so the buffer event is not the trigger.  Both are consistent
 with the HOST compositor stalling the present path.
+
+A third candidate now exists, untested: the **BAR1 address-space leak** above.
+Chromium-based UI layers spawn and tear down GPU clients repeatedly, which is
+exactly the pattern that leaks, and a GPU operation that stalls on exhausted
+address space would blow the watchdog interval while reporting nothing.  The
+20-minute time-to-crash is consistent with a host that degrades gradually.
+Testing this needs only the `Failed to auto-unmap` counter sampled during a
+play session.
 
 Not investigated: which forwarded operation is slow.  The guest also logged
 449,990 `signal interrupted forwarded ioctl wait` events against Xwayland
