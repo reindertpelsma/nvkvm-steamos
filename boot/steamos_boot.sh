@@ -1482,13 +1482,109 @@ install_stub() {
     plant_file "$img_dir/nvkvm-boot.service"      "$(rp /etc/systemd/system/nvkvm-boot.service)"        0644 || rc=1
     plant_file "$img_dir/nvkvm-plant-stub.path"   "$(rp /etc/systemd/system/nvkvm-plant-stub.path)"     0644 || rc=1
     plant_file "$img_dir/nvkvm-plant-stub.service" "$(rp /etc/systemd/system/nvkvm-plant-stub.service)" 0644 || rc=1
+    plant_file "$img_dir/nvkvm-ota.sh"           "$(rp /usr/local/sbin/nvkvm-ota.sh)"                  0755 || rc=1
     if [ "$rc" != 0 ]; then
         err "in-image stub NOT installed. Until this is fixed nvkvm-boot.service"
         err "cannot run, and a provisioned image will not converge on its own."
         return 1
     fi
     in_target systemctl enable nvkvm-boot.service nvkvm-plant-stub.path 2>/dev/null || true
+
+    #
+    # VERIFY THE ARMING.  DO NOT ASSUME IT.
+    #
+    # This used to be `... 2>/dev/null || true` and nothing else, so a failed
+    # enable was indistinguishable from a successful one.  The failure mode is
+    # silent and total: the unit FILE is present, `systemctl cat` shows it, but
+    # no multi-user.target.wants symlink exists, so nothing runs at boot, the
+    # guest module is never built and the GPU is simply absent.
+    #
+    # OBSERVED after a SteamOS A/B OTA on 2026-08-28: the freshly written slot
+    # had the unit file (it lives in /etc, which persists) and NO wants symlink
+    # (that lives in /etc/systemd/system/multi-user.target.wants, which the
+    # update replaced).  journalctl -b -1 for the first boot of the new slot had
+    # ZERO nvkvm lines -- nothing even tried.
+    #
+    # `systemctl enable` inside a chroot is only writing this symlink, so when
+    # it fails or is unavailable we can write it ourselves and still be exactly
+    # right.  What we must not do is continue while it is absent.
+    #
+    local _wants_dir _wants
+    _wants_dir="$(rp /etc/systemd/system/multi-user.target.wants)"
+    _wants="$_wants_dir/nvkvm-boot.service"
+    if [ ! -e "$_wants" ] && [ ! -L "$_wants" ]; then
+        mkdir -p "$_wants_dir" 2>/dev/null
+        ln -sf /etc/systemd/system/nvkvm-boot.service "$_wants" 2>/dev/null || true
+    fi
+    if [ -e "$_wants" ] || [ -L "$_wants" ]; then
+        log "armed: nvkvm-boot.service will run on the next boot of this image"
+    else
+        err "nvkvm-boot.service is NOT ARMED -- $_wants is missing and could not"
+        err "be created.  This image will boot with NO nvkvm: nothing will build"
+        err "the guest module and the GPU will be absent, with no error at boot."
+        return 1
+    fi
+
+    install_ota_wrapper || rc=1
+
     log "in-image stub + recovery installed (verified byte-for-byte against the share)"
+    return "$rc"
+}
+
+#
+# THE OTA HOOK.
+#
+# A SteamOS A/B update writes a whole new rootfs into the inactive slot, so
+# everything nvkvm put in the image is gone from it -- including the
+# multi-user.target.wants symlink that would have run nvkvm-boot.service, which
+# is why the failure is silent rather than noisy.  MEASURED 2026-08-28: the
+# first boot of a freshly updated slot had zero nvkvm lines in its journal.
+# Nothing failed; nothing was attempted.
+#
+# So hook the updater: after it applies an update, provision the slot it just
+# wrote, before the user is told to reboot.  Provisioning is the SAME call the
+# Alpine installer makes on a fresh qcow2 -- `--install-only --root <slot>` --
+# which is what lets this propagate: every slot we provision gets this wrapper,
+# so the slot after it gets provisioned too, with nothing outside boot.sh
+# needing to know the hook exists.
+#
+install_ota_wrapper() {
+    local img_dir="$NVKVM_SHARE_MNT/boot/image"
+    local upd orig
+    upd="$(rp /usr/bin/steamos-update)"
+    orig="$(rp /usr/bin/steamos-update.orig)"
+
+    if [ ! -f "$upd" ] && [ ! -f "$orig" ]; then
+        log "ota: this image has no /usr/bin/steamos-update -- nothing to hook"
+        return 0
+    fi
+    #
+    # MOVE VALVE'S ORIGINAL ASIDE EXACTLY ONCE.
+    #
+    # Doing it twice would move OUR wrapper onto steamos-update.orig and destroy
+    # the real updater -- and the wrapper would then chain to itself forever.
+    # The marker distinguishes the two; a fresh slot always has Valve's, because
+    # the update wrote it.
+    #
+    if ! grep -q '^# NVKVM_OTA_WRAPPER' "$upd" 2>/dev/null; then
+        if [ -f "$orig" ]; then
+            log "ota: steamos-update.orig already exists; not moving again"
+        elif ! mv -f "$upd" "$orig"; then
+            err "ota: could not move Valve's steamos-update aside -- hook NOT installed"
+            return 1
+        fi
+    fi
+    plant_file "$img_dir/nvkvm-steamos-update" "$upd" 0755 || {
+        err "ota: could not install the updater wrapper"
+        return 1
+    }
+    if [ ! -x "$orig" ]; then
+        err "ota: $orig is missing, so the wrapper has nothing to chain to."
+        err "ota: REVERTING, rather than leaving this image unable to update."
+        rm -f "$upd"
+        return 1
+    fi
+    log "ota: steamos-update hooked -- the next OS update will provision its new slot"
 }
 
 # ── Part 1 ───────────────────────────────────────────────────────────────────

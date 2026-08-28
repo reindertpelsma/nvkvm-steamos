@@ -1,0 +1,53 @@
+#!/bin/bash
+# NVKVM_OTA_WRAPPER v1 -- do not remove this marker; steamos_boot.sh greps it
+#   to tell its own wrapper from Valve's original before moving anything aside.
+# nvkvm's wrapper around Valve's /usr/bin/steamos-update.
+#
+# Installed by steamos_boot.sh --install-only, which also moves Valve's original
+# to steamos-update.orig.  Because --install-only is what provisions EVERY slot
+# -- the Alpine installer runs it on the fresh qcow2, and nvkvm-ota.sh runs it
+# on each slot the updater writes -- this wrapper reinstalls itself into every
+# future image without anything outside boot.sh knowing it exists.
+#
+# WHAT IT ADDS: after an update has actually been applied, provision the slot
+# the updater just wrote, BEFORE the user is invited to reboot into it.  Without
+# this the new slot boots with no nvkvm module and no /dev/dri, and -- because
+# the boot unit's `wants` symlink is part of the replaced rootfs -- with nothing
+# even attempting to fix it.
+#
+# WHAT IT MUST NOT CHANGE: the exit status.  The Steam client reads it, and the
+# documented contract is narrow (0 applied / 0 available in check mode, 7 no
+# update, 8 already applied, 1 failure).  The original's status is returned
+# verbatim; provisioning failures are reported by nvkvm-ota.sh, which disarms
+# the unprovisioned slot rather than letting it be booted.
+set -uo pipefail
+
+REAL=/usr/bin/steamos-update.orig
+OTA=/usr/local/sbin/nvkvm-ota.sh
+
+[ -x "$REAL" ] || {
+    echo "nvkvm: $REAL is missing; cannot chain to Valve's updater" >&2
+    exit 1
+}
+
+# CHECK MODE IS A QUERY, NOT AN UPDATE.  `steamos-update check` exits 0 to mean
+# "an update is AVAILABLE" -- nothing has been written, so provisioning the
+# other slot then would provision the OLD image and waste minutes of a user's
+# time on every poll.  The Steam client polls this regularly.
+is_check=0
+for a in "$@"; do
+    case "$a" in check|--check) is_check=1 ;;
+    esac
+done
+
+"$REAL" "$@"
+rc=$?
+
+if [ "$is_check" = 0 ] && [ "$rc" = 0 ] && [ -x "$OTA" ]; then
+    # rc=0 outside check mode is Valve's "Applied an update", i.e. the other
+    # slot now holds a new rootfs that has never seen nvkvm.
+    echo "nvkvm: an update was applied; provisioning the new slot before reboot" >&2
+    "$OTA" provision-other || true      # never change the updater's status
+fi
+
+exit "$rc"
