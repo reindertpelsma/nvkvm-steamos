@@ -48,7 +48,15 @@ QCOW_INSTALLING="$QCOW.installing"
 # The plain steamdeck-repair images install VARIANT_ID=steamdeck directly, with
 # steam-jupiter-stable and no such wrapper.  They are an older base (3.7.7 vs
 # 3.8.14) and update themselves forward, which is the normal path.
-PINNED_RECOVERY="steamdeck-repair-20250521.10-3.7.7.img.bz2"
+# Valve's official download button serves the -oobe- image, so that is what
+# users already have and what stays current (3.8.14 vs the plain family's 3.7.7
+# from May 2025, which Valve appears to have stopped republishing).  Its
+# /usr/bin/steam wipes ~/.steam and ~/.local/share/Steam on EVERY launch --
+# steamos_boot.sh detects that and disables it, and the fix self-retires once an
+# OTA graduates the guest to VARIANT_ID=steamdeck.  Pinning the official image
+# rather than a legacy artifact means we do not depend on a file Valve may
+# remove.
+PINNED_RECOVERY="steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2"
 RECOVERY_BASE="https://steamdeck-images.steamos.cloud/recovery"
 LATEST=0
 INSTALL_SHELL=0
@@ -105,8 +113,9 @@ latest_recovery_url() {
     listing="$(curl -fsSL "$RECOVERY_BASE/")" \
         || die "could not read the SteamOS recovery index"
     name="$(printf '%s\n' "$listing" \
-        | grep -oE 'steamdeck-repair-[^"?<> ]+\.img\.bz2' \
-        | sort -Vu | tail -1)"
+        | grep -oE 'steamdeck(-oobe)?-repair-[^"?<> ]+\.img\.bz2' \
+        | sed -E 's/^(.*-repair-)([0-9.]+-[0-9.]+)(\.img\.bz2)$/\2\t&/' \
+        | sort -Vu | tail -1 | cut -f2)"
     [ -n "$name" ] || die "the recovery index contained no repair image (page shape changed?)"
     printf '%s/%s\n' "$RECOVERY_BASE" "$name"
 }

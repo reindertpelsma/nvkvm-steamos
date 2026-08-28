@@ -113,9 +113,11 @@ nvkvm, libcuda and the CUDA/Vulkan libraries.
 nvkvm-pv supports headless rendering desktops you can connect to remotely, but the
 scripts in this repository are not configured for it.
 
-**I downloaded SteamOS from Valve's site — does Steam delete my games every launch?**
-Not any more, but it is worth knowing why. Valve's official download button gives
-you an **OOBE image** (`steamdeck-oobe-repair-*.img`), whose `/usr/bin/steam` runs
+**Does Steam delete my games on every launch?**
+Not here, but it would without a fix, and it is worth knowing why. Valve's
+official download button gives you an **OOBE image**
+(`steamdeck-oobe-repair-*.img`) — that is what this project installs, because it
+is the current, maintained one — and its `/usr/bin/steam` runs
 
 ```
 rm -rf --one-file-system "$HOME"/.steam "$HOME"/.local/share/Steam
