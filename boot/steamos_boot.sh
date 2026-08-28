@@ -991,6 +991,38 @@ KSCREENLOCK
         warn "  After that this patch stops applying by itself."
     fi
 
+    # STEAM'S OWN WIFI-BACKEND SWITCH STRANDS A VM THAT HAS NO WIFI RADIO.
+    #
+    # Not OOBE-specific, so it sits outside the branch above: any SteamOS guest
+    # without a wifi device hits it.  The network page calls
+    #   steamos-polkit-helpers/steamos-wifi-set-backend-privileged restart_units
+    # which, under the `set -euo pipefail` at the top of that script, runs:
+    #
+    #     systemctl stop NetworkManager
+    #     systemctl disable --now "$other_backend"
+    #     ensure_default_interface()   ->  iw phy phy0 interface add wlan0 ...
+    #     systemctl restart NetworkManager      <-- NEVER REACHED
+    #
+    # There is no wifi hardware here, so there is no phy0, `iw` exits non-zero
+    # and set -e aborts the script before the restart.  NetworkManager is left
+    # STOPPED, the wizard asks it what networks exist, gets nothing, and sits on
+    # "No networks found" forever -- on a guest whose wired link is up and
+    # routing fine.
+    #
+    # MEASURED on the laptop, 2026-08-28: NM ran 25.7s, took a DHCP lease and
+    # reached CONNECTED_GLOBAL, then was stopped at 20:19:43.633 -- the exact
+    # timestamp the helper wrote /etc/NetworkManager/conf.d/99-valve-wifi-backend.conf.
+    #
+    # Valve's own Restart=always drop-in does NOT save it: systemd deliberately
+    # does not restart a unit that something stopped explicitly.
+    _wb="$(rp /usr/bin/steamos-polkit-helpers/steamos-wifi-set-backend-privileged)"
+    if [ -f "$_wb" ] && \
+       grep -q '^[[:space:]]*iw phy phy0 interface add wlan0 type station$' "$_wb" 2>/dev/null; then
+        log "neutralising the wifi-backend switch that strands NetworkManager on a radio-less VM"
+        sed -i 's|^\([[:space:]]*\)iw phy phy0 interface add wlan0 type station$|\1# nvkvm: no wifi radio in this VM, so this fails and the set -e above would\n\1# abort the script BEFORE it restarts NetworkManager, stranding the setup\n\1# wizard on "No networks found" with a working wired link.\n\1iw phy phy0 interface add wlan0 type station \|\| true|' "$_wb" \
+            || warn "could not patch the wifi-backend helper -- setup may stall on 'No networks found'"
+    fi
+
     # And suspend itself, structurally.  MEASURED on the physical PC, 2026-08-27:
     # QMP system_powerdown put the guest into S3 -- `query-status` returned
     # {"status": "suspended", "running": false} and the vCPU time stopped
