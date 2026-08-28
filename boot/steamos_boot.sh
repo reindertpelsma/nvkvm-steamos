@@ -1050,36 +1050,50 @@ KSCREENLOCK
         warn "  After that this patch stops applying by itself."
     fi
 
-    # STEAM'S OWN WIFI-BACKEND SWITCH STRANDS A VM THAT HAS NO WIFI RADIO.
+    # GIVE THE GUEST A WI-FI RADIO, BECAUSE STEAMOS ASSUMES ONE EXISTS.
     #
-    # Not OOBE-specific, so it sits outside the branch above: any SteamOS guest
-    # without a wifi device hits it.  The network page calls
-    #   steamos-polkit-helpers/steamos-wifi-set-backend-privileged restart_units
-    # which, under the `set -euo pipefail` at the top of that script, runs:
+    # Setup sits on "No networks found" forever, on a guest whose wired link is
+    # up, has a DHCP lease and routes fine.
     #
-    #     systemctl stop NetworkManager
-    #     systemctl disable --now "$other_backend"
-    #     ensure_default_interface()   ->  iw phy phy0 interface add wlan0 ...
-    #     systemctl restart NetworkManager      <-- NEVER REACHED
+    # The cause is not the wizard. steamos-manager's D-Bus SetWifiBackend --
+    # which the network page calls -- writes the backend config, STOPS
+    # NetworkManager, then runs the equivalent of
     #
-    # There is no wifi hardware here, so there is no phy0, `iw` exits non-zero
-    # and set -e aborts the script before the restart.  NetworkManager is left
-    # STOPPED, the wizard asks it what networks exist, gets nothing, and sits on
-    # "No networks found" forever -- on a guest whose wired link is up and
-    # routing fine.
+    #     iw phy phy0 interface add wlan0 type station
     #
-    # MEASURED on the laptop, 2026-08-28: NM ran 25.7s, took a DHCP lease and
-    # reached CONNECTED_GLOBAL, then was stopped at 20:19:43.633 -- the exact
-    # timestamp the helper wrote /etc/NetworkManager/conf.d/99-valve-wifi-backend.conf.
+    # ("Missing wlan interace, creating it explicitly", typo and all, is a
+    # string in /usr/lib/steamos-manager). A VM has no wifi hardware, so there
+    # is no phy0, that fails, SetWifiBackend returns `Exited 254` -- and
+    # NetworkManager is never restarted. MEASURED on the laptop 2026-08-28: NM
+    # stopped at 21:42:51, the same second the conf file was written, and never
+    # came back. Valve's own Restart=always drop-in does not help, because
+    # systemd will not restart a unit that was stopped deliberately.
     #
-    # Valve's own Restart=always drop-in does NOT save it: systemd deliberately
-    # does not restart a unit that something stopped explicitly.
-    _wb="$(rp /usr/bin/steamos-polkit-helpers/steamos-wifi-set-backend-privileged)"
-    if [ -f "$_wb" ] && \
-       grep -q '^[[:space:]]*iw phy phy0 interface add wlan0 type station$' "$_wb" 2>/dev/null; then
-        log "neutralising the wifi-backend switch that strands NetworkManager on a radio-less VM"
-        sed -i 's|^\([[:space:]]*\)iw phy phy0 interface add wlan0 type station$|\1# nvkvm: no wifi radio in this VM, so this fails and the set -e above would\n\1# abort the script BEFORE it restarts NetworkManager, stranding the setup\n\1# wizard on "No networks found" with a working wired link.\n\1iw phy phy0 interface add wlan0 type station \|\| true|' "$_wb" \
-            || warn "could not patch the wifi-backend helper -- setup may stall on 'No networks found'"
+    # NOTE THE SHELL SCRIPT IS A DECOY. /usr/bin/steamos-polkit-helpers/
+    # steamos-wifi-set-backend-privileged contains the same logic and is the
+    # obvious thing to patch -- it is NOT the path the OOBE takes. Guarding it
+    # changed nothing, which is how steamos-manager was found.
+    #
+    # So supply the missing hardware instead of fighting the software:
+    # mac80211_hwsim is a software 802.11 radio, already built for this kernel.
+    # With it loaded there IS a phy0, the interface is created, SetWifiBackend
+    # succeeds, and NetworkManager is restarted by Valve's own code path.
+    # Nothing of Valve's is modified.
+    #
+    if in_target sh -c 'modinfo mac80211_hwsim >/dev/null 2>&1'; then
+        printf 'mac80211_hwsim\n' > "$(rp /etc/modules-load.d/nvkvm-wifi.conf)"
+        # One radio is enough to own a phy; more would just add clutter to the
+        # wifi list the user is about to be shown.
+        printf 'options mac80211_hwsim radios=1\n' > "$(rp /etc/modprobe.d/99-nvkvm-wifi.conf)"
+        log "wifi: mac80211_hwsim will provide phy0, so SteamOS's wifi setup can complete"
+        [ "$ROOT" = "/" ] && ! [ -d /sys/class/ieee80211/phy0 ] \
+            && { modprobe mac80211_hwsim radios=1 2>/dev/null \
+                 && log "wifi: virtual radio loaded now as well"; }
+    else
+        warn "wifi: this kernel has no mac80211_hwsim, so there will be no phy0."
+        warn "wifi: SteamOS's SetWifiBackend will fail and leave NetworkManager"
+        warn "wifi: stopped -- setup then hangs on 'No networks found'. Recover"
+        warn "wifi: with: systemctl start NetworkManager"
     fi
 
     # And suspend itself, structurally.  MEASURED on the physical PC, 2026-08-27:
