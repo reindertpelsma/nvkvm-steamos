@@ -467,6 +467,13 @@ trap on_term TERM INT
 if [ -n "${NVKVM_PRESENT_TIMING:-}" ]; then
     export NVKVM_PRESENT_TIMING
 fi
+# Frame accounting across the relay: produced at the ingress vs forwarded to the
+# broker, one line per N guest frames.  OFF unless asked for, and for the same
+# reason -- it logs at the guest's flip rate.  Same `if` rather than `[ ] &&`,
+# under `set -e`.
+if [ -n "${NVKVM_RELAY_FRAME_STATS:-}" ]; then
+    export NVKVM_RELAY_FRAME_STATS
+fi
 # The $DATA_DIR share below is mapped-xattr, NOT passthrough.  passthrough writes
 # the guest's uid/gid and MODE straight through to the host, and this QEMU runs as
 # uid 0.  With the documented NVKVM_STEAMOS_DATA=/absolute/host/path the share is a

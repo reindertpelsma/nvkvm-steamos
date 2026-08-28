@@ -185,6 +185,11 @@ services:
       # supported way to turn the stats back on.  Empty is safe -- both the
       # entrypoint and QEMU treat an empty value as off.
       NVKVM_PRESENT_TIMING: ${NVKVM_PRESENT_TIMING:-}
+      # Relay frame accounting (produced vs forwarded), one line per N frames.
+      # OFF unless set, and forwarded here for the same reason as the line
+      # above: the entrypoint honours it, but without an entry here compose
+      # never passes it in and the opt-in is unreachable.
+      NVKVM_RELAY_FRAME_STATS: ${NVKVM_RELAY_FRAME_STATS:-}
       VM_MEM: ${STEAMOS_VM_MEM:-12G}
       VM_SMP: ${STEAMOS_VM_SMP:-8}
       # Empty = fit the host: 60% of the free space where the qcow2 lives,
