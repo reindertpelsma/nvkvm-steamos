@@ -785,25 +785,38 @@ SSHCONF
         local h; h="$(rp "$home")"
         [ -d "$h" ] || { warn "ssh: home '$home' for $u does not exist"; return 0; }
         mkdir -p "$h/.ssh"
-        # MERGE, DO NOT OVERWRITE.  This used to be `cp -f`, which destroyed every
-        # key the operator had added by hand -- on EVERY boot, because /root and
-        # /home live on the persistent partition and survive an A/B slot switch
-        # while this script re-runs each time.  Reported as "I have to constantly
-        # re-add my key at every boot", and that is exactly what it was.
+        # ADD WHAT IS MISSING.  REMOVE NOTHING.
         #
-        # Keys from the data share are rewritten inside a marked block, so they
-        # still track the share exactly (removing one there removes it here).
-        # Anything outside the block is the operator's and is preserved.
-        {
-            if [ -f "$h/.ssh/authorized_keys" ]; then
-                sed '/^# BEGIN nvkvm-managed$/,/^# END nvkvm-managed$/d' \
-                    "$h/.ssh/authorized_keys"
+        # This used to be `cp -f`, which destroyed every key the operator had
+        # added by hand -- on EVERY boot, because /root and /home live on the
+        # PERSISTENT partition and survive even an A/B slot switch, while this
+        # script re-runs each time. Reported as "I have to constantly re-add my
+        # key at every boot", and that is exactly what it was.
+        #
+        # So the share is treated as keys to ENSURE ARE PRESENT, not as the
+        # authoritative contents of the file. A key removed from the share is
+        # therefore NOT removed from the guest; keeping what a human put there
+        # is worth more than making this file track the share exactly.
+        #
+        # Duplicate detection is on the key BODY (the base64 blob), not the
+        # whole line: the same key routinely appears with a different trailing
+        # comment, and matching whole lines would append it again on every boot
+        # until the file was thousands of lines long.
+        #
+        mkdir -p "$h/.ssh"
+        touch "$h/.ssh/authorized_keys"
+        local _added=0 _line _body
+        while IFS= read -r _line || [ -n "$_line" ]; do
+            case "$_line" in ''|\#*) continue ;; esac
+            _body="$(printf '%s\n' "$_line" | tr ' \t' '\n\n' | grep -m1 '^AAAA' || true)"
+            if [ -n "$_body" ]; then
+                grep -qF -- "$_body" "$h/.ssh/authorized_keys" && continue
+            else
+                grep -qxF -- "$_line" "$h/.ssh/authorized_keys" && continue
             fi
-            echo "# BEGIN nvkvm-managed"
-            cat "$src"
-            echo "# END nvkvm-managed"
-        } > "$h/.ssh/authorized_keys.nvkvm-new"
-        mv -f "$h/.ssh/authorized_keys.nvkvm-new" "$h/.ssh/authorized_keys"
+            printf '%s\n' "$_line" >> "$h/.ssh/authorized_keys"
+            _added=$((_added + 1))
+        done < "$src"
         # sshd SILENTLY ignores keys with loose permissions -- a running sshd that
         # rejects a perfectly good key, with nothing useful client-side. Set these
         # explicitly; files copied off a 9p mount will not have them by default.
@@ -811,7 +824,7 @@ SSHCONF
         chmod 600 "$h/.ssh/authorized_keys"
         chown -R "$uid:$gid" "$h/.ssh"
         chmod go-w "$h"          # sshd also refuses a group/other-writable home
-        log "ssh: installed authorized_keys for '$u' ($(wc -l < "$src") key line(s))"
+        log "ssh: authorized_keys for '$u': added $_added new key(s) from the data share, kept everything already there"
     }
 
     # Interactive user, not root. SteamOS uses `deck`; fall back to `user`.
