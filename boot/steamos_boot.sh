@@ -940,11 +940,31 @@ KSCREENLOCK
     # built before that fix says so loudly instead of quietly eating data.
     _variant="$(sed -n 's/^VARIANT_ID=//p' "$(rp /etc/os-release)" 2>/dev/null | tr -d '"')"
     if [ "$_variant" = "steamdeck-oobe" ]; then
-        warn "THIS IS AN OOBE IMAGE (VARIANT_ID=steamdeck-oobe)."
-        warn "  /usr/bin/steam here DELETES ~/.steam and ~/.local/share/Steam on"
-        warn "  EVERY launch -- your Steam login, library and games will not survive."
-        warn "  Rebuild from a plain steamdeck-repair-*.img (NOT -oobe-), or let the"
-        warn "  guest take an OTA update to reach VARIANT_ID=steamdeck."
+        # NEUTRALISE THE WIPE FIRST, WARN SECOND.  A warning alone leaves a
+        # window between first boot and the user finding time for a multi-GB
+        # OTA, and every Steam launch in that window destroys their library.
+        #
+        # Guarded on the line actually being present, so this is a no-op on a
+        # stable image and SELF-RETIRES the moment an OTA graduates the guest to
+        # VARIANT_ID=steamdeck with steam-jupiter-stable.  Re-applied on every
+        # convergence, so a package update that restores the file is handled the
+        # same way every other Valve-owned file here is.
+        _sj="$(rp /usr/bin/steam-jupiter)"
+        if [ -f "$_sj" ] && grep -q 'rm -rf --one-file-system' "$_sj" 2>/dev/null; then
+            log "OOBE image: neutralising the Steam-wiping rm -rf in /usr/bin/steam-jupiter"
+            sed -i 's|^\([[:space:]]*\)rm -rf --one-file-system|\1: # nvkvm: DISABLED -- this deleted the user'"'"'s Steam install on every launch\n\1: # nvkvm: original: rm -rf --one-file-system|' "$_sj" \
+                || warn "OOBE: could not patch /usr/bin/steam-jupiter -- Steam WILL wipe itself on every launch"
+        fi
+
+        warn "This is an OOBE image (VARIANT_ID=steamdeck-oobe)."
+        warn "  Its /usr/bin/steam deleted ~/.steam and ~/.local/share/Steam on EVERY"
+        warn "  launch -- login, library index and installed games.  That has been"
+        warn "  disabled above, so your data is safe."
+        warn "  But an OOBE image still 'lacks the proper steam overlay/repair code'"
+        warn "  (Valve's own words), so a Steam install that DOES break will not"
+        warn "  self-repair.  Graduate to real SteamOS when convenient:"
+        warn "      sudo steamos-update            # several GB, reboots into the other slot"
+        warn "  After that this patch stops applying by itself."
     fi
 
     # And suspend itself, structurally.  MEASURED on the physical PC, 2026-08-27:
