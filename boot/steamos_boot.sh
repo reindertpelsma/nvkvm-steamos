@@ -831,7 +831,31 @@ write_sddm_session_config() {
     # of the autologin user and relogin policy.
     local sddm_override
     sddm_override="$(rp /etc/sddm.conf.d/zz-nvkvm-plasma.conf)"
-    if [ "$PROFILE" = steamos ] \
+    # DO NOT hijack the session on an OOBE image.  VARIANT_ID=steamdeck-oobe is a
+    # transitional state whose out-of-box flow is what GRADUATES the guest: it
+    # runs wifi -> steamos-update (the OTA) -> Steam sign-in -> tips, and the
+    # update comes BEFORE the sign-in.  That ordering is why nobody on real
+    # hardware loses a login to the OOBE launcher's rm -rf -- they are already on
+    # VARIANT_ID=steamdeck by the time they have anything to lose.
+    #
+    # Forcing Plasma autologin here skipped that flow entirely, so the guest sat
+    # in a state meant to last minutes, permanently.  That -- not nvkvm, not
+    # QEMU, not the filesystem -- is why Steam wiped itself on this stack.
+    #
+    # So leave SDDM alone while OOBE, let the user complete Valve's setup, and
+    # write the override on the next convergence once the OTA has landed.
+    # NVKVM_STEAMOS_FORCE_PLASMA=1 overrides this, for a guest where the
+    # gamescope OOBE session does not come up (its KMS expectations against
+    # nvkvm's single-plane, cursor-less pipe are UNTESTED as of 2026-08-28).
+    local _oobe=0
+    [ "$(sed -n 's/^VARIANT_ID=//p' "$(rp /etc/os-release)" 2>/dev/null | tr -d '"')" = "steamdeck-oobe" ] \
+        && _oobe=1
+    if [ "$_oobe" = 1 ] && [ "${NVKVM_STEAMOS_FORCE_PLASMA:-0}" != 1 ]; then
+        rm -f "$sddm_override"
+        log "OOBE image: leaving SteamOS's own session in place so Valve's setup flow runs"
+        log "  it performs the OTA that graduates this guest to VARIANT_ID=steamdeck"
+        log "  (set NVKVM_STEAMOS_FORCE_PLASMA=1 to force the Plasma desktop instead)"
+    elif [ "$PROFILE" = steamos ] \
        && [ -e "$(rp /usr/share/wayland-sessions/plasma.desktop)" ]; then
         mkdir -p "$(dirname "$sddm_override")"
         cat > "$sddm_override" <<'SDDM'
