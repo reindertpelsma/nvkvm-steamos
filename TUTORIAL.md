@@ -121,10 +121,10 @@ You want to see both `virtio-nvgpu-pci` and `nvkvm-gpu` in that second listing.
 
 Download Valve's **SteamOS recovery image** (the "Steam Deck Recovery
 Instructions" download). Everything documented in this repository was done with
-`steamdeck-oobe-repair-20260707.10-3.8.14`, which is still downloadable directly:
+`steamdeck-repair-20250521.10-3.7.7`, which is still downloadable directly:
 
 ```sh
-curl -O https://steamdeck-images.steamos.cloud/recovery/steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2
+curl -O https://steamdeck-images.steamos.cloud/recovery/steamdeck-repair-20250521.10-3.7.7.img.bz2
 ```
 
 That URL is a **pin, not the only option** — newer recovery images appear under
@@ -143,7 +143,7 @@ Keep the original. You will want to start over at least once.
 > **Steps 4 and 5 are one command if you want them to be.**
 > ```sh
 > sudo ~/nvkvm/nvkvm-steamos/build_steamos_image.sh \
->   --src ~/nvkvm/steamdeck-oobe-repair-20260707.10-3.8.14.img \
+>   --src ~/nvkvm/steamdeck-repair-20250521.10-3.7.7.img \
 >   --share ~/nvkvm/nvkvm-pv
 > ```
 > [`build_steamos_image.sh`](build_steamos_image.sh) mechanises everything from

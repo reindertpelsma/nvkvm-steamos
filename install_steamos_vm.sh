@@ -2,7 +2,7 @@
 # install_steamos_vm.sh — produce a REAL, dual-slot SteamOS install by letting
 # Valve's own installer run inside a disposable VM.
 #
-#   ./install_steamos_vm.sh --repair steamdeck-oobe-repair-*.img --out steamos.qcow2
+#   ./install_steamos_vm.sh --repair steamdeck-repair-*.img --out steamos.qcow2
 #
 # ── Why this exists, and why it is not build_steamos_image.sh ────────────────
 #

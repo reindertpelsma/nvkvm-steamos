@@ -113,6 +113,33 @@ nvkvm, libcuda and the CUDA/Vulkan libraries.
 nvkvm-pv supports headless rendering desktops you can connect to remotely, but the
 scripts in this repository are not configured for it.
 
+**Does Steam delete my games on every launch?**
+Not here, but it would without a fix, and it is worth knowing why. Valve's
+official download button gives you an **OOBE image**
+(`steamdeck-oobe-repair-*.img`) — that is what this project installs, because it
+is the current, maintained one — and its `/usr/bin/steam` runs
+
+```
+rm -rf --one-file-system "$HOME"/.steam "$HOME"/.local/share/Steam
+```
+
+**unconditionally on every launch** — login, library index and installed games.
+Valve's own comment explains it: *"On OOBE images we want to always start with a
+fresh steam per boot as we lack the proper steam overlay/repair code."* That is
+fine for the handful of boots before a real Steam Deck's first update graduates
+it to normal SteamOS; it is catastrophic on a machine anyone actually uses.
+
+Provisioning detects this and disables that line, so **your data is safe**. But an
+OOBE image genuinely lacks Steam's repair machinery, so a Steam install that does
+break will not self-heal. To move to real SteamOS, run inside the guest:
+
+```sh
+sudo steamos-update      # several GB; reboots into the other A/B slot
+```
+
+After that the guest is `VARIANT_ID=steamdeck` with the normal launcher, and our
+patch stops applying by itself.
+
 **Will anti-cheat work?**
 No, and this is a won't-fix. Anti-cheat generally breaks under VMs by design —
 strict implementations deliberately require bare metal and full root access, often
@@ -168,7 +195,7 @@ through KVM into the host kernel is a far higher bar.
 For a SteamOS qcow2 on the host instead of the full Compose deployment:
 
 ```sh
-./install_steamos_vm.sh --repair steamdeck-oobe-repair-*.img --out steamos.qcow2
+./install_steamos_vm.sh --repair steamdeck-repair-*.img --out steamos.qcow2
 ```
 
 This path needs `qemu-system-x86_64`, `qemu-img`, OVMF, common archive tools,

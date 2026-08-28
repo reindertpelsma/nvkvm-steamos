@@ -831,7 +831,31 @@ write_sddm_session_config() {
     # of the autologin user and relogin policy.
     local sddm_override
     sddm_override="$(rp /etc/sddm.conf.d/zz-nvkvm-plasma.conf)"
-    if [ "$PROFILE" = steamos ] \
+    # DO NOT hijack the session on an OOBE image.  VARIANT_ID=steamdeck-oobe is a
+    # transitional state whose out-of-box flow is what GRADUATES the guest: it
+    # runs wifi -> steamos-update (the OTA) -> Steam sign-in -> tips, and the
+    # update comes BEFORE the sign-in.  That ordering is why nobody on real
+    # hardware loses a login to the OOBE launcher's rm -rf -- they are already on
+    # VARIANT_ID=steamdeck by the time they have anything to lose.
+    #
+    # Forcing Plasma autologin here skipped that flow entirely, so the guest sat
+    # in a state meant to last minutes, permanently.  That -- not nvkvm, not
+    # QEMU, not the filesystem -- is why Steam wiped itself on this stack.
+    #
+    # So leave SDDM alone while OOBE, let the user complete Valve's setup, and
+    # write the override on the next convergence once the OTA has landed.
+    # NVKVM_STEAMOS_FORCE_PLASMA=1 overrides this, for a guest where the
+    # gamescope OOBE session does not come up (its KMS expectations against
+    # nvkvm's single-plane, cursor-less pipe are UNTESTED as of 2026-08-28).
+    local _oobe=0
+    [ "$(sed -n 's/^VARIANT_ID=//p' "$(rp /etc/os-release)" 2>/dev/null | tr -d '"')" = "steamdeck-oobe" ] \
+        && _oobe=1
+    if [ "$_oobe" = 1 ] && [ "${NVKVM_STEAMOS_FORCE_PLASMA:-0}" != 1 ]; then
+        rm -f "$sddm_override"
+        log "OOBE image: leaving SteamOS's own session in place so Valve's setup flow runs"
+        log "  it performs the OTA that graduates this guest to VARIANT_ID=steamdeck"
+        log "  (set NVKVM_STEAMOS_FORCE_PLASMA=1 to force the Plasma desktop instead)"
+    elif [ "$PROFILE" = steamos ] \
        && [ -e "$(rp /usr/share/wayland-sessions/plasma.desktop)" ]; then
         mkdir -p "$(dirname "$sddm_override")"
         cat > "$sddm_override" <<'SDDM'
@@ -921,6 +945,52 @@ Autolock=false
 LockOnResume=false
 Timeout=0
 KSCREENLOCK
+    # REFUSE AN OOBE IMAGE.  VARIANT_ID=steamdeck-oobe ships steam-jupiter-oobe,
+    # whose /usr/bin/steam runs
+    #     rm -rf --one-file-system "$HOME"/.steam "$HOME"/.local/share/Steam
+    # UNCONDITIONALLY at every launch.  Its own comment says why: "On OOBE images
+    # we want to always start with a fresh steam per boot as we lack the proper
+    # steam overlay/repair code."  That is correct for the handful of boots
+    # before a real Deck's first OTA graduates it to VARIANT_ID=steamdeck; it is
+    # catastrophic for a machine anyone actually uses, destroying the Steam
+    # login, the library index and installed games on every start.
+    #
+    # MEASURED on the physical PC 2026-08-28: caught mid-act, the rm as a direct
+    # child of the launcher, with a 40 GB game install already lost to it.
+    #
+    # The cause is upstream of this script -- the wrong recovery image was
+    # fetched -- and the fix is to install from a plain steamdeck-repair-*.img
+    # rather than steamdeck-oobe-repair-*.img.  This check exists so an image
+    # built before that fix says so loudly instead of quietly eating data.
+    _variant="$(sed -n 's/^VARIANT_ID=//p' "$(rp /etc/os-release)" 2>/dev/null | tr -d '"')"
+    if [ "$_variant" = "steamdeck-oobe" ]; then
+        # NEUTRALISE THE WIPE FIRST, WARN SECOND.  A warning alone leaves a
+        # window between first boot and the user finding time for a multi-GB
+        # OTA, and every Steam launch in that window destroys their library.
+        #
+        # Guarded on the line actually being present, so this is a no-op on a
+        # stable image and SELF-RETIRES the moment an OTA graduates the guest to
+        # VARIANT_ID=steamdeck with steam-jupiter-stable.  Re-applied on every
+        # convergence, so a package update that restores the file is handled the
+        # same way every other Valve-owned file here is.
+        _sj="$(rp /usr/bin/steam-jupiter)"
+        if [ -f "$_sj" ] && grep -q 'rm -rf --one-file-system' "$_sj" 2>/dev/null; then
+            log "OOBE image: neutralising the Steam-wiping rm -rf in /usr/bin/steam-jupiter"
+            sed -i 's|^\([[:space:]]*\)rm -rf --one-file-system|\1: # nvkvm: DISABLED -- this deleted the user'"'"'s Steam install on every launch\n\1: # nvkvm: original: rm -rf --one-file-system|' "$_sj" \
+                || warn "OOBE: could not patch /usr/bin/steam-jupiter -- Steam WILL wipe itself on every launch"
+        fi
+
+        warn "This is an OOBE image (VARIANT_ID=steamdeck-oobe)."
+        warn "  Its /usr/bin/steam deleted ~/.steam and ~/.local/share/Steam on EVERY"
+        warn "  launch -- login, library index and installed games.  That has been"
+        warn "  disabled above, so your data is safe."
+        warn "  But an OOBE image still 'lacks the proper steam overlay/repair code'"
+        warn "  (Valve's own words), so a Steam install that DOES break will not"
+        warn "  self-repair.  Graduate to real SteamOS when convenient:"
+        warn "      sudo steamos-update            # several GB, reboots into the other slot"
+        warn "  After that this patch stops applying by itself."
+    fi
+
     # And suspend itself, structurally.  MEASURED on the physical PC, 2026-08-27:
     # QMP system_powerdown put the guest into S3 -- `query-status` returned
     # {"status": "suspended", "running": false} and the vCPU time stopped
