@@ -45,6 +45,22 @@ grep -q "trap 'chroot_teardown; restore_ro_state' EXIT" "$BOOT" \
     && echo "ok: teardown runs on exit, including on failure" \
     || { echo "FAIL: chroot_teardown is not on the EXIT trap"; rc=1; }
 
+# THE ROOT CAUSE: pacman-key --populate starts a gpg-agent, which DAEMONISES
+# and keeps an open fd under the target's /dev. That fd pinned the bind mount,
+# the unmount failed, and the lazy fallback then left the slot busy for rauc.
+# Identified on the PC 2026-08-28 once the holder report looked at open fds:
+# "held by: 9795(gpg-agent,fd)". Killing the target's inhabitants first took
+# lazy unmounts from 1 to 0 on the same machine.
+grep -q '^chroot_kill_inhabitants()' "$BOOT" \
+    && echo "ok: processes living in the target are stopped before unmounting" \
+    || { echo "FAIL: a daemon left in the chroot will pin the mount"; rc=1; }
+sed -n '/^chroot_kill_inhabitants()/,/^}/p' "$BOOT" | grep -q 'ROOT" = "/"' \
+    && echo "ok: it refuses to do that on the live system" \
+    || { echo "FAIL: no ROOT=/ guard -- it would kill the running system"; rc=1; }
+sed -n '/^chroot_teardown()/,/^}/p' "$BOOT" | grep -q 'chroot_kill_inhabitants' \
+    && echo "ok: teardown calls it before unmounting" \
+    || { echo "FAIL: the kill is never invoked"; rc=1; }
+
 # THE REAL GUARANTEE: provisioning runs in a private mount namespace, so the
 # kernel drops every mount it made when it exits. Retrying the unmount was NOT
 # enough -- measured 2026-08-28, it worked with nothing else touching the slot

@@ -205,8 +205,46 @@ chroot_umount_one() {   # <mountpoint>
     return 1
 }
 
+#
+# KILL WHAT WE STARTED INSIDE THE TARGET, BEFORE UNMOUNTING IT.
+#
+# pacman-key --populate starts a gpg-agent, and gpg-agent DAEMONISES: it
+# outlives the pacman that spawned it and keeps an open fd under the target's
+# /dev. That fd pins the bind mount, the unmount fails, and the fallback is a
+# lazy unmount -- which keeps the filesystem alive and, outside a private
+# namespace, leaves the slot busy for rauc.
+#
+# IDENTIFIED 2026-08-28 on the PC, by the holder report finally looking at open
+# fds: "held by: 9795(gpg-agent,fd)". Hours of checking cwd, root and
+# mountinfo found nothing, because none of those was where it was.
+#
+# Kill only processes whose ROOT is inside the target -- those are ours by
+# construction, since nothing else chroots here. TERM first; a gpg-agent takes
+# it politely.
+#
+chroot_kill_inhabitants() {
+    [ "$ROOT" = "/" ] && return 0
+    local p r killed=""
+    for p in /proc/[0-9]*; do
+        r="$(readlink "$p/root" 2>/dev/null)" || continue
+        case "$r" in
+            "$ROOT"|"$ROOT"/*)
+                killed="$killed ${p#/proc/}($(cat "$p/comm" 2>/dev/null))"
+                kill -TERM "${p#/proc/}" 2>/dev/null ;;
+        esac
+    done
+    [ -n "$killed" ] || return 0
+    log "chroot: stopped processes still living in the target:$killed"
+    sleep 1
+    for p in /proc/[0-9]*; do
+        r="$(readlink "$p/root" 2>/dev/null)" || continue
+        case "$r" in "$ROOT"|"$ROOT"/*) kill -KILL "${p#/proc/}" 2>/dev/null ;; esac
+    done
+}
+
 chroot_teardown() {
     local m
+    chroot_kill_inhabitants
     for m in $CHROOT_MOUNTS; do
         mountpoint -q "$m" || continue
         chroot_umount_one "$m" && continue
