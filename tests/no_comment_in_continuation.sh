@@ -10,7 +10,7 @@
 #
 # Usage: tests/no_comment_in_continuation.sh [files...]   (default: tracked .sh)
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 if [ "$#" -gt 0 ]; then
     files=("$@")
