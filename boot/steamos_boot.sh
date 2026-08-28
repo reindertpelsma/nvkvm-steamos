@@ -187,9 +187,19 @@ chroot_umount_one() {   # <mountpoint>
     # Name the holder if we can; "busy" with no culprit is unactionable.
     local holders
     holders="$(for p in /proc/[0-9]*; do
+                   # cwd and root are the obvious holders and were the only
+                   # ones checked -- which is why this reported "no culprit"
+                   # twice while something plainly held the mount. An OPEN FD
+                   # pins it just as hard, and that is what the NVIDIA
+                   # installer and modprobe leave under the target's /dev.
                    case "$(readlink "$p/cwd" 2>/dev/null)$(readlink "$p/root" 2>/dev/null)" in
-                       *"$m"*) printf '%s(%s) ' "${p#/proc/}" "$(cat "$p/comm" 2>/dev/null)" ;;
+                       *"$m"*) printf '%s(%s) ' "${p#/proc/}" "$(cat "$p/comm" 2>/dev/null)"; continue ;;
                    esac
+                   for _fd in "$p"/fd/*; do
+                       case "$(readlink "$_fd" 2>/dev/null)" in
+                           *"$m"*) printf '%s(%s,fd) ' "${p#/proc/}" "$(cat "$p/comm" 2>/dev/null)"; break ;;
+                       esac
+                   done
                done)"
     [ -n "$holders" ] && warn "chroot: $m is held by: $holders"
     return 1

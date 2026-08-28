@@ -45,6 +45,22 @@ grep -q "trap 'chroot_teardown; restore_ro_state' EXIT" "$BOOT" \
     && echo "ok: teardown runs on exit, including on failure" \
     || { echo "FAIL: chroot_teardown is not on the EXIT trap"; rc=1; }
 
+# THE REAL GUARANTEE: provisioning runs in a private mount namespace, so the
+# kernel drops every mount it made when it exits. Retrying the unmount was NOT
+# enough -- measured 2026-08-28, it worked with nothing else touching the slot
+# and still fell back to lazy during a real OTA.
+grep -q 'unshare -m --propagation private' "$OTA" \
+    && echo "ok: provisioning runs in a private mount namespace" \
+    || { echo "FAIL: no namespace -- a leaked mount can still break the OS update"; rc=1; }
+grep -q 'no usable unshare' "$OTA" \
+    && echo "ok: it says so when unshare is unavailable rather than pretending" \
+    || { echo "FAIL: a missing unshare(1) would be silent"; rc=1; }
+# and the holder report must look at OPEN FDS, not just cwd/root -- checking
+# only those is why it reported "no culprit" while something plainly held it
+sed -n '/^chroot_umount_one()/,/^}/p' "$BOOT" | grep -q 'fd/\*' \
+    && echo "ok: the holder report inspects open fds" \
+    || { echo "FAIL: holder detection ignores open fds, the likely holder"; rc=1; }
+
 # a clean unmount must be TRIED HARD first: a lazy one breaks rauc's
 # post-install handler and therefore the OS update itself
 grep -q 'umount -R' "$BOOT" \

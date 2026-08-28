@@ -136,9 +136,34 @@ provision_other() {
         || fail "could not bind /home -- the build area falls back to the rootfs"; }
 
     log "provisioning the newly written slot at $mnt"
-    # THE SAME CALL THE ALPINE INSTALLER MAKES. It owns the read-only handling,
-    # the chroot it needs, the module build and arming the boot unit.
-    "$SHARE_MNT/boot/steamos_boot.sh" --install-only --root "$mnt" >>"$LOG" 2>&1 || rc=$?
+    #
+    # RUN IT IN A PRIVATE MOUNT NAMESPACE.
+    #
+    # steamos_boot.sh binds /proc, /sys, /dev and a resolver into the target and
+    # unmounts them on its EXIT trap. That teardown is not reliable: something
+    # holds an open fd under the target's /dev -- the NVIDIA installer and
+    # modprobe both run in there -- so the umount fails, the fallback is a LAZY
+    # unmount, and a lazy unmount keeps the filesystem alive. btrfs then goes on
+    # holding the slot and rauc's post-install handler fails with code 32,
+    # reported to the user as "Unable to download the required update".
+    #
+    # MEASURED 2026-08-28: retrying the unmount five times with `umount -R`
+    # fixed it when nothing else touched the slot, and did NOT fix it during a
+    # real OTA. Retries treat the symptom.
+    #
+    # In a private namespace the kernel drops every mount the process made when
+    # it exits, whether or not anything held them. The leak stops being
+    # something to get right and becomes something that cannot happen.
+    # --propagation private so the binds cannot escape back to us.
+    #
+    local runner=""
+    if command -v unshare >/dev/null 2>&1 \
+       && unshare -m --propagation private true 2>/dev/null; then
+        runner="unshare -m --propagation private"
+    else
+        fail "no usable unshare(1): provisioning mounts will rely on teardown"
+    fi
+    $runner "$SHARE_MNT/boot/steamos_boot.sh" --install-only --root "$mnt" >>"$LOG" 2>&1 || rc=$?
 
     # Belt and braces: --install-only verifies this itself and fails loudly, but
     # it is the property the whole exercise exists to guarantee.
