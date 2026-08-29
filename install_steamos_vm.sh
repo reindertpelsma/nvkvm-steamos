@@ -216,6 +216,16 @@ GUEST_INIT="$HERE/vm/guest-init.sh"
 mkdir -p "$WORK/cpio/nvkvm"
 cp "$GUEST_INIT" "$WORK/cpio/nvkvm/guest-init.sh"
 chmod +x "$WORK/cpio/nvkvm/guest-init.sh"
+# The patch that resizes Valve's rootfs slots rides the initramfs, NOT the 9p
+# share. It belongs to the installer, and `--stages repair` does not take a
+# --share at all -- carrying it on the share made a plain repair run fail with
+# "patch not found", which is correct behaviour reached by the wrong route.
+mkdir -p "$WORK/cpio/nvkvm/patches"
+if [ -d "$HERE/boot/patches" ]; then
+    cp "$HERE/boot/patches/"*.patch "$WORK/cpio/nvkvm/patches/" 2>/dev/null
+fi
+[ -f "$WORK/cpio/nvkvm/patches/0002-repair-device-rootfs-size.patch" ] \
+    || die $E_TOOL "boot/patches/0002-repair-device-rootfs-size.patch is missing; refusing to install with Valve's 5 GiB slots, which cannot be resized afterwards"
 ( cd "$WORK/cpio" && find . -print0 | cpio --null -o -H newc --owner root:root 2>/dev/null | gzip -9 ) \
     > "$WORK/custom.cpio.gz" || die $E_TOOL "could not build the custom cpio"
 cat "$ALPINE_DIR/boot/initramfs-virt" "$WORK/custom.cpio.gz" > "$WORK/combined.img" \

@@ -458,7 +458,10 @@ start_udev
 # first; a failure here aborts the install with the reason on screen.
 patch_repair_device() {
     local target="$CHROOT/home/deck/tools/repair_device.sh"
-    local patchfile="$SHARE_MNT/boot/patches/0002-repair-device-rootfs-size.patch"
+    # Delivered in the initramfs cpio next to this script, so a plain
+    # `--stages repair` (which takes no --share) still gets it.
+    local patchfile=/nvkvm/patches/0002-repair-device-rootfs-size.patch
+    [ -f "$patchfile" ] || patchfile="$SHARE_MNT/boot/patches/0002-repair-device-rootfs-size.patch"
 
     [ -f "$target" ] || { log "FATAL: $target is missing -- is this a repair image?"; return 1; }
     if [ ! -f "$patchfile" ]; then
