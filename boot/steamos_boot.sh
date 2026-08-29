@@ -701,6 +701,45 @@ installed_userspace_version() {
     in_target sh -c 'ls /usr/lib/libnvidia-glcore.so.* 2>/dev/null | head -1' \
         | sed 's/.*libnvidia-glcore\.so\.//'
 }
+nvidia_userspace_complete() {
+    # A version match is NOT proof of a finished install.
+    #
+    # MEASURED 2026-08-29 on a real A/B slot: the .run extraction was OOM-killed
+    # part-way through (it unpacks ~1 GB, and for a target root the scratch dir
+    # used to land in a tmpfs).  The payload installs libnvidia-glcore EARLY, so
+    # installed_userspace_version() still reported the right version and every
+    # subsequent converge logged "NVIDIA userspace matches host" and skipped the
+    # install -- the half-written tree was never repaired, on any boot.
+    #
+    # What was missing was the tail of the file list, and it was display-fatal:
+    # /usr/lib/gbm/nvidia-drm_gbm.so and the EGL external-platform configs.  gbm
+    # picks its backend by DRM driver name, so without that one symlink KWin got
+    # Mesa's dri_gbm.so on our NVIDIA-identity device: the atomic test buffer was
+    # rejected, the output stayed "connected" but "disabled", nothing was ever
+    # presented, and forcing the legacy path made kwin_wayland segfault inside
+    # libgallium every two seconds.
+    #
+    # So check for the FILES the display path actually needs, not the version.
+    # Deliberately profile-aware: CUDA/OpenCL/firmware are discarded on purpose
+    # by --profile steamos, so none of them belong in this list.
+    local ver="$1" f
+    NVIDIA_MISSING=""
+    for f in \
+        /usr/lib/libEGL_nvidia.so.0 \
+        /usr/lib/libGLX_nvidia.so.0 \
+        /usr/lib/libnvidia-eglcore.so."$ver" \
+        /usr/lib/libnvidia-glcore.so."$ver" \
+        /usr/lib/libnvidia-allocator.so.1 \
+        /usr/lib/libnvidia-egl-gbm.so.1 \
+        /usr/lib/gbm/nvidia-drm_gbm.so \
+        /usr/share/glvnd/egl_vendor.d/10_nvidia.json \
+        /usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json
+    do
+        [ -e "$(rp "$f")" ] || NVIDIA_MISSING="$NVIDIA_MISSING $f"
+    done
+    [ -z "$NVIDIA_MISSING" ]
+}
+
 run_cache() {
     # Offline provisioning runs before SteamOS creates the deck account and its
     # home. Caching below /home/deck here creates that directory as root; the
@@ -2048,8 +2087,12 @@ do_install() {
     if [ -z "$hv" ]; then
         err "could not determine the host NVIDIA driver version"
         rc=1
-    elif [ "$hv" != "$iv" ]; then
-        log "NVIDIA userspace mismatch (host=$hv guest=${iv:-none}) -- installing"
+    elif [ "$hv" != "$iv" ] || ! nvidia_userspace_complete "$iv"; then
+        if [ "$hv" != "$iv" ]; then
+            log "NVIDIA userspace mismatch (host=$hv guest=${iv:-none}) -- installing"
+        else
+            log "NVIDIA userspace $hv is INCOMPLETE, repairing -- missing:${NVIDIA_MISSING}"
+        fi
         local run
         if run="$(locate_or_fetch_run "$hv")"; then
             install_nvidia_userspace "$run" || rc=1
