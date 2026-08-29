@@ -1219,6 +1219,34 @@ SSHCONF
         chown -R "$uid:$gid" "$h/.ssh"
         chmod go-w "$h"          # sshd also refuses a group/other-writable home
         log "ssh: authorized_keys for '$u': added $_added new key(s) from the data share, kept everything already there"
+        #
+        # SAY WHAT IS THERE THAT THE SHARE DID NOT PUT THERE.
+        #
+        # Add-only is the right default -- see above -- but combined with where
+        # this file lives it means NOTHING ever revokes a key. /home and /root
+        # are on the persistent partition, which a steamdeck-repair reimage
+        # keeps on purpose: it reformats the rootfs slots and /var and nothing
+        # else. So reinstalling the machine does not remove a key either, and
+        # an operator who believes it did is wrong in the one direction that
+        # matters. The keys are not the problem; the silence is.
+        #
+        # Reporting only: removing them is a decision this script must not take
+        # on its own, because the measured failure it is avoiding is exactly a
+        # version of this file that deleted keys a human had added.
+        local _extra=0
+        while IFS= read -r _line || [ -n "$_line" ]; do
+            case "$_line" in ''|\#*) continue ;; esac
+            _body="$(printf '%s\n' "$_line" | tr ' \t' '\n\n' | grep -m1 '^AAAA' || true)"
+            if [ -n "$_body" ]; then grep -qF -- "$_body" "$src" && continue
+            else                     grep -qxF -- "$_line" "$src" && continue; fi
+            _extra=$((_extra + 1))
+            warn "ssh: '$u' authorized_keys holds a key the data share does not: ${_line:0:60}..."
+        done < "$h/.ssh/authorized_keys"
+        if [ "$_extra" -gt 0 ]; then
+            warn "ssh: $_extra key(s) above grant access to '$u' and NOTHING here removes them."
+            warn "  Not a reinstall either: a repair image reformats the rootfs slots and"
+            warn "  keeps /home. To revoke, edit ~$u/.ssh/authorized_keys in the guest."
+        fi
     }
 
     # Interactive user, not root. SteamOS uses `deck`; fall back to `user`.
