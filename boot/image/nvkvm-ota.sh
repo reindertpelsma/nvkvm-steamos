@@ -53,6 +53,23 @@ disarm_other() {
     this="$(steamos-bootconf this-image 2>/dev/null)" || return 0
     for other in $(steamos-bootconf list-images 2>/dev/null); do
         [ "$other" = "$this" ] && continue
+        # `list-images` is NOT a list of bootable slots.  MEASURED on a real
+        # OTA (2026-08-29): it returned
+        #     B dev Desktop Documents Downloads Music Pictures Public Templates Videos A
+        # -- the XDG directories of /home/deck, straight through.  `--set` does
+        # not validate the name either, so the loop happily wrote
+        # /esp/SteamOS/conf/Desktop.conf and friends, MANUFACTURING nine bogus
+        # images that then appear in every later `list-images`.  That is not
+        # cosmetic: SteamOS's own chainloader picks from those entries, and it
+        # is why `steamos-bootconf set-mode reboot-other` once selected an image
+        # called 'dev' and left the machine unbootable.
+        #
+        # A real slot is one with a rootfs partset. Nothing else may be touched,
+        # least of all created.
+        [ -e "/dev/disk/by-partsets/$other/rootfs" ] || {
+            log "skipping '$other' -- not a boot slot (no rootfs partset)"
+            continue
+        }
         steamos-bootconf config --image "$other" --set boot-requested-at 0 >/dev/null 2>&1 \
             && log "disarmed image '$other' -- it will not be booted"
     done
