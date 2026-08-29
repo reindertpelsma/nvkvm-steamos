@@ -209,6 +209,34 @@ fi
 [ -c /dev/kvm ] || die "/dev/kvm is absent (Compose must grant the device)."
 [ -r /dev/kvm ] && [ -w /dev/kvm ] \
     || die "/dev/kvm is not usable. Set NVKVM_KVM_GID to: stat -c %g /dev/kvm"
+
+# The guest's DRM node is a PROXY. nvkvm_drm_open() forwards to the host's DRM
+# render node and returns its errno verbatim, so if this container cannot see
+# /dev/dri the guest gets -ENOENT from open("/dev/dri/card0") -- while stat(2),
+# /proc/devices, /sys/class/drm and the module's own probe all look perfect.
+#
+# MEASURED on a vast.ai KVM box: every compositor died on
+#     kwin_core: Failed to open /dev/dri/card0 device (No such file or directory)
+# with the node plainly present at 226:0, and a module reload reproduced it on
+# fresh nodes. The host had /dev/dri and nvidia_drm modeset=Y; only the
+# container lacked it. Diagnosing that from inside the guest costs hours,
+# because nothing in the guest is wrong.
+#
+# Compose already requests the `graphics` and `display` capabilities, which is
+# supposed to make the NVIDIA container runtime inject these nodes. It does not
+# on every toolkit/CDI configuration, so say so plainly instead of letting the
+# failure surface three layers away. Not fatal: the VM still boots and is
+# reachable over ssh, which is exactly how you would go fix it.
+if [ ! -e /dev/dri/renderD128 ] && [ ! -e /dev/dri/card0 ]; then
+    log "WARNING: no /dev/dri in this container. The guest's DRM node is a proxy"
+    log "WARNING: for the host's, so EVERY open of /dev/dri/card0 in the guest will"
+    log "WARNING: fail with ENOENT and no compositor can start -- even though the"
+    log "WARNING: guest module probes fine and the node looks correct."
+    log "WARNING: The NVIDIA container runtime is meant to inject it from the"
+    log "WARNING: graphics/display capabilities; it did not here. Remedy:"
+    log "WARNING:   docker compose -f docker-compose.yml -f override-dri.yml up -d"
+    log "WARNING: (or add '- /dev/dri:/dev/dri' to the vmm service's devices)."
+fi
 require_mount "$STATE_DIR"
 require_mount "$DATA_DIR"
 require_mount "$BROKER_DIR"

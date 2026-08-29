@@ -1,0 +1,24 @@
+# Give the VMM the host's DRM nodes.
+#
+# The guest's /dev/dri/card0 is a PROXY: nvkvm_drm_open() forwards to the host's
+# DRM render node and returns its errno verbatim. Without these nodes the guest
+# sees ENOENT on every open -- while stat(2), /proc/devices, /sys/class/drm and
+# the module probe all look perfectly healthy -- and no compositor can start.
+#
+# docker-compose.yml already asks the NVIDIA container runtime for the
+# `graphics` and `display` capabilities, which is supposed to inject them. On
+# toolkit/CDI setups where it does not (MEASURED on a vast.ai KVM box), use this
+# override:
+#
+#   docker compose -f docker-compose.yml -f override-dri.yml up -d
+#
+# Only for hosts that HAVE /dev/dri. Compose refuses to start a container whose
+# device path does not exist, which is why this is not in the base file: a
+# compute-only host with nvidia_drm unloaded has no /dev/dri and does not need
+# one.
+services:
+  vmm:
+    devices:
+      - /dev/kvm:/dev/kvm
+      - /dev/udmabuf:/dev/udmabuf
+      - /dev/dri:/dev/dri
