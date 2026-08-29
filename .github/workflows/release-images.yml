@@ -1,7 +1,10 @@
 # Build both runtime images on a clean GitHub-hosted runner. A release must not
-# inherit a developer's ignored ./nvkvm checkout: the named context below is
-# explicitly public main. The resulting source commit is recorded inside the
-# VMM image at /opt/nvkvm/.nvkvm-upstream-commit; the broker stays binary-only.
+# inherit a developer's ignored ./nvkvm checkout: the named context is public
+# nvkvm-pv, resolved from `main` to ONE COMMIT before either build starts (see
+# the resolve step) so both images contain the same source and the release names
+# what went into it. That commit is recorded inside the VMM image at
+# /opt/nvkvm/.nvkvm-upstream-commit and as the org.nvkvm.source.revision label on
+# both images; the broker stays binary-only otherwise.
 name: release images
 
 on:
@@ -44,6 +47,43 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # RESOLVE nvkvm-pv's `main` TO A COMMIT, ONCE, BEFORE ANY BUILD.
+      #
+      # Both build steps below used to name the source context as
+      # `...nvkvm-pv.git#main` independently, and each fetch resolves `main`
+      # separately. Two consequences, and the second is the one that bites:
+      #
+      #   * a release tag did not identify what was in the image. The
+      #     attestation binds the image to THIS repository at github.sha, which
+      #     is true and says nothing about which nvkvm-pv went in. Rebuilding
+      #     the same tag a week later produced different bytes and an equally
+      #     valid attestation.
+      #
+      #   * the VMM and the broker could be built from DIFFERENT nvkvm-pv
+      #     commits in the same release, if main moved between the two steps.
+      #     Those two images speak a protocol to each other, so a mismatch is
+      #     not cosmetic -- and nothing in the release would have said so.
+      #
+      # Resolving once and pinning both builds to the resulting SHA fixes both.
+      # It does not make `main` a reviewed release branch, and is not meant to:
+      # what it guarantees is that a release names exactly one nvkvm-pv commit,
+      # that both images contain it, and that the attestation covers something
+      # a reader can go and look at.
+      - name: resolve the nvkvm-pv source commit
+        id: pvsrc
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo=https://github.com/reindertpelsma/nvkvm-pv.git
+          sha="$(git ls-remote "$repo" refs/heads/main | cut -f1)"
+          case "$sha" in
+            [0-9a-f]*) [ "${#sha}" -eq 40 ] || { echo "not a full sha: $sha" >&2; exit 1; } ;;
+            *) echo "could not resolve nvkvm-pv main" >&2; exit 1 ;;
+          esac
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "context=$repo#$sha" >> "$GITHUB_OUTPUT"
+          echo "building both images from nvkvm-pv $sha"
+
       - name: image names and tags
         id: meta
         shell: bash
@@ -74,9 +114,9 @@ jobs:
           target: vmm
           platforms: linux/amd64
           build-contexts: |
-            nvkvm-source=https://github.com/reindertpelsma/nvkvm-pv.git#main
+            nvkvm-source=${{ steps.pvsrc.outputs.context }}
           build-args: |
-            NVKVM_SOURCE_LABEL=https://github.com/reindertpelsma/nvkvm-pv.git#main
+            NVKVM_SOURCE_LABEL=${{ steps.pvsrc.outputs.context }}
           push: true
           provenance: false
           tags: ${{ steps.meta.outputs.vmm_tags }}
@@ -85,6 +125,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ github.ref_name }}
             org.opencontainers.image.description=Sandboxed nvkvm QEMU VMM for SteamOS
+            org.nvkvm.source.revision=${{ steps.pvsrc.outputs.sha }}
 
       - name: smoke-test pushed VMM image
         env:
@@ -117,9 +158,9 @@ jobs:
           target: broker
           platforms: linux/amd64
           build-contexts: |
-            nvkvm-source=https://github.com/reindertpelsma/nvkvm-pv.git#main
+            nvkvm-source=${{ steps.pvsrc.outputs.context }}
           build-args: |
-            NVKVM_SOURCE_LABEL=https://github.com/reindertpelsma/nvkvm-pv.git#main
+            NVKVM_SOURCE_LABEL=${{ steps.pvsrc.outputs.context }}
           push: true
           provenance: false
           tags: ${{ steps.meta.outputs.broker_tags }}
@@ -128,6 +169,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ github.ref_name }}
             org.opencontainers.image.description=Wayland and X11 display broker for nvkvm SteamOS
+            org.nvkvm.source.revision=${{ steps.pvsrc.outputs.sha }}
 
       - name: smoke-test pushed broker image
         env:
