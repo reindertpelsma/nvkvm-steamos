@@ -373,6 +373,15 @@ remove_added_packages() {
 # or ultimate (u) validity on the uid. That is what we test.
 #
 ensure_pacman_keyring() {
+    # UNLOCK FIRST, HERE, not in the caller.
+    #
+    # This writes to /etc/pacman.d/gnupg, so it needs a writable root. Two
+    # existing callers did `steamos_unlock; ensure_pacman_keyring`, so the
+    # dependency was real but invisible -- and the moment a third caller was
+    # added (do_install, which has to populate the keyring BEFORE installing
+    # anything) it populated onto a read-only rootfs and failed. A function that
+    # needs a writable root should say so itself. steamos_unlock is idempotent.
+    steamos_unlock
     #
     # TEST THE REPO'S SIGNING KEY, NOT "ANY TRUSTED KEY".
     #
@@ -399,6 +408,38 @@ ensure_pacman_keyring() {
         log "pacman keyring populated; package signatures now validate"
         return 0
     fi
+    #
+    # LAST RESORT: SEED THE TARGET FROM THE RUNNING SYSTEM.
+    #
+    # gpg cannot create local signatures inside the target chroot -- measured
+    # 2026-08-29 on a freshly written A/B slot: `pacman-key --populate holo`
+    # reports "Appending keys... Updating trust database" and succeeds, and
+    # `pacman-key --lsign-key <fpr>` then fails outright with "could not be
+    # locally signed". Without those local signatures the repo's key never
+    # gains validity through the web of trust and stays at 'q' (undefined),
+    # so every package is rejected for "unknown trust".
+    #
+    # The key is not in holo-trusted on EITHER image -- it earns validity from
+    # the five holo master keys that are -- so this is not a missing-key
+    # problem that importing more keys can fix.
+    #
+    # The running system is the same distro talking to the same mirror and
+    # demonstrably trusts it, so its keyring is the right answer rather than an
+    # approximation. Copy it wholesale; verified to flip the repo key from 'q'
+    # to 'f' immediately.
+    #
+    if [ "$ROOT" != "/" ] && [ -d /etc/pacman.d/gnupg ]; then
+        warn "keyring: cannot sign keys inside the target; seeding it from the running system"
+        rm -rf "$(rp /etc/pacman.d/gnupg).nvkvm-bak"
+        mv "$(rp /etc/pacman.d/gnupg)" "$(rp /etc/pacman.d/gnupg).nvkvm-bak" 2>/dev/null
+        if cp -a /etc/pacman.d/gnupg "$(rp /etc/pacman.d/gnupg)" 2>/dev/null \
+           && in_target sh -c "$trusted"; then
+            log "keyring: seeded from the running system; package signatures now validate"
+            return 0
+        fi
+        err "keyring: seeding from the running system did not help either"
+    fi
+
     err "pacman keyring has no locally-signed keys, so EVERY package install"
     err "will fail with 'unknown trust' -- including the kernel headers, which"
     err "means the guest module cannot be built at all."
