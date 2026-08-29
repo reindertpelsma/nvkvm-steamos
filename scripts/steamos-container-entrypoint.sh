@@ -63,6 +63,15 @@ INSTALL_SHELL=0
 QEMU_EXTRA=()
 
 log() { printf '[steamos-container] %s\n' "$*" >&2; }
+# warn() was USED at three sites and defined at none, so every one of them
+# printed `warn: command not found` in place of the explanation it was written
+# to give -- including the latest-image fallback, the one message that tells an
+# operator why an install took the pinned floor instead of the current image.
+# At the NVKVM_QEMU_NICE site the missing command is worse than mute: that call
+# is in the main flow rather than a command substitution, so its 127 trips
+# `set -e` and `restart: unless-stopped` turns the abort into a restart loop.
+# Same shape as boot/steamos_boot.sh:94 and every other script here.
+warn() { log "WARNING: $*"; }
 die() { log "ERROR: $*"; exit 1; }
 
 while [ $# -gt 0 ]; do
