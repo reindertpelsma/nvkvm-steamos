@@ -2245,6 +2245,27 @@ do_image() {
 do_install() {
     local rc=0
     log "=== Part 1: converge (ROOT=$ROOT, profile=$PROFILE) ==="
+
+    # MEASURED on a from-scratch install, 2026-08-29 (physical PC, RTX 4070):
+    # the patched partition table gave rootfs-A and rootfs-B 8 GiB each, and the
+    # filesystem inside the live slot was still 5.00 GiB with 3.00 GiB of
+    # `Device slack` -- 427 MiB free, which is the same margin that made the
+    # first OTA fail 42 MB short. The partition patch buys headroom the
+    # filesystem cannot see until something grows it.
+    #
+    # do_image() already grows a slot it mounts. The LIVE path did not, and the
+    # live path is the one Valve's installer leaves behind and the one first
+    # boot converges -- so the headroom was invisible exactly where it was
+    # needed. Growing an online btrfs is safe and idempotent, so this runs on
+    # every convergence rather than being conditioned on a "first boot" flag
+    # that could be wrong.
+    #
+    # ROOT=/ only: when a caller handed us a mounted slot, do_image() has
+    # already done this and a second call would be redundant, not harmful.
+    if [ "$ROOT" = "/" ]; then
+        image_resize_to_partition /
+    fi
+
     capture_ro_state
     chroot_setup
     trap 'chroot_teardown; restore_ro_state; image_umount_all' EXIT
