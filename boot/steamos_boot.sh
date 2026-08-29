@@ -97,6 +97,42 @@ err()  { printf '[nvkvm] ERROR: %s\n' "$*" >&2; }
 in_target() { if [ "$ROOT" = "/" ]; then "$@"; else chroot "$ROOT" "$@"; fi; }
 rp() { if [ "$ROOT" = "/" ]; then printf '%s' "$1"; else printf '%s%s' "${ROOT%/}" "$1"; fi; }
 
+# ── One converge at a time ───────────────────────────────────────────────────
+# Every writing mode below converges the SAME machine-global state whatever
+# --root says: the ext4 loopback build area and the .run cache, both under
+# /home, which --image bind-mounts into the slot -- so they are one physical
+# file even when the two roots differ. build_area_up() does an unconditional
+# `rm -f "$img"` before mkfs, so a second run entering it while the first is
+# compiling deletes the image out from under a live loop mount, and the first
+# run then fails with compiler errors that name a missing header and never the
+# cause. build_area_down() is worse: it umounts and deletes the OTHER run's
+# build area while that run is still using it.
+#
+# There was no lock of any kind in this repo before this, so nothing stopped
+# the boot unit and a hand-run --install-only from overlapping. The OTA hook
+# makes that overlap routine rather than hypothetical.
+#
+# /run, because it is tmpfs: a stale lock cannot survive a reboot and strand a
+# machine, which is the one failure a lock can add that is worse than the race
+# it prevents. BLOCKING rather than fail-fast -- a converge that skipped
+# because someone else held the lock would leave the system unprovisioned and
+# still report success, and converging is this script's entire contract.
+LOCK_FILE="${NVKVM_LOCK_FILE:-/run/nvkvm-converge.lock}"
+converge_lock() {
+    if ! command -v flock >/dev/null 2>&1; then
+        warn "no flock(1) on this system -- converging UNSERIALISED."
+        warn "  A concurrent converge would corrupt the shared build area."
+        return 0
+    fi
+    # fd 9 is held for the life of the process on purpose: there is then no
+    # unlock step to forget on an error path, and every exit releases it.
+    exec 9>"$LOCK_FILE" || { warn "cannot open $LOCK_FILE -- converging unserialised"; return 0; }
+    if ! flock -n 9; then
+        log "another nvkvm converge holds $LOCK_FILE -- waiting for it to finish"
+        flock 9 || { warn "could not take $LOCK_FILE -- converging unserialised"; return 0; }
+    fi
+}
+
 # ── Read-only state: observe it, then restore whatever we observed ───────────
 # Restoring only on the happy path leaves the filesystem writable after any
 # mid-script failure, which is a worse state than the one we started in.
@@ -996,35 +1032,30 @@ install_nvidia_userspace() {
     local free_kb; free_kb="$(df -Pk "$(rp /usr)" 2>/dev/null | awk 'NR==2{print $4}')"
 
     #
-    # RECLAIM /usr/lib/firmware BEFORE GIVING UP.
+    # THE /usr/lib/firmware RECLAIM WAS REMOVED HERE, and the removal is the fix
+    # rather than a simplification.
     #
-    # SteamOS ships ~350 MB of device firmware for hardware a VM does not have:
-    # wifi, bluetooth, amdgpu, and so on. The guest has virtio devices, an
-    # emulated NVMe and a forwarded GPU whose module needs none of it --
-    # `modinfo -F firmware nvkvm-guest.ko` is empty, which this project has
-    # relied on since the beginning.
+    # It used to `rm -rf` all ~350 MB of SteamOS's device firmware whenever the
+    # free-space test failed, justified by "a VM cannot use this". Nothing
+    # checked that this WAS a VM. `--install-only --root /` is a supported mode
+    # and is what an operator runs on a live machine, so a bare-metal Deck that
+    # happened to be short of space lost its wifi, bluetooth and amdgpu firmware
+    # to a heuristic about disk usage -- unrecoverably, since nothing puts it
+    # back and the next A/B update only restores it on the slot it writes.
     #
-    # This is not a nicety. MEASURED 2026-08-29: a slot written by a SteamOS
-    # A/B update had 408 MB free against a 395 MB userspace -- a 13 MB margin,
-    # so nvidia-installer died partway through with
-    #     Received signal SIGBUS; aborting.
-    # (a write to an mmap'd file on a full filesystem, which reads like a crash
-    # rather than a disk-full error). Removing firmware took it to 519 MB and
-    # provisioning succeeded on the next attempt. The newer image is ~300 MB
-    # fatter than the one before it, so this will only get tighter.
+    # It is also no longer needed. The reclaim was measured on 2026-08-29
+    # against Valve's 5120 MiB rootfs slots, where a fresh image left 408 MB
+    # free against a 395 MB userspace. boot/patches/0002-repair-device-rootfs-size.patch
+    # now sizes both slots at 8192 MiB, and its header sizes that 3 GiB of
+    # headroom explicitly for "untrimmed userspace, resident toolchain, FIRMWARE
+    # LEFT ALONE". Deleting firmware to fit is solving, destructively, a problem
+    # the partition geometry already solved.
     #
-    if [ -n "$free_kb" ] && [ "$free_kb" -lt "$need_kb" ]; then
-        local fw; fw="$(rp /usr/lib/firmware)"
-        if [ -d "$fw" ]; then
-            local fw_kb; fw_kb="$(du -sk "$fw" 2>/dev/null | awk '{print $1}')"
-            log "short of space for the NVIDIA userspace; reclaiming $((${fw_kb:-0}/1024))M of device firmware a VM cannot use"
-            steamos_unlock
-            rm -rf "$fw" 2>/dev/null && mkdir -p "$fw" 2>/dev/null
-            free_kb="$(df -Pk "$(rp /usr)" 2>/dev/null | awk 'NR==2{print $4}')"
-            log "free space is now $((${free_kb:-0}/1024))M"
-        fi
-    fi
-
+    # What remains is the honest failure below: say the numbers and stop. An
+    # install that is genuinely short of space on an 8 GiB slot is a bug in the
+    # geometry or a rootfs that was never grown to fill its partition, and
+    # silently eating firmware would hide both.
+    #
     if [ -n "$free_kb" ] && [ "$free_kb" -lt "$need_kb" ]; then
         err "not enough space for the NVIDIA userspace: free=$((free_kb/1024))M needed=$((need_kb/1024))M"
         err "Pick a smaller profile (--profile steamos trims CUDA/OpenCL), set"
@@ -2536,9 +2567,11 @@ if { [ "$CMD" = install ] || [ "$CMD" = image ]; } && [ -z "$(host_driver_versio
     exit 1
 fi
 
+# validate takes no lock on purpose: it is read-only, and it is exactly what an
+# operator runs to see how far a converge that is STILL RUNNING has got.
 case "$CMD" in
-    install)  do_install ;;
-    image)    do_image ;;
-    boot)     do_boot ;;
+    install)  converge_lock; do_install ;;
+    image)    converge_lock; do_image ;;
+    boot)     converge_lock; do_boot ;;
     validate) validate ;;
 esac

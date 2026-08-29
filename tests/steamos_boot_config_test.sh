@@ -69,14 +69,21 @@ grep -qF -- '--driver-version "$DRIVER_VERSION"' "$CONTAINER_ENTRYPOINT" \
 
 printf 'steamos_boot_config_test: PASS\n'
 
-# SPACE: a slot written by an A/B update can be too full for the NVIDIA
-# userspace -- measured 2026-08-29, 408M free against a 395M install, and
-# nvidia-installer died with "Received signal SIGBUS" (a write to an mmap'd
-# file on a full filesystem, which does not read like a disk-full error at
-# all). SteamOS ships ~350M of firmware for hardware a VM does not have, and
-# the guest module needs none of it.
-grep -q 'reclaiming .* of device firmware a VM cannot use' "$BOOT_SCRIPT" \
-    || fail "provisioning no longer reclaims firmware when short of space"
-sed -n '/RECLAIM .usr.lib.firmware BEFORE GIVING UP/,/^    fi$/p' "$BOOT_SCRIPT" \
-    | grep -q 'free_kb" -lt "$need_kb"' \
-    || fail "the firmware reclaim is not gated on actually being short of space"
+# SPACE: this test used to assert the OPPOSITE -- that provisioning reclaimed
+# ~350M of SteamOS device firmware when the free-space check failed. That
+# reclaim is gone, and the test is inverted to keep it gone.
+#
+# It fired on a free-space heuristic with no check that the target was a VM,
+# and `--install-only --root /` is a supported mode, so a bare-metal Deck short
+# of space lost its wifi, bluetooth and amdgpu firmware for good. It is also
+# unnecessary now: boot/patches/0002-repair-device-rootfs-size.patch sizes both
+# rootfs slots at 8192 MiB and budgets that headroom for the untrimmed
+# userspace, the toolchain and firmware LEFT ALONE. A converge that is still
+# short of space on an 8 GiB slot has a geometry or resize bug, and eating
+# firmware would hide it.
+grep -q 'rm -rf "$fw"' "$BOOT_SCRIPT" \
+    && fail "the firmware reclaim is back; it deletes firmware on a live root with no VM check"
+grep -q 'of device firmware a VM cannot use' "$BOOT_SCRIPT" \
+    && fail "the firmware reclaim is back; it deletes firmware on a live root with no VM check"
+grep -q 'not enough space for the NVIDIA userspace' "$BOOT_SCRIPT" \
+    || fail "provisioning no longer fails loudly when short of space"

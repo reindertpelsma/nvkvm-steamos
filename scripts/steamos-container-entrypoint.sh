@@ -139,9 +139,37 @@ latest_recovery_url() {
     esac
 }
 
+# WHAT THIS CHECKSUM IS, AND WHAT IT IS NOT.
+#
+# Valve publishes NO checksum next to the recovery images -- probed 2026-08-29,
+# both .sha256 and .sha256sum next to steamdeck-oobe-repair-20260707.10-3.8.14.img.bz2
+# return 404, while the image itself is 200. There is therefore nothing upstream
+# to verify against, and the recorded hash below is trust-on-first-use: it is
+# OUR hash of OUR first download.
+#
+# So it detects a torn or truncated cache and local tampering after the fact,
+# and it detects NOTHING about whether the image Valve served was the right one.
+# Naming that here matters more than the code does: the function used to be read
+# as "the recovery image is verified", and a reader who believes that stops
+# asking where the anchor is.
+#
+# NVKVM_STEAMOS_RECOVERY_SHA256 is the anchor for anyone who wants one. Set it
+# to a digest obtained out of band and this fails closed against that instead of
+# against its own memory. It is checked BEFORE the recorded hash, so a pinned
+# digest cannot be satisfied by a cache poisoned earlier.
 record_or_verify_checksum() {
-    local archive="$1" dir base sumfile
+    local archive="$1" dir base sumfile got
     dir="$(dirname "$archive")"; base="$(basename "$archive")"; sumfile="$archive.sha256"
+
+    if [ -n "${NVKVM_STEAMOS_RECOVERY_SHA256:-}" ]; then
+        got="$(sha256sum "$archive" | cut -d' ' -f1)"
+        [ "$got" = "$NVKVM_STEAMOS_RECOVERY_SHA256" ] \
+            || die "recovery image digest does not match NVKVM_STEAMOS_RECOVERY_SHA256: got $got"
+        log "recovery image matches the pinned digest"
+        printf '%s  %s\n' "$got" "$base" > "$sumfile"
+        return 0
+    fi
+
     if [ -s "$sumfile" ]; then
         # prepare_recovery is used in a command substitution. sha256sum -c
         # normally prints "<archive>: OK" on stdout; suppress that diagnostic
@@ -152,7 +180,8 @@ record_or_verify_checksum() {
     else
         (cd "$dir" && sha256sum "$base" > "$(basename "$sumfile").tmp")
         mv -f "$sumfile.tmp" "$sumfile"
-        log "recorded SHA-256 in $sumfile"
+        log "recorded SHA-256 in $sumfile (trust-on-first-use: Valve publishes none;"
+        log "  set NVKVM_STEAMOS_RECOVERY_SHA256 to verify against a digest you trust)"
     fi
 }
 
@@ -242,7 +271,17 @@ require_mount "$DATA_DIR"
 require_mount "$BROKER_DIR"
 mkdir -p "$STATE_DIR/recovery" "$STATE_DIR/alpine" "$STATE_DIR/ssh"
 chmod 0700 "$STATE_DIR/ssh"
-chmod 0777 "$DATA_DIR" 2>/dev/null || true
+# $DATA_DIR's mode is LEFT ALONE. This used to be `chmod 0777`, and nothing
+# needed it: the only writer inside this container is QEMU, which runs as uid 0
+# here, and the 9p export is security_model=mapped-xattr, so guest ownership
+# lives in xattrs and never depends on the host directory being world-writable.
+# What 0777 did do is widen a directory that is DOCUMENTED as a host path --
+# `NVKVM_STEAMOS_DATA=/absolute/host/path` in docker-compose.yml -- to
+# world-writable on the host, and that directory holds the SSH authorized_keys
+# for the guest's interactive user and for root. Any local user could then
+# replace them. A bind mount already arrives with the mode its owner chose,
+# which is the mode they meant.
+[ -d "$DATA_DIR" ] || mkdir -p "$DATA_DIR"
 
 ensure_ssh_key
 export PATH="/opt/qemu-nvkvm/bin:$PATH"

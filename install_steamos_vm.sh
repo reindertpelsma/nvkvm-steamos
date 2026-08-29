@@ -182,27 +182,71 @@ TARBALL="alpine-netboot-${ALPINE_VER}-x86_64.tar.gz"
 BASEURL="https://dl-cdn.alpinelinux.org/alpine/${ALPINE_BRANCH}/releases/x86_64"
 mkdir -p "$ALPINE_DIR" || die $E_FETCH "cannot create $ALPINE_DIR"
 
-if [ ! -f "$ALPINE_DIR/boot/vmlinuz-virt" ] \
-   || [ ! -f "$ALPINE_DIR/boot/initramfs-virt" ] \
-   || [ ! -f "$ALPINE_DIR/boot/modloop-virt" ]; then
+# VERIFICATION FAILS CLOSED, all three ways it can fail.
+#
+# It used to fail OPEN twice: a curl error on the .sha256 only warned "skipping
+# verification", and the check itself was wrapped in `command -v sha256sum` so a
+# host without coreutils skipped it silently. Both turn the one control on this
+# download into a suggestion, and neither is a condition worth continuing past:
+# the .sha256 sits next to the tarball on the same CDN, so if that fetch failed
+# the tarball fetch is not to be trusted either, and a machine that can build a
+# VM image has sha256sum. This is the kernel and the init the installer boots as
+# root -- there is nothing here worth a best-effort check.
+#
+# What this DOES buy is transfer integrity, not authenticity: the checksum comes
+# from the same host as the file, so it catches a truncated or corrupted
+# download and a cache poisoned after the fact, not a compromised CDN. Alpine's
+# signing key is the anchor for that, and pulling it in is a larger change than
+# this file should make on its own.
+ALPINE_ARTIFACTS="boot/vmlinuz-virt boot/initramfs-virt boot/modloop-virt"
+CACHE_SUMS="$ALPINE_DIR/.nvkvm-extracted.sha256"
+
+# A CACHE HIT IS RE-VERIFIED. Previously the whole block was skipped whenever
+# the three files merely EXISTED, so everything above applied only to the first
+# run on a machine: after that, anything that could write $ALPINE_DIR -- which
+# defaults to a directory beside this script, not a root-owned one -- chose the
+# kernel and the initramfs of every later install, unchecked. Re-hashing three
+# files costs milliseconds.
+alpine_cache_ok() {
+    [ -s "$CACHE_SUMS" ] || return 1
+    local f
+    for f in $ALPINE_ARTIFACTS; do [ -f "$ALPINE_DIR/$f" ] || return 1; done
+    ( cd "$ALPINE_DIR" && sha256sum -c --quiet "$(basename "$CACHE_SUMS")" ) >/dev/null 2>&1
+}
+
+command -v sha256sum >/dev/null \
+    || die $E_TOOL "sha256sum is not installed; refusing to boot an unverified Alpine kernel"
+
+if alpine_cache_ok; then
+    log "alpine netboot files present and verified against $CACHE_SUMS"
+else
+    [ -s "$CACHE_SUMS" ] && warn "cached alpine artifacts no longer match $CACHE_SUMS — re-fetching"
     log "fetching $TARBALL"
     curl -fsSL -o "$ALPINE_DIR/$TARBALL" "$BASEURL/$TARBALL" \
         || die $E_FETCH "could not download $BASEURL/$TARBALL"
     curl -fsSL -o "$ALPINE_DIR/$TARBALL.sha256" "$BASEURL/$TARBALL.sha256" \
-        || warn "no .sha256 published for $TARBALL — skipping verification"
-    if [ -s "$ALPINE_DIR/$TARBALL.sha256" ] && command -v sha256sum >/dev/null; then
-        ( cd "$ALPINE_DIR" && sha256sum -c "$TARBALL.sha256" >/dev/null ) \
-            || die $E_FETCH "checksum mismatch on $TARBALL"
-        log "checksum ok"
-    fi
+        || die $E_FETCH "could not download $BASEURL/$TARBALL.sha256 — refusing to use an unverified $TARBALL"
+    [ -s "$ALPINE_DIR/$TARBALL.sha256" ] \
+        || die $E_FETCH "$BASEURL/$TARBALL.sha256 is empty — refusing to use an unverified $TARBALL"
+    ( cd "$ALPINE_DIR" && sha256sum -c "$TARBALL.sha256" >/dev/null ) \
+        || die $E_FETCH "checksum mismatch on $TARBALL"
+    log "checksum ok"
     # The VMM container intentionally has no CAP_CHOWN. GNU tar otherwise
     # notices euid 0 and tries to restore the archive's uid/gid (currently
     # 1000:1000), turning an otherwise successful extraction into EPERM.
     # Ownership is irrelevant for these read-only boot artifacts: keep them
     # owned by the extracting container user.
+    # shellcheck disable=SC2086  # ALPINE_ARTIFACTS is a deliberate word list
     tar --no-same-owner -xzf "$ALPINE_DIR/$TARBALL" -C "$ALPINE_DIR" \
-        boot/vmlinuz-virt boot/initramfs-virt boot/modloop-virt \
+        $ALPINE_ARTIFACTS \
         || die $E_FETCH "could not unpack $TARBALL"
+    # Record what the verified tarball actually produced, so the next run checks
+    # the files it is about to boot rather than trusting that they are still the
+    # ones this run extracted.
+    # shellcheck disable=SC2086
+    ( cd "$ALPINE_DIR" && sha256sum $ALPINE_ARTIFACTS > "$(basename "$CACHE_SUMS").tmp" ) \
+        || die $E_FETCH "could not record checksums of the extracted alpine artifacts"
+    mv -f "$CACHE_SUMS.tmp" "$CACHE_SUMS"
 fi
 
 # ── work dir ────────────────────────────────────────────────────────────────

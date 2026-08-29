@@ -15,9 +15,18 @@ HOOK="$DIR/boot/image/nvkvm-ota.sh"
 rc=0
 
 # ── static: the layering must actually be wired up ──────────────────────────
-grep -q 'image)    do_image ;;' "$BOOT" \
+grep -qE '^ *image\).*do_image ;;' "$BOOT" \
     && echo "ok: --image is dispatched" \
     || { echo "FAIL: no image dispatch"; rc=1; }
+
+# Every writing mode takes the converge lock. --image is the one an OTA hook
+# runs unattended, so it is the one most likely to collide with a hand-run
+# converge over the shared /home build area.
+for m in install image boot; do
+    grep -qE "^ *$m\).*converge_lock" "$BOOT" \
+        && echo "ok: --$m takes the converge lock" \
+        || { echo "FAIL: $m dispatch does not take the converge lock"; rc=1; }
+done
 
 grep -q '\-\-image)        CMD=image; IMAGE_DEV="\$2"' "$BOOT" \
     && echo "ok: --image takes a device" \

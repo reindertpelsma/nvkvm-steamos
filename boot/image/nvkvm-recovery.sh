@@ -206,7 +206,43 @@ validate() {
 # Runs on the OLD, still-running system, where the 9p share IS mounted. Mounts
 # the other slot and runs Part 1 against it with ROOT pointing at the new image,
 # so the kernel module gets built against the NEW image's kernel.
+#
+# THE UNMOUNTS MUST BE ON A TRAP, not written out after the call. This function
+# runs a full provisioning pass -- minutes of pacman, a kernel-module build and
+# a 380 MB NVIDIA extraction -- between the mounts and the unmounts. Anything
+# that ends the shell in between (the operator's ^C, a systemd stop of the
+# update hook, a `set -u` abort inside a future edit) used to leave the OTHER
+# SLOT MOUNTED, with /proc, /sys and /dev bound into it and its btrfs left
+# read-WRITE. rauc then refuses to write that slot -- "device is busy" -- so an
+# interrupted plant blocks every later update until someone finds the stray
+# mounts by hand. Cleanup on a trap costs nothing and cannot be skipped.
+PLANT_MNT=""
+plant_cleanup() {
+    [ -n "$PLANT_MNT" ] || return 0
+    umount "$PLANT_MNT$SHARE_MNT" 2>/dev/null
+    umount "$PLANT_MNT/proc" "$PLANT_MNT/sys" "$PLANT_MNT/dev" 2>/dev/null
+    btrfs property set "$PLANT_MNT" ro true 2>/dev/null
+    umount "$PLANT_MNT" 2>/dev/null; rmdir "$PLANT_MNT" 2>/dev/null
+    PLANT_MNT=""
+}
+
+# One plant at a time, and the second one does NOT queue. Unlike a converge, a
+# second plant has nothing to add: both would provision the same staged slot
+# from the same share, and the loser would find the slot already mounted by the
+# winner and mount the OTHER partset over it. Non-blocking, exit 0 -- an update
+# hook that blocks holds up the update it is a hook for.
+PLANT_LOCK="${NVKVM_PLANT_LOCK:-/run/nvkvm-plant.lock}"
+plant_lock() {
+    command -v flock >/dev/null 2>&1 || return 0
+    exec 8>"$PLANT_LOCK" || return 0
+    flock -n 8
+}
+
 do_plant() {
+    if ! plant_lock; then
+        log "another plant is already running ($PLANT_LOCK) -- leaving it to finish."
+        exit 0
+    fi
     mount_share || true
     if [ ! -x "$SHARE_MNT/boot/steamos_boot.sh" ]; then
         err "cannot provision the new image: share not available. The new image will"
@@ -220,6 +256,11 @@ do_plant() {
         exit 0
     fi
     local mnt; mnt="$(mktemp -d /tmp/nvkvm-newroot.XXXXXX)"
+    # Armed BEFORE the first mount, so a failure of the mount itself still
+    # removes the temp dir, and every mount added below is covered by
+    # construction rather than by remembering to extend a list at the bottom.
+    PLANT_MNT="$mnt"
+    trap 'plant_cleanup' EXIT HUP INT TERM
     mount "$other" "$mnt" || { err "could not mount $other"; exit 0; }
     btrfs property set "$mnt" ro false 2>/dev/null
     mount --bind /proc "$mnt/proc"; mount --bind /sys "$mnt/sys"; mount --bind /dev "$mnt/dev"
@@ -229,10 +270,7 @@ do_plant() {
     "$SHARE_MNT/boot/steamos_boot.sh" --install-only --root "$mnt"
     local rc=$?
 
-    umount "$mnt$SHARE_MNT" 2>/dev/null
-    umount "$mnt/proc" "$mnt/sys" "$mnt/dev" 2>/dev/null
-    btrfs property set "$mnt" ro true 2>/dev/null
-    umount "$mnt" 2>/dev/null; rmdir "$mnt" 2>/dev/null
+    plant_cleanup
     log "new-image provisioning finished (rc=$rc)"
     # Always exit 0: never let this affect anything upstream (design note 3).
     exit 0
