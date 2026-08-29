@@ -1,6 +1,16 @@
 [Unit]
 Description=Provision nvkvm into the newly staged SteamOS image
 
+# PATH-ACTIVATED ONLY. This unit mounts the OTHER rootfs slot, sets its btrfs
+# read-write and provisions into it -- which is correct exactly once, after
+# rauc has finished writing that slot and nvkvm-plant-stub.path has seen
+# reboot_for_update appear. Started by hand at any other moment it provisions
+# the slot the machine is about to boot FROM, or the one rauc is mid-write on.
+# RefuseManualStart does not affect activation by the .path unit or by a
+# dependency; it only removes `systemctl start nvkvm-plant-stub.service` as
+# something an operator can do without meaning to.
+RefuseManualStart=yes
+
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/nvkvm-recovery.sh plant
