@@ -20,19 +20,27 @@ DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BOOT="$DIR/boot/steamos_boot.sh"
 rc=0
 
-# 1. install-only with no flag and no /proc must refuse, not guess
+# 1. a provisioning mode with no flag and no /proc must refuse, not guess.
 # Assert the GATE, not its wording -- the message is allowed to improve.
-if grep -q 'if \[ "\$CMD" = install \] && \[ -z "\$(host_driver_version)" \]; then' "$BOOT" \
-   && sed -n '/if \[ "\$CMD" = install \] && \[ -z "\$(host_driver_version)" \]; then/,/^fi$/p' "$BOOT" \
-      | grep -q 'exit 1'; then
-    echo "ok: --install-only refuses rather than guessing a version"
+GATE_RE='if { \[ "\$CMD" = install \] || \[ "\$CMD" = image \]; } && \[ -z "\$(host_driver_version)" \]; then'
+gate_block() { sed -n "/$GATE_RE/,/^fi\$/p" "$BOOT"; }
+
+if grep -q "$GATE_RE" "$BOOT" && gate_block | grep -q 'exit 1'; then
+    echo "ok: provisioning refuses rather than guessing a version"
 else
-    echo "FAIL: nothing stops --install-only running with no version at all"; rc=1
+    echo "FAIL: nothing stops provisioning running with no version at all"; rc=1
 fi
+
+# --image provisions a slot exactly as --install-only does, so it must be behind
+# the same gate. Building a userspace for a guessed driver is no less wrong for
+# having arrived via a block device.
+grep -q "$GATE_RE" "$BOOT" && grep -q '"\$CMD" = image' "$BOOT" \
+    && echo "ok: --image is behind the same gate as --install-only" \
+    || { echo "FAIL: --image can provision with no driver version"; rc=1; }
+
 # and the message must point at the module too: on a live system "pass
 # --driver-version" is the wrong advice, the operator wants modprobe.
-sed -n '/if \[ "\$CMD" = install \] && \[ -z "\$(host_driver_version)" \]; then/,/^fi$/p' "$BOOT" \
-    | grep -q 'modprobe' \
+gate_block | grep -q 'modprobe' \
     && echo "ok: the refusal names loading the module, not just the flag" \
     || { echo "FAIL: the refusal only suggests --driver-version"; rc=1; }
 

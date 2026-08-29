@@ -7,20 +7,29 @@
 # check-then-act and is safe to re-run. It lives on the read-only 9p share, so
 # changing this logic never means touching the SteamOS image.
 #
-# Modes
+# Modes -- three layers, each doing one thing and delegating inward:
+#
+#   --image DEV                   Outermost. Takes a slot as a BLOCK DEVICE:
+#                                 mounts it, grows its filesystem to fill its
+#                                 partition, binds /home, then runs the whole of
+#                                 --install-only against it and unmounts. This is
+#                                 the entire job of the update hook, which is why
+#                                 the hook holds no mount logic of its own.
 #   --install-only [--root DIR]   Part 1. Filesystem + network + NVIDIA probing.
 #                                 Touches NO running-kernel state, so it is safe
 #                                 inside a chroot of a DIFFERENT image -- which is
 #                                 exactly what the update hook does. Give it the
 #                                 new image's root and it provisions that image.
+#                                 Passive when everything is already correct.
 #   --driver-version VERSION      Optional host/container NVIDIA version. The
 #                                 disposable installer passes this because it
 #                                 has no loaded nvkvm module of its own. Without
 #                                 it, read the version nvkvm exposes in procfs.
-#   boot                          Part 2. Part 1, then load nvkvm, check it, and
-#                                 return so the desktop can start. It does NOT
-#                                 verify the desktop -- see validate() below for
-#                                 exactly what is and is not established.
+#   --boot | boot                 Part 2, and the default. Part 1 on /, then load
+#                                 nvkvm, check it, and return so the desktop can
+#                                 start. It does NOT verify the desktop -- see
+#                                 validate() below for exactly what is and is not
+#                                 established.
 #   validate                      nvkvm health check only. Never a desktop check.
 #
 # Options
@@ -2029,12 +2038,154 @@ install_ota_wrapper() {
 }
 
 # ── Part 1 ───────────────────────────────────────────────────────────────────
+# ── --image: provision a slot we are given as a BLOCK DEVICE ────────────────
+#
+# The layering, from the outside in:
+#
+#   --image DEV     mount it, size the filesystem to its partition, then
+#   --install-only  converge that filesystem (chroot, packages, NVIDIA, module)
+#   --boot          all of the above on /, then load nvkvm and validate
+#
+# The update hook is thereby reduced to "find the other slot, call this" -- it
+# owns no mount logic of its own. That matters because a second implementation
+# of these mounts got the same three things wrong three times running.
+IMAGE_MOUNTS=""
+
+image_mount() {   # <mount args...> <target>
+    local target="${@: -1}"          # the mount point is always the last arg
+    if mount "$@"; then
+        IMAGE_MOUNTS="$target $IMAGE_MOUNTS"   # prepend, so we unmount in reverse
+        return 0
+    fi
+    return 1
+}
+
+# A LEFTOVER MOUNT IS NOT A COSMETIC LEAK: rauc's own post-install handler
+# mounts the other slot to sync the var partitions, and if we still hold it the
+# whole update fails with
+#     mount: /var/mnt: /dev/nvme0n1pN already mounted or mount point busy
+#     Post-install handler error: Child process exited with code 32
+# which the user is shown as "Unable to download the required update", naming
+# the one thing that was not wrong. OBSERVED 2026-08-28.
+image_umount_all() {
+    local m rc=0 _i
+    [ -n "$IMAGE_MOUNTS" ] || return 0
+    for m in $IMAGE_MOUNTS; do
+        mountpoint -q "$m" || continue
+        # Try hard before resorting to lazy: -R takes submounts, and a short
+        # retry covers a process on its way out.
+        _i=0
+        while [ "$_i" -lt 5 ]; do
+            mountpoint -q "$m" || break
+            umount -R "$m" 2>/dev/null && break
+            umount "$m" 2>/dev/null && break
+            _i=$((_i + 1)); sleep 1
+        done
+        mountpoint -q "$m" || continue
+        # A lazy unmount detaches the tree but keeps the filesystem ALIVE until
+        # every reference drops, so btrfs goes on holding the device and the
+        # NEXT update cannot mount the slot rauc just rewrote. Last resort, and
+        # never quietly.
+        if umount -l "$m" 2>/dev/null; then
+            err "had to LAZILY unmount $m -- the slot may stay busy until reboot"
+            continue
+        fi
+        err "could not unmount $m -- the next OS update may fail on a busy slot"
+        rc=1
+    done
+    IMAGE_MOUNTS=""
+    return "$rc"
+}
+
+# Valve's installer dd's a 5 GiB filesystem image into each rootfs partition
+# (imageroot()) and never resizes it; only /home is freshly mkfs'd to fill its
+# partition. Every OTA writes the slot the same way. So whenever we are handed a
+# slot, grow its filesystem to the partition -- otherwise the headroom the
+# patched partition table buys us exists on the disk and is invisible to the
+# filesystem, and the very first provisioning runs out of room exactly as before.
+image_resize_to_partition() {
+    local mnt="$1" fstype dev before after
+    dev="$(findmnt -no SOURCE --target "$mnt" 2>/dev/null)"
+    fstype="$(findmnt -no FSTYPE --target "$mnt" 2>/dev/null)"
+    before="$(df -Pk "$mnt" 2>/dev/null | awk 'NR==2{print $2}')"
+    case "$fstype" in
+        btrfs)
+            btrfs filesystem resize max "$mnt" >/dev/null 2>&1 || {
+                warn "could not grow the filesystem on $dev to fill its partition"
+                return 0
+            }
+            ;;
+        ext2|ext3|ext4)
+            resize2fs "$dev" >/dev/null 2>&1 || {
+                warn "could not grow $fstype on $dev to fill its partition"
+                return 0
+            }
+            ;;
+        *)
+            warn "unknown filesystem '$fstype' on $dev -- not resizing"
+            return 0
+            ;;
+    esac
+    after="$(df -Pk "$mnt" 2>/dev/null | awk 'NR==2{print $2}')"
+    if [ -n "$before" ] && [ -n "$after" ] && [ "$after" -gt "$before" ]; then
+        log "filesystem grown to fill its partition: $((before/1024))M -> $((after/1024))M"
+    else
+        log "filesystem already fills its partition ($((${after:-0}/1024))M)"
+    fi
+    return 0
+}
+
+do_image() {
+    local dev="$IMAGE_DEV" mnt rc=0
+
+    [ -n "$dev" ] || { err "--image needs a device"; return 2; }
+    [ -b "$dev" ] || { err "--image: $dev is not a block device"; return 1; }
+    if [ "$ROOT" != "/" ]; then
+        err "--image and --root are mutually exclusive: --image IS how the root is chosen"
+        return 2
+    fi
+
+    mnt="$(mktemp -d /tmp/nvkvm-image.XXXXXX)" || { err "could not make a mount point"; return 1; }
+    log "=== image mode: $dev ==="
+
+    if ! image_mount "$dev" "$mnt"; then
+        err "could not mount $dev"
+        rmdir "$mnt" 2>/dev/null
+        return 1
+    fi
+
+    # Before anything else: the filesystem must be able to USE its partition.
+    image_resize_to_partition "$mnt"
+
+    # /home is shared between the slots and holds the module build area and the
+    # driver cache; a rootfs slot has room for neither.
+    if mountpoint -q /home; then
+        image_mount -o bind /home "$mnt/home" \
+            || warn "could not bind /home -- the build area falls back to the rootfs"
+    fi
+
+    # Hand the mounted tree to the one converge path.
+    ROOT="$mnt"
+    do_install || rc=$?
+
+    # do_install's EXIT trap unmounts on abnormal exit; on the normal path we
+    # drop them here so the caller gets the unmount result, and a busy slot is
+    # reported rather than discovered by the next update.
+    chroot_teardown 2>/dev/null
+    restore_ro_state 2>/dev/null
+    trap - EXIT
+    image_umount_all || rc=1
+    rmdir "$mnt" 2>/dev/null
+    log "=== image mode finished (rc=$rc) ==="
+    return "$rc"
+}
+
 do_install() {
     local rc=0
     log "=== Part 1: converge (ROOT=$ROOT, profile=$PROFILE) ==="
     capture_ro_state
     chroot_setup
-    trap 'chroot_teardown; restore_ro_state' EXIT
+    trap 'chroot_teardown; restore_ro_state; image_umount_all' EXIT
 
     PKGS_BEFORE="$(pkgs_snapshot)"
 
@@ -2341,9 +2492,12 @@ if [ "${NVKVM_STEAMOS_BOOT_SOURCE_ONLY:-0}" = 1 ]; then
 fi
 
 CMD=boot
+IMAGE_DEV=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --install-only) CMD=install; shift ;;
+        --image)        CMD=image; IMAGE_DEV="$2"; shift 2 ;;
+        --boot)         CMD=boot; shift ;;
         boot)           CMD=boot; shift ;;
         validate)       CMD=validate; shift ;;
         --root)         ROOT="$2"; shift 2 ;;
@@ -2358,7 +2512,7 @@ if [ -n "$DRIVER_VERSION" ] && ! [[ "$DRIVER_VERSION" =~ ^[0-9]+([.][0-9]+)+$ ]]
     err "invalid --driver-version '$DRIVER_VERSION'"
     exit 2
 fi
-if [ "$CMD" = install ] && [ -z "$(host_driver_version)" ]; then
+if { [ "$CMD" = install ] || [ "$CMD" = image ]; } && [ -z "$(host_driver_version)" ]; then
     #
     # Two very different situations reach here, and the remedy differs.
     #
@@ -2381,6 +2535,7 @@ fi
 
 case "$CMD" in
     install)  do_install ;;
+    image)    do_image ;;
     boot)     do_boot ;;
     validate) validate ;;
 esac

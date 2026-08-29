@@ -442,6 +442,78 @@ mark_slot_a_bootable() {
 
 start_udev
 
+# ── Valve's partition geometry ───────────────────────────────────────────────
+# The ONLY change we make to Valve's installer, and it has to happen here:
+# partition sizes are decided once, at install, and cannot be changed afterwards
+# on a machine that is already installed.
+#
+# repair_device.sh sizes both rootfs slots at 5120 MiB and dd's a 5 GiB image
+# into each. Valve's own content is already 3.45 GiB of that, so a slot has
+# ~870 MiB free on 20260707.10 and ~374 MiB on the ~300 MB fatter 20260716.1 --
+# not enough for the NVIDIA userspace, which is why provisioning had to trim
+# CUDA, delete Valve's firmware, and still failed a real OTA by 42 MB.
+#
+# Applied as a patch rather than a sed so that an upstream change to that block
+# STOPS US rather than silently producing a differently-sized disk. Dry-run
+# first; a failure here aborts the install with the reason on screen.
+patch_repair_device() {
+    local target="$CHROOT/home/deck/tools/repair_device.sh"
+    local patchfile="$SHARE_MNT/boot/patches/0002-repair-device-rootfs-size.patch"
+
+    [ -f "$target" ] || { log "FATAL: $target is missing -- is this a repair image?"; return 1; }
+    if [ ! -f "$patchfile" ]; then
+        log "FATAL: partition-size patch not found at $patchfile"
+        log "       Refusing to install with Valve's 5 GiB slots, which cannot be"
+        log "       resized later on a machine that is already installed."
+        return 1
+    fi
+
+    # The expected before/after lines are READ FROM THE PATCH, not duplicated
+    # here, so the patch file stays the single source of truth for the change.
+    local want_old want_new
+    want_old="$(sed -n 's/^-\(PART_SIZE_ROOT=.*\)$/\1/p' "$patchfile" | head -1)"
+    want_new="$(sed -n 's/^+\(PART_SIZE_ROOT=.*\)$/\1/p' "$patchfile" | head -1)"
+    [ -n "$want_old" ] && [ -n "$want_new" ] || {
+        log "FATAL: could not read the PART_SIZE_ROOT change out of $patchfile"; return 1; }
+
+    # Idempotent: a re-run of the stage must not be a failure.
+    if grep -Fqx "$want_new" "$target"; then
+        log "partition geometry: already patched ($want_new)"
+        return 0
+    fi
+
+    # Applied by exact-line match rather than with patch(1): the Alpine
+    # initramfs has busybox patch, which has no --dry-run, so "check before
+    # writing" is not available there and a half-applied installer is worse than
+    # none. An exact match that must occur EXACTLY ONCE gives the same
+    # guarantee without the dependency.
+    local n
+    n="$(grep -Fxc "$want_old" "$target" 2>/dev/null || echo 0)"
+    if [ "$n" != "1" ]; then
+        log "FATAL: the partition-size patch does not apply to this repair image."
+        log "       Expected exactly one line:"
+        log "         $want_old"
+        log "       found $n. Valve changed that block; refusing to guess, because a"
+        log "       wrong partition table is permanent on every machine installed."
+        grep -n '^PART_SIZE_ROOT=' "$target" 2>/dev/null | while read -r l; do log "       image has: $l"; done
+        return 1
+    fi
+
+    local tmp="$target.nvkvm.$$"
+    sed "s|^$(printf '%s' "$want_old" | sed 's/[][\.*^$/]/\\&/g')\$|$want_new|" "$target" > "$tmp" \
+        || { log "FATAL: rewriting repair_device.sh failed"; rm -f "$tmp"; return 1; }
+    cat "$tmp" > "$target" && rm -f "$tmp" \
+        || { log "FATAL: could not write repair_device.sh"; rm -f "$tmp"; return 1; }
+
+    # Verify rather than trust.
+    grep -Fqx "$want_new" "$target" \
+        || { log "FATAL: PART_SIZE_ROOT is not the patched value after writing"; return 1; }
+    grep -q 'rootfs-A".*PART_SIZE_ROOT' "$target" \
+        || { log "FATAL: the sfdisk table no longer sizes rootfs-A from PART_SIZE_ROOT"; return 1; }
+    log "partition geometry: $want_old -> $want_new"
+    return 0
+}
+
 rc=0
 for stage in $(echo "$STAGES" | tr ',' ' '); do
     case "$stage" in
@@ -451,6 +523,7 @@ for stage in $(echo "$STAGES" | tr ',' ' '); do
         # REBOOTPROMPT are deliberately left unset so the final prompt_reboot
         # is silent and hits the stubbed systemctl.
         log "=== stage: repair (repair_device.sh all) ==="
+        patch_repair_device || { rc=1; break; }
         run_in_chroot /home/deck/tools/repair_device.sh all
         rc=$?
         log "repair_device.sh all exited $rc"

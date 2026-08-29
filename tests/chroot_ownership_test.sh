@@ -41,9 +41,13 @@ sed -n '/^chroot_teardown()/,/^}/p' "$BOOT" | grep -q 'for m in \$CHROOT_MOUNTS'
 
 # teardown must actually be wired to the exit path, or a failure leaks a mount
 # and the NEXT OS update cannot mount the slot rauc just wrote
-grep -q "trap 'chroot_teardown; restore_ro_state' EXIT" "$BOOT" \
+# Assert the ORDER, not the literal string: the trap has since grown a third
+# step (image_umount_all), and chroot_teardown must stay first because the
+# chroot binds live inside the image mount -- releasing the outer one first
+# fails as busy.
+grep -qE "trap 'chroot_teardown; restore_ro_state(;[^']*)?' EXIT" "$BOOT" \
     && echo "ok: teardown runs on exit, including on failure" \
-    || { echo "FAIL: chroot_teardown is not on the EXIT trap"; rc=1; }
+    || { echo "FAIL: chroot_teardown is not first on the EXIT trap"; rc=1; }
 
 # THE ROOT CAUSE: pacman-key --populate starts a gpg-agent, which DAEMONISES
 # and keeps an open fd under the target's /dev. That fd pinned the bind mount,
@@ -102,10 +106,18 @@ grep -q 'resolv\.conf' "$OTA" \
     && { echo "FAIL: the OTA hook still installs its own resolver"; rc=1; } \
     || echo "ok: the OTA hook no longer duplicates the resolver"
 
-# the caller still owns the image's own filesystems
-grep -q 'ota_mount -o bind /home' "$OTA" \
-    && echo "ok: the caller still provides the image's /home" \
+# The image's own filesystems are now boot.sh's too, via --image: the hook is a
+# finder, not a mounter. One owner for the chroot AND one for the slot mounts,
+# rather than the chroot moving and the slot mounts staying behind.
+IMG="$(awk '/^do_image\(\) \{/,/^\}/' "$BOOT")"
+grep -q 'image_mount -o bind /home' <<<"$IMG" \
+    && echo "ok: --image provides the image's /home (the build area)" \
     || { echo "FAIL: nobody mounts /home for the build area"; rc=1; }
+if grep -qE 'ota_mount|OTA_MOUNTS' "$OTA"; then
+    echo "FAIL: the OTA hook still mounts the slot itself"; rc=1
+else
+    echo "ok: the OTA hook no longer mounts the slot either"
+fi
 
 [ $rc -eq 0 ] && echo "PASS: one chroot implementation, owned by boot.sh"
 exit $rc

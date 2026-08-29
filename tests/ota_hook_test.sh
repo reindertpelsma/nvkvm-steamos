@@ -90,36 +90,57 @@ mk_wrapper 1; "$work/w" >/dev/null 2>&1; st=$?
 [ -f "$work/otalog" ] && { echo "FAIL: provisioned after a FAILED update"; rc=1; } \
                       || echo "ok: a failed update does not provision"
 
-# --- what the hook still owns -------------------------------------------
-# The chroot the target needs (/proc, /sys, /dev, a resolver) is NOT here: it
-# belongs to steamos_boot.sh, which builds it for every entry point that hands
-# it an image root. See tests/chroot_ownership_test.sh. What the hook owns is
-# the image's OWN filesystems, which only the caller can identify.
+# --- where those guarantees live now ------------------------------------
+# The hook used to mount the slot itself. It no longer does: mounting, sizing
+# the filesystem to its partition, binding /home and tearing it all down is
+# steamos_boot.sh --image, which every entry point shares. The guarantees below
+# did not go away -- they moved, so assert them where they now live, and assert
+# that the hook has NOT grown a second copy.
 OTA="$DIR/boot/image/nvkvm-ota.sh"
-grep -q 'ota_mount -o bind /home' "$OTA" \
-    && echo "ok: the hook provides the image's /home (the build area)" \
+BOOT="$DIR/boot/steamos_boot.sh"
+IMG="$(awk '/^do_image\(\) \{/,/^\}/' "$BOOT")"
+
+if grep -qE 'ota_mount|ota_umount_all|OTA_MOUNTS' "$OTA"; then
+    echo "FAIL: the hook has grown its own mount logic again"; rc=1
+else
+    echo "ok: the hook mounts nothing -- it finds the slot and hands it over"
+fi
+grep -q 'steamos_boot.sh" --image "\$dev"' "$OTA" \
+    && echo "ok: the hook hands the slot over as a block device" \
+    || { echo "FAIL: the hook does not call --image"; rc=1; }
+
+# /home is shared between slots and holds the module build area and the driver
+# cache; a rootfs slot has room for neither.
+grep -q 'image_mount -o bind /home' <<<"$IMG" \
+    && echo "ok: --image provides the image's /home (the build area)" \
     || { echo "FAIL: nobody mounts /home for the build area"; rc=1; }
 
 # A LEFTOVER MOUNT BREAKS THE UPDATE ITSELF: rauc's post-install handler mounts
 # the other slot to sync var, and fails with "already mounted or mount point
 # busy" -> "Child process exited with code 32" if we still hold it.
-grep -q 'ota_umount_all || rc=1' "$OTA" \
+grep -q 'image_umount_all || rc=1' <<<"$IMG" \
     && echo "ok: everything is unmounted before returning to the updater" \
-    || { echo "FAIL: the hook can return while still holding the slot"; rc=1; }
-grep -q "trap 'ota_umount_all" "$OTA" \
+    || { echo "FAIL: --image can return while still holding the slot"; rc=1; }
+grep -q "trap 'chroot_teardown; restore_ro_state; image_umount_all' EXIT" "$BOOT" \
     && echo "ok: a trap unmounts even on an unexpected exit" \
     || { echo "FAIL: no cleanup trap -- an early return leaks the mount"; rc=1; }
 
+# The slot must also be able to USE its partition: Valve dd's a smaller
+# filesystem into it and never resizes, and so does every OTA.
+grep -q 'image_resize_to_partition' <<<"$IMG" \
+    && echo "ok: --image sizes the filesystem to its partition" \
+    || { echo "FAIL: --image does not resize the slot"; rc=1; }
+
 # inner mounts must come off before the slot they live in
 mounts="$(bash -c '
-OTA_MOUNTS=""
+IMAGE_MOUNTS=""
 mount() { return 0; }
-ota_mount() { local target="${@: -1}"; if mount "$@"; then OTA_MOUNTS="$target $OTA_MOUNTS"; return 0; fi; return 1; }
-ota_mount /dev/x /mnt/root
-ota_mount -o bind /proc /mnt/root/proc
-echo "$OTA_MOUNTS"')"
+image_mount() { local target="${@: -1}"; if mount "$@"; then IMAGE_MOUNTS="$target $IMAGE_MOUNTS"; return 0; fi; return 1; }
+image_mount /dev/x /mnt/root
+image_mount -o bind /home /mnt/root/home
+echo "$IMAGE_MOUNTS"')"
 case "$mounts" in
-    "/mnt/root/proc /mnt/root "*|"/mnt/root/proc /mnt/root") echo "ok: unmount order is inner-before-outer" ;;
+    "/mnt/root/home /mnt/root "*|"/mnt/root/home /mnt/root") echo "ok: unmount order is inner-before-outer" ;;
     *) echo "FAIL: unmount order is '$mounts' -- outer first would fail as busy"; rc=1 ;;
 esac
 

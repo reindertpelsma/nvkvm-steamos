@@ -78,84 +78,21 @@ disarm_other() {
     done
 }
 
-# What WE mount is only the image's own filesystems: the slot itself, and the
-# /home it shares. The execution environment inside that root -- /proc, /sys,
-# /dev, a resolver -- is steamos_boot.sh's job, because every entry point needs
-# it and a second implementation of it got the same three things wrong three
-# times in a row. See chroot_setup() there.
-#
-# A LEFTOVER MOUNT IS NOT A COSMETIC LEAK: rauc's own post-install handler
-# mounts the other slot to sync the var partitions, and if we still hold it the
-# whole update fails with
-#     mount: /var/mnt: /dev/nvme0n1pN already mounted or mount point busy
-#     Post-install handler error: Child process exited with code 32
-# which is reported to the user as "Unable to download the required update",
-# naming the one thing that was not wrong. OBSERVED 2026-08-28.
-OTA_MOUNTS=""
-
-ota_mount() {   # <mount args...> <target>
-    local target="${@: -1}"          # the mount point is always the last arg
-    if mount "$@"; then
-        OTA_MOUNTS="$target $OTA_MOUNTS"   # prepend, so we unmount in reverse
-        return 0
-    fi
-    return 1
-}
-
-ota_umount_all() {
-    local m rc=0
-    for m in $OTA_MOUNTS; do
-        mountpoint -q "$m" || continue
-        # Try hard before resorting to lazy: -R takes submounts, and a short
-        # retry covers a process on its way out. A lazy unmount here is what
-        # breaks rauc's post-install handler and therefore the whole update.
-        _i=0
-        while [ "$_i" -lt 5 ]; do
-            mountpoint -q "$m" || break
-            umount -R "$m" 2>/dev/null && break
-            umount "$m" 2>/dev/null && break
-            _i=$((_i + 1)); sleep 1
-        done
-        mountpoint -q "$m" || continue
-        # A lazy unmount detaches the tree but keeps the filesystem ALIVE until
-        # every reference drops, so btrfs goes on holding the device and the
-        # NEXT update cannot mount the slot rauc just rewrote. Last resort, and
-        # never quietly.
-        umount -l "$m" 2>/dev/null && {
-            fail "had to LAZILY unmount $m -- the slot may stay busy until reboot"
-            continue
-        }
-        fail "could not unmount $m -- the next OS update may fail on a busy slot"
-        rc=1
-    done
-    OTA_MOUNTS=""
-    return "$rc"
-}
-
+# WE MOUNT NOTHING. Finding the slot is this script's whole job; mounting it,
+# sizing its filesystem to its partition, binding /home and tearing all of that
+# down again is steamos_boot.sh --image. There used to be a second
+# implementation of those mounts here, and it got the same three things wrong
+# three times running.
 provision_other() {
     local dev=/dev/disk/by-partsets/other/rootfs
-    local mnt rc=0
+    local rc=0
 
     [ -e "$dev" ] || { fail "$dev does not exist -- not an A/B system?"; return 1; }
     mount_share || { fail "could not mount the nvkvm share at $SHARE_MNT"; disarm_other; return 1; }
     [ -x "$SHARE_MNT/boot/steamos_boot.sh" ] \
         || { fail "steamos_boot.sh missing from the share"; disarm_other; return 1; }
 
-    mnt="$(mktemp -d /tmp/nvkvm-ota.XXXXXX)" || return 1
-    trap 'ota_umount_all; rmdir "$mnt" 2>/dev/null' EXIT
-
-    # subvolid=5 / subvol=/ on this platform, so the device mounts as the rootfs
-    # directly and there is no subvolume to select.
-    if ! ota_mount "$dev" "$mnt"; then
-        fail "could not mount the other slot ($dev)"
-        rmdir "$mnt"; disarm_other; return 1
-    fi
-    # /home is shared between the slots and holds the module build area and the
-    # driver cache; a 5 GiB rootfs has room for neither.
-    mountpoint -q /home && { ota_mount -o bind /home "$mnt/home" \
-        || fail "could not bind /home -- the build area falls back to the rootfs"; }
-
-    log "provisioning the newly written slot at $mnt"
+    log "handing the newly written slot ($dev) to steamos_boot.sh --image"
     #
     # RUN IT IN A PRIVATE MOUNT NAMESPACE.
     #
@@ -183,19 +120,12 @@ provision_other() {
     else
         fail "no usable unshare(1): provisioning mounts will rely on teardown"
     fi
-    $runner "$SHARE_MNT/boot/steamos_boot.sh" --install-only --root "$mnt" >>"$LOG" 2>&1 || rc=$?
-
-    # Belt and braces: --install-only verifies this itself and fails loudly, but
-    # it is the property the whole exercise exists to guarantee.
-    if [ ! -e "$mnt/etc/systemd/system/multi-user.target.wants/nvkvm-boot.service" ]; then
-        fail "the new slot is NOT armed -- nvkvm-boot.service has no wants symlink"
-        rc=1
-    fi
-
-    # UNMOUNT BEFORE RETURNING, ALWAYS. rauc is not finished with this slot.
-    ota_umount_all || rc=1
-    trap - EXIT
-    rmdir "$mnt" 2>/dev/null
+    # --image mounts, resizes, provisions and UNMOUNTS, and reports a slot it
+    # could not release as a failure -- rauc is not finished with this slot and
+    # a busy one fails its post-install handler. Arming is verified in there too
+    # (see boot_unit_armed_test.sh); a second check here would be one more copy
+    # of a guarantee that already has an owner.
+    $runner "$SHARE_MNT/boot/steamos_boot.sh" --image "$dev" >>"$LOG" 2>&1 || rc=$?
 
     if [ "$rc" != 0 ]; then
         fail "provisioning the new slot FAILED (rc=$rc)"

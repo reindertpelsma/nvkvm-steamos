@@ -1,0 +1,32 @@
+nvkvm: give each rootfs slot 3 GiB of headroom
+
+Valve sizes both A/B rootfs partitions at 5120 MiB and dd's a 5 GiB btrfs image
+into each of them (`imageroot()`), never resizing afterwards -- only /home is
+freshly mkfs'd to fill its partition. The image itself already uses 3.45 GiB of
+that, leaving 867 MiB on 20260707.10 and roughly 374 MiB on 20260716.1, which
+grew ~300 MB. The NVIDIA userspace plus a toolchain does not fit in what is
+left, which is why provisioning had to trim CUDA/OpenCL, delete 352 MB of Valve's
+firmware, and still refused a real OTA 42 MB short.
+
+Partition geometry is decided once, at install, and cannot be changed on a
+machine that is already installed -- so this has to be right before release.
+
+3 GiB is deliberately more than the ~1.4 GiB we need (untrimmed userspace,
+resident toolchain, firmware left alone). The extra absorbs growth in Valve's
+own image: their content growing eats their 5 GiB, but if the IMAGE ever exceeds
+the partition the dd fails outright rather than merely getting tight.
+
+The filesystem written by the dd is still 5 GiB; steamos_boot.sh --image grows
+it to fill the partition, on both the initial install and every OTA.
+
+--- a/home/deck/tools/repair_device.sh
++++ b/home/deck/tools/repair_device.sh
+@@ -30,7 +30,7 @@
+ #
+ PART_SIZE_ESP="256"
+ PART_SIZE_EFI="64"
+-PART_SIZE_ROOT="5120" # This should match the size from the input disk build
++PART_SIZE_ROOT="8192" # nvkvm: 5120 upstream; +3G of headroom, see the patch header
+ PART_SIZE_VAR="256"
+ PART_SIZE_HOME="100" # For the stub .img file we're making this can be tiny, OS expands to fill physical disk on first
+                      # boot.  We make sure to specify the inode ratio explicitly when formatting.
