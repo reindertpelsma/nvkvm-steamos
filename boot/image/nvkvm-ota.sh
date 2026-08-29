@@ -64,13 +64,16 @@ disarm_other() {
         # is why `steamos-bootconf set-mode reboot-other` once selected an image
         # called 'dev' and left the machine unbootable.
         #
-        # A real slot is one with a rootfs partset. Nothing else may be touched,
-        # least of all created.
-        [ -e "/dev/disk/by-partsets/$other/rootfs" ] || {
-            log "skipping '$other' -- not a boot slot (no rootfs partset)"
-            continue
-        }
-        steamos-bootconf config --image "$other" --set boot-requested-at 0 >/dev/null 2>&1 \
+        # --no-create is the whole fix. Without it `config --set` HAPPILY
+        # INVENTS the config, which is how nine of them appeared. With it the
+        # command refuses ("Image config for X does not exist") and writes
+        # nothing, while still disarming every config that genuinely exists --
+        # including 'dev', which is the one that matters: MEASURED, an existing
+        # dev.conf with no rootfs behind it is what `set-mode reboot-other`
+        # selects in preference to the real other slot, and booting it is what
+        # left a machine at a GRUB prompt. Filtering on "has a rootfs partset"
+        # would skip 'dev' and leave exactly that trap armed.
+        steamos-bootconf config --image "$other" --no-create --set boot-requested-at 0 >/dev/null 2>&1 \
             && log "disarmed image '$other' -- it will not be booted"
     done
 }
