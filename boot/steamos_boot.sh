@@ -1290,7 +1290,17 @@ KSCREENLOCK
     # succeeds, and NetworkManager is restarted by Valve's own code path.
     # Nothing of Valve's is modified.
     #
-    if in_target sh -c 'modinfo mac80211_hwsim >/dev/null 2>&1'; then
+    # ASK ABOUT THE TARGET'S KERNEL, NOT OURS.
+    #
+    # modinfo defaults to $(uname -r), which inside a chroot is still the
+    # RUNNING kernel. Provisioning an A/B slot means the target runs a
+    # DIFFERENT kernel -- measured 2026-08-29: running valve24.4, target
+    # valve24.5 -- so this reported "no mac80211_hwsim" while the module was
+    # sitting in the target all along, and printed four lines of recovery
+    # advice for a problem that did not exist.
+    local _tkver
+    _tkver="$(in_target sh -c 'ls -1 /usr/lib/modules 2>/dev/null | head -1')"
+    if in_target sh -c "modinfo -k '${_tkver:-$(uname -r)}' mac80211_hwsim >/dev/null 2>&1"; then
         printf 'mac80211_hwsim\n' > "$(rp /etc/modules-load.d/nvkvm-wifi.conf)"
         # One radio is enough to own a phy; more would just add clutter to the
         # wifi list the user is about to be shown.
@@ -1928,12 +1938,26 @@ do_install() {
     # the reverse, and this is the cheap, idempotent fix for it.
     in_target ldconfig 2>/dev/null || warn "ldconfig failed in the target root"
 
-    write_desktop_config || rc=1
-    configure_ssh || rc=1
+    #
+    # PROVISIONING FAILS ONLY IF THE GUEST WOULD HAVE NO WORKING GPU.
+    #
+    # Everything above this point is load-bearing: the module, its build deps,
+    # the NVIDIA userspace. Everything below is convenience -- a desktop config,
+    # ssh keys, a clipboard agent, a serial console -- and a convenience that
+    # could not be installed is a WARNING, not a reason to fail.
+    #
+    # OBSERVED 2026-08-29: spice-vdagent failed a signature check on a freshly
+    # written A/B slot, `ensure_clipboard_agent` returned non-zero, and that one
+    # optional package turned a perfectly good OS update into a failed one --
+    # after the same step had already logged "clipboard stays off" and carried
+    # on. The exit status disagreed with the message next to it.
+    #
+    write_desktop_config || warn "desktop config not written; the session may need attention"
+    configure_ssh || warn "ssh was not configured; the guest is reachable only on the console"
     # Both AFTER remove_added_packages() above -- anything installed before it
     # is removed again on the same run.
-    ensure_clipboard_agent || rc=1
-    ensure_serial_console || rc=1
+    ensure_clipboard_agent || warn "clipboard agent not installed; clipboard stays off"
+    ensure_serial_console || warn "serial console not configured"
     # NOT `|| true`. A silently-failed plant is how a 0-byte
     # /usr/local/sbin/nvkvm-recovery.sh ships: 203/EXEC on every boot, from a run
     # that reported rc=0. This does not endanger the update path -- the plant

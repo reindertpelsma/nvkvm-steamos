@@ -179,6 +179,10 @@ provision_other() {
 
     if [ "$rc" != 0 ]; then
         fail "provisioning the new slot FAILED (rc=$rc)"
+        # DISARM, deliberately. Better to stay on the working old slot than to
+        # boot an updated one whose GPU support is unknown: a system that
+        # silently lost its GPU is a worse outcome than an update that visibly
+        # did not apply. The owner's call, 2026-08-29.
         disarm_other
         return "$rc"
     fi

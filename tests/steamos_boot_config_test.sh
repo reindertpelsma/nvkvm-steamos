@@ -55,7 +55,11 @@ write_sddm_session_config
 grep -qF '/run/nvkvm/boot/steamos_boot.sh --install-only --root "$TARGET_MNT"' \
     "$INSTALLER_GUEST" \
     || fail "fresh-image setup no longer calls steamos_boot.sh --install-only --root"
-grep -qF 'write_desktop_config || rc=1' "$BOOT_SCRIPT" \
+# The step must still RUN in do_install. Its failure is deliberately not fatal
+# any more -- provisioning fails only when the guest would have no working GPU,
+# and a desktop tweak that did not apply is a warning. Asserted on the call, not
+# on the rc handling, so that policy can change without lying about coverage.
+sed -n '/^do_install()/,/^}/p' "$BOOT_SCRIPT" | grep -q 'write_desktop_config' \
     || fail "do_install no longer converges desktop configuration"
 grep -qF -- '--profile "$PROFILE" --driver-version "$DRIVER_VERSION"' \
     "$INSTALLER_GUEST" \

@@ -34,9 +34,16 @@ grep -q 'options mac80211_hwsim radios=1' "$BOOT" \
 
 # 2. it must be conditional: a kernel without the module must SAY so, not fail
 #    silently, because the symptom (setup hangs) looks nothing like the cause
-grep -q 'modinfo mac80211_hwsim' "$BOOT" \
+grep -q 'modinfo -k .* mac80211_hwsim' "$BOOT" \
     && echo "ok: presence of the module is checked before relying on it" \
     || { echo "FAIL: boot.sh assumes mac80211_hwsim exists"; rc=1; }
+# ...and it must ask about the TARGET's kernel. modinfo defaults to $(uname -r),
+# which inside a chroot is still the RUNNING kernel -- so provisioning an A/B
+# slot (running valve24.4, target valve24.5) reported the module missing while
+# it sat in the target all along. Measured 2026-08-29.
+grep -q '_tkver' "$BOOT" \
+    && echo "ok: it asks about the target's kernel, not the running one" \
+    || { echo "FAIL: modinfo would consult the running kernel inside a chroot"; rc=1; }
 grep -q 'systemctl start NetworkManager' "$BOOT" \
     && echo "ok: the recovery command is printed when there is no radio" \
     || { echo "FAIL: no recovery instructions for a kernel without hwsim"; rc=1; }

@@ -47,7 +47,25 @@ if [ "$is_check" = 0 ] && [ "$rc" = 0 ] && [ -x "$OTA" ]; then
     # rc=0 outside check mode is Valve's "Applied an update", i.e. the other
     # slot now holds a new rootfs that has never seen nvkvm.
     echo "nvkvm: an update was applied; provisioning the new slot before reboot" >&2
-    "$OTA" provision-other || true      # never change the updater's status
+    if ! "$OTA" provision-other; then
+        #
+        # FAIL THE UPDATE, LOUDLY.
+        #
+        # This used to swallow the failure and return the updater's own status,
+        # so a slot we could not provision was quietly disarmed and the machine
+        # rebooted onto the old one. To the user that is "I updated and nothing
+        # happened" -- no dialog, no explanation, and an update that appears to
+        # succeed forever without ever taking effect.
+        #
+        # Returning non-zero makes SteamOS report the failure it actually had.
+        # The slot is disarmed either way, so the machine stays on the version
+        # that works; the difference is whether the user is told.
+        #
+        echo "nvkvm: provisioning the new slot FAILED -- failing the update so it" >&2
+        echo "nvkvm: is reported rather than silently rolled back. See" >&2
+        echo "nvkvm: /var/log/nvkvm-ota.log for the reason." >&2
+        exit 1
+    fi
 fi
 
 exit "$rc"

@@ -71,6 +71,15 @@ mk_wrapper 0; "$work/w" >/dev/null 2>&1; st=$?
                       || { echo "FAIL: an applied update did NOT provision"; rc=1; }
 [ "$st" = 0 ] || { echo "FAIL: exit $st, expected 0"; rc=1; }
 
+# A PROVISIONING FAILURE MUST FAIL THE UPDATE. Swallowing it disarmed the new
+# slot and rebooted onto the old one with no dialog -- "I updated and nothing
+# happened", forever. Observed 2026-08-29.
+mk_wrapper 0; printf '#!/bin/sh\nexit 1\n' > "$work/ota"; chmod +x "$work/ota"
+"$work/w" >/dev/null 2>&1; st=$?
+[ "$st" = 1 ] \
+    && echo "ok: a failed provisioning fails the update, so SteamOS reports it" \
+    || { echo "FAIL: provisioning failed but the update reported exit $st"; rc=1; }
+
 mk_wrapper 7; "$work/w" >/dev/null 2>&1; st=$?
 [ -f "$work/otalog" ] && { echo "FAIL: provisioned despite 'no update available'"; rc=1; } \
                       || echo "ok: no provisioning when there was no update"
