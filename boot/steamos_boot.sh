@@ -272,7 +272,22 @@ steamos_unlock() {
             btrfs property set / ro false 2>/dev/null
         }
     else
+        #
+        # THE PROPERTY IS NOT ENOUGH -- REMOUNT.
+        #
+        # A btrfs subvolume mounted while ro=true stays read-only AT THE VFS
+        # LEVEL. Clearing the property afterwards does not touch the existing
+        # mount, so `btrfs property get` cheerfully reports ro=false while every
+        # write still fails:
+        #     ERROR: Unable to create temporary file (Read-only file system)
+        #     ERROR: Failure removing directory /var/lib/nvidia (Read-only ...)
+        # The ROOT=/ branch above has always done the remount; this one never
+        # did, and it is why provisioning an A/B slot could not install the
+        # NVIDIA userspace -- and, before that, could not write a keyring.
+        # MEASURED 2026-08-29.
+        #
         btrfs property set "$ROOT" ro false 2>/dev/null
+        mount -o remount,rw "$ROOT" 2>/dev/null
     fi
 }
 steamos_lock() {
@@ -778,7 +793,26 @@ install_nvidia_userspace() {
     local run="$1"
     steamos_unlock
     local scratch
+    #
+    # EXTRACT ONTO DISK, NOT INTO A tmpfs.
+    #
+    # The .run unpacks to about a gigabyte. For a target this used to land in
+    # the parent of the mountpoint -- /tmp on the running guest, which is a
+    # tmpfs, so the extraction was a gigabyte of RAM. MEASURED 2026-08-29: the
+    # extraction was TERMINATED mid-way (SIGTERM, the signature of the OOM
+    # killer rather than a disk-full error), leaving no installer behind:
+    #     Terminated  ( cd "$scratch" && sh "$runabs" -x )
+    #     chroot: failed to run '/tmp/nvidia-install/nvidia-installer'
+    # and provisioning then failed on a missing binary rather than on the real
+    # cause.
+    #
+    # /home is bound into the target and is the big partition -- the same
+    # reason the .run cache lives there (see run_cache). Fall back to the old
+    # location only if it is somehow absent.
+    #
     if [ "$ROOT" = "/" ]; then scratch=/tmp/nvkvm-nvidia-extract
+    elif [ -d "$ROOT/home" ] && mountpoint -q "$ROOT/home" 2>/dev/null; then
+        scratch="$ROOT/home/.nvkvm-nvidia-extract"
     else scratch="$(dirname "$(readlink -f "$ROOT")")/nvkvm-nvidia-extract"; fi
     rm -rf "$scratch"; mkdir -p "$scratch" || { err "could not create $scratch"; return 1; }
 
@@ -912,6 +946,37 @@ install_nvidia_userspace() {
         fi
     fi
     local free_kb; free_kb="$(df -Pk "$(rp /usr)" 2>/dev/null | awk 'NR==2{print $4}')"
+
+    #
+    # RECLAIM /usr/lib/firmware BEFORE GIVING UP.
+    #
+    # SteamOS ships ~350 MB of device firmware for hardware a VM does not have:
+    # wifi, bluetooth, amdgpu, and so on. The guest has virtio devices, an
+    # emulated NVMe and a forwarded GPU whose module needs none of it --
+    # `modinfo -F firmware nvkvm-guest.ko` is empty, which this project has
+    # relied on since the beginning.
+    #
+    # This is not a nicety. MEASURED 2026-08-29: a slot written by a SteamOS
+    # A/B update had 408 MB free against a 395 MB userspace -- a 13 MB margin,
+    # so nvidia-installer died partway through with
+    #     Received signal SIGBUS; aborting.
+    # (a write to an mmap'd file on a full filesystem, which reads like a crash
+    # rather than a disk-full error). Removing firmware took it to 519 MB and
+    # provisioning succeeded on the next attempt. The newer image is ~300 MB
+    # fatter than the one before it, so this will only get tighter.
+    #
+    if [ -n "$free_kb" ] && [ "$free_kb" -lt "$need_kb" ]; then
+        local fw; fw="$(rp /usr/lib/firmware)"
+        if [ -d "$fw" ]; then
+            local fw_kb; fw_kb="$(du -sk "$fw" 2>/dev/null | awk '{print $1}')"
+            log "short of space for the NVIDIA userspace; reclaiming $((${fw_kb:-0}/1024))M of device firmware a VM cannot use"
+            steamos_unlock
+            rm -rf "$fw" 2>/dev/null && mkdir -p "$fw" 2>/dev/null
+            free_kb="$(df -Pk "$(rp /usr)" 2>/dev/null | awk 'NR==2{print $4}')"
+            log "free space is now $((${free_kb:-0}/1024))M"
+        fi
+    fi
+
     if [ -n "$free_kb" ] && [ "$free_kb" -lt "$need_kb" ]; then
         err "not enough space for the NVIDIA userspace: free=$((free_kb/1024))M needed=$((need_kb/1024))M"
         err "Pick a smaller profile (--profile steamos trims CUDA/OpenCL), set"
