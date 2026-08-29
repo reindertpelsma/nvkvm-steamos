@@ -23,6 +23,19 @@ Wall time **1m48s**, including the module build and the NVIDIA install.
 | `guest-serial-nvkvm.txt` | the produced image booting under **stock** QEMU 6.2 + OVMF, serial console. OVMF loads from the NVMe (so the relocated GPT is good), the planted `nvkvm-boot.service` runs, `nvkvm-recovery.sh` mounts the real 9p share and hands over, and Part 1 converges to `rc=0` on the live system with `module up to date at 252bd44…` |
 | `guest-oops.txt` | a **kernel NULL pointer dereference in `nvkvm_send_sync`**, triggered by `ksplashqml` opening the device. Not a fault of the image: this box has no nvkvm virtio device, and `/etc/modules-load.d/nvkvm.conf` loads the guest module anyway. See below. |
 
+## CORRECTION 2026-08-29 — the oops below is FIXED
+
+Verified in the source, not inferred: commit `c8277f2` ("guest: fail opens with
+-ENODEV when no nvkvm virtio device is attached") gates BOTH open paths on
+`nvkvm_transport_ready()` in `nvkvm_fd_ctx_open_dev()`, which `nvkvm_open()` and
+the DRM `.open` both funnel through. The predicate checks the very field that
+was dereferenced when `probe()` had never run. The misleading `-12`/`-ENOMEM`
+warning that sent diagnosis the wrong way was replaced with an explicit
+`-ENODEV` message.
+
+The section below is kept as the original record of how it was found. Do not
+cite it as an open bug.
+
 ## The oops is an nvkvm-pv finding, and it is reproducible
 
 `nvkvm-guest` loads on a machine with **no `virtio-nvgpu`/`nvkvm-gpu` device**,
