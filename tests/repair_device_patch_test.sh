@@ -37,6 +37,8 @@ eval "$(awk '/^patch_repair_device\(\) \{/,/^\}/' "$GI")"
 declare -F patch_repair_device >/dev/null || { echo "FAIL: could not extract patch_repair_device"; exit 1; }
 LOGGED=""
 log() { LOGGED="$LOGGED$*"$'\n'; }
+# Consumed by the extracted patch_repair_device, not by this script directly.
+# shellcheck disable=SC2034
 CHROOT="$work/chroot"
 SHARE_MNT="$work/share"
 mkdir -p "$SHARE_MNT/boot/patches"

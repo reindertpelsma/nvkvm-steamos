@@ -2052,7 +2052,10 @@ install_ota_wrapper() {
 IMAGE_MOUNTS=""
 
 image_mount() {   # <mount args...> <target>
-    local target="${@: -1}"          # the mount point is always the last arg
+    # ${!#} is the LAST positional parameter. "${@: -1}" looks equivalent and is
+    # not: it slices the array into a string, which shellcheck flags (SC2124)
+    # and which silently misbehaves the moment a mount option contains a space.
+    local target="${!#}"             # the mount point is always the last arg
     if mount "$@"; then
         IMAGE_MOUNTS="$target $IMAGE_MOUNTS"   # prepend, so we unmount in reverse
         return 0
