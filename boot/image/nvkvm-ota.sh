@@ -73,6 +73,35 @@ disarm_other() {
         # selects in preference to the real other slot, and booting it is what
         # left a machine at a GRUB prompt. Filtering on "has a rootfs partset"
         # would skip 'dev' and leave exactly that trap armed.
+        # NEVER DISARM A REAL SLOT, and never take --no-create on trust.
+        #
+        # MEASURED on a real OTA, 2026-08-29, on a machine installed from
+        # scratch that same hour. rauc wrote the update to B, this loop then ran
+        # and the config timestamps tell the whole story:
+        #     A.conf       13:49:02   <- the install
+        #     B.conf       13:50:24   <- THIS LOOP
+        #     Desktop.conf 13:50:24   <- THIS LOOP, same second
+        # Ten configs written in one second. So two things were false at once:
+        #
+        #   1. --no-create DOES NOT PREVENT CREATION here. It is documented
+        #      (`config [--no-create]`) and it is passed, and the files were
+        #      created anyway -- which is how the nine XDG names from the
+        #      garbage `list-images` output become real, permanent entries that
+        #      SteamOS's chainloader can then pick.
+        #   2. The loop disarmed 'B' -- the legitimate other slot, the one the
+        #      OTA had just provisioned. Result: boot-requested-at 0 on B,
+        #      20260829184125 on A, selected-image A. `steamos-update` reports
+        #      success and THE UPDATE NEVER BOOTS. Silently, every time.
+        #
+        # So: skip the real slots by name (SteamOS's scheme is exactly A and B),
+        # and check for the config ourselves before touching it. Anything else
+        # that genuinely exists still gets disarmed -- 'dev' above all, which is
+        # the phantom that `set-mode reboot-other` selects in preference to the
+        # real slot and that left a machine at a GRUB prompt.
+        case "$other" in
+            A|B) continue ;;
+        esac
+        [ -f "${NVKVM_BOOTCONF_DIR:-/esp/SteamOS/conf}/$other.conf" ] || continue
         steamos-bootconf config --image "$other" --no-create --set boot-requested-at 0 >/dev/null 2>&1 \
             && log "disarmed image '$other' -- it will not be booted"
     done
