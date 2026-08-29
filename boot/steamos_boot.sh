@@ -373,7 +373,19 @@ remove_added_packages() {
 # or ultimate (u) validity on the uid. That is what we test.
 #
 ensure_pacman_keyring() {
-    local trusted='gpg --homedir /etc/pacman.d/gnupg --list-keys --with-colons 2>/dev/null | grep -q "^uid:[fu]:"'
+    #
+    # TEST THE REPO'S SIGNING KEY, NOT "ANY TRUSTED KEY".
+    #
+    # This used to accept any uid with full/ultimate validity -- and
+    # `pacman-key --init` ALWAYS creates a local master key with ultimate
+    # trust. So the check passed on a keyring where Valve's signing key was
+    # still unknown, and every package then failed with
+    #     error: gcc: signature from "GitLab CI Package Builder
+    #            <ci-package-builder-1@steamos.cloud>" is unknown trust
+    # while this step cheerfully logged "signatures are trusted".
+    # MEASURED on a freshly written A/B slot, 2026-08-29.
+    #
+    local trusted='gpg --homedir /etc/pacman.d/gnupg --list-keys --with-colons 2>/dev/null | grep -q "^uid:[fu]:.*steamos\.cloud"'
 
     in_target sh -c "$trusted" && { log "pacman keyring: signatures are trusted"; return 0; }
     log "pacman keyring holds no locally-signed keys; initialising and populating"
@@ -1890,6 +1902,11 @@ do_install() {
         # ~500 MB free) on EVERY boot and then removes them again, and on a root with
         # no resolver it fails and pins Part 1's exit status at 1 forever -- so a
         # perfectly converged system permanently reports failure.
+        # KEYRING FIRST. ensure_build_deps installs packages, and installing
+        # packages against a keyring nobody has populated fails on every one of
+        # them. Observed 2026-08-29: gcc, make and libisl all rejected for
+        # "unknown trust", and the keyring step then ran afterwards.
+        ensure_pacman_keyring || rc=1
         ensure_build_deps || rc=1
         build_and_install_module || rc=1
     else

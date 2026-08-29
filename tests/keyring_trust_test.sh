@@ -20,7 +20,12 @@ BOOT="$DIR/boot/steamos_boot.sh"
 rc=0
 
 # the predicate steamos_boot.sh uses, applied to captured gpg colon output
-trusted() { grep -q '^uid:[fu]:' "$1"; }
+# The predicate must name the REPO's signing key. `pacman-key --init` always
+# creates a local master key with ULTIMATE trust, so "any uid with full or
+# ultimate validity" is true on a keyring that cannot verify a single package.
+# Measured on the live guest: the old predicate matched 84 uids, the correct one
+# matches 1.
+trusted() { grep -q '^uid:[fu]:.*steamos\.cloud' "$1"; }
 
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 
@@ -39,6 +44,17 @@ uid:-::::::::Still Unsigned <x@example.org>:
 uid:f::::::::GitLab CI Package Builder <ci-package-builder-1@steamos.cloud>:
 uid:u::::::::Pacman Keyring Master Key <pacman@localhost>:
 EOF
+# The exact state that fooled the old check: a local master key with ULTIMATE
+# trust and the repo's key still unknown. This must NOT count as ready.
+cat > "$work/masteronly" <<'EOF'
+uid:-::::::::GitLab CI Package Builder <ci-package-builder-1@steamos.cloud>:
+uid:u::::::::Pacman Keyring Master Key <pacman@localhost>:
+EOF
+if trusted "$work/masteronly"; then
+    echo "FAIL: a keyring with only the local master key was called ready"; rc=1
+else
+    echo "ok: the local master key alone does not count as ready"
+fi
 
 if trusted "$work/untrusted"; then
     echo "FAIL: an unsigned keyring was reported as trusted"; rc=1
@@ -65,7 +81,7 @@ if grep -qE "in_target sh -c 'pacman-key --list-keys[^']*' && return 0" "$BOOT";
 else
     echo "ok: boot.sh no longer gates on key presence"
 fi
-if grep -q 'uid:\[fu\]:' "$BOOT"; then
+if grep -q 'uid:\[fu\]:.*steamos' "$BOOT"; then
     echo "ok: boot.sh tests uid validity (full/ultimate)"
 else
     echo "FAIL: boot.sh does not test uid validity"; rc=1
