@@ -432,7 +432,16 @@ ensure_pacman_keyring() {
         warn "keyring: cannot sign keys inside the target; seeding it from the running system"
         rm -rf "$(rp /etc/pacman.d/gnupg).nvkvm-bak"
         mv "$(rp /etc/pacman.d/gnupg)" "$(rp /etc/pacman.d/gnupg).nvkvm-bak" 2>/dev/null
+        #
+        # REFRESH THE TRUSTDB BEFORE ASKING. gpg computes web-of-trust validity
+        # LAZILY: straight after a keyring is dropped in, the first --list-keys
+        # still reports the repo key as 'q' (undefined), and only a later
+        # invocation shows 'f'. That cost a whole diagnosis round -- the copy
+        # had worked and the check said it had not, so the code reported
+        # "seeding did not help" about a keyring that was already correct.
+        #
         if cp -a /etc/pacman.d/gnupg "$(rp /etc/pacman.d/gnupg)" 2>/dev/null \
+           && { in_target pacman-key --updatedb >/dev/null 2>&1 || true; } \
            && in_target sh -c "$trusted"; then
             log "keyring: seeded from the running system; package signatures now validate"
             return 0
