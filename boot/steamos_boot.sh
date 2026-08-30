@@ -1419,12 +1419,32 @@ write_sddm_session_config() {
     # NVKVM_STEAMOS_FORCE_PLASMA=1 overrides this, for a guest where the
     # gamescope OOBE session does not come up (its KMS expectations against
     # nvkvm's single-plane, cursor-less pipe are UNTESTED as of 2026-08-28).
-    local _oobe=0
-    [ "$(sed -n 's/^VARIANT_ID=//p' "$(rp /etc/os-release)" 2>/dev/null | tr -d '"')" = "steamdeck-oobe" ] \
-        && _oobe=1
-    if [ "$_oobe" = 1 ] && [ "${NVKVM_STEAMOS_FORCE_PLASMA:-0}" != 1 ]; then
+    # DEFAULT IS NOW: DO NOT TOUCH SDDM'S SESSION AT ALL.
+    #
+    # This override existed to dodge gamescope while gamescope could not start.
+    # That cause is fixed (ensure_gamescope_ready_timeout: SteamOS's own session
+    # script gave gamescope a 3s deadline to report ready and gamescope needs
+    # ~4s under nvkvm), and a graduated guest now reaches Game Mode normally.
+    #
+    # Leaving the override in place actively BREAKS SteamOS, because zz- sorts
+    # after everything and therefore outranks the user's own choice. MEASURED
+    # 2026-08-30 on a fully installed, graduated guest: the desktop's "Return to
+    # Gaming Mode" shortcut runs
+    #     if [ "$(steamosctl get-default-login-mode)" = desktop ]
+    #         then steamosctl switch-to-game-mode
+    #         else qdbus ... logout          # relies on SDDM autologin
+    # and get-default-login-mode returns "game", so it takes the LOGOUT branch and
+    # lets autologin choose. Autologin then read our Session=plasma.desktop and
+    # put the user straight back on the desktop. The shortcut looked broken; it
+    # was us.
+    #
+    # So: never write it unless explicitly asked. NVKVM_STEAMOS_FORCE_PLASMA=1
+    # remains for a guest where gamescope genuinely will not come up -- that is a
+    # deliberate operator choice, not a default.
+    if [ "${NVKVM_STEAMOS_FORCE_PLASMA:-0}" != 1 ]; then
         rm -f "$sddm_override"
-        log "OOBE image: leaving SteamOS's own session in place so Valve's setup flow runs"
+        log "leaving SteamOS's own SDDM session selection alone (gamescope works; the"
+        log "  override outranks the user's choice and breaks Return to Gaming Mode)"
         log "  it performs the OTA that graduates this guest to VARIANT_ID=steamdeck"
         log "  (set NVKVM_STEAMOS_FORCE_PLASMA=1 to force the Plasma desktop instead)"
     elif [ "$PROFILE" = steamos ] \
