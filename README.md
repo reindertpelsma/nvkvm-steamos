@@ -77,6 +77,9 @@ No. There is no VFIO and no real GPU device is bound to the VM. Your host GPU is
 genuinely shared with the guest, similar to CUDA containers. The VM gets access to
 your GPU for graphics and compute; the host keeps using it throughout.
 
+**Why nvkvm and not Containers, VFIO, vGPU, VirtIO-gpu, GPU PV?**
+Containers are not a VM, meaning you can't run a full OS inside it that you can run on bare metal or KVM. VFIO gives up the GPU on your host, if your display output is on that gpu then your host desktop is unusable as your host has control seized control over display. vGPU is only for datacenter nvidia parts and licensed, vgpu unlock works only on certain cards by enabling legacy vgpu paths, its physically impossible to obtain on Blackwell (due to GSP being mandatory and legacy paths disabled, gpu sharing is fused off in firmware), and no open source code for Ampere exists yet, its unreliable and still doesn't forward your display zero copy natively. standard virtio-gpu in qemu is very limited and will not give you cuda/native vulkan in VMs. GPU PV only works on Windows hosts.
+
 **Will my GPU work?**
 NVIDIA only, Turing (GTX 16xx / RTX 20xx) or newer. Six architectures are tested,
 from GTX 1660 to H100 — see the tested-platforms table in nvkvm-pv. Pascal and
@@ -178,6 +181,9 @@ still works. The audio container applies the same principle to sound.
 The effect: most QEMU or nvkvm breakouts land in an unprivileged CUDA container
 with most capabilities stripped and nowhere to attach a keylogger. A breakout
 through KVM into the host kernel is a far higher bar.
+
+**Whats the purpose of this project for nvkvm?**
+Its primarily intended as demonstration of its capabilities on a vendor OS thats not standard ubuntu, plus its an excellent test target to run AAA titles under nvkvm and for anyone who wants to run steamOS in a VM without giving up its nvidia GPU.
 
 ## Known limits
 
