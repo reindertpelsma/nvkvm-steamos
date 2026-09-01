@@ -38,11 +38,52 @@ separately -- it was also, for a while, broken here without our noticing.
   12 minutes of continuous gameplay, GPU 28-39%, VRAM ~5.07 GB, 49-65 W,
   2.2-2.7 GHz, 41 C, with the host reporting 38-39% and ~5.08 GB for the same
   GPU at the same moment.
-- **Just Cause 2** (MEASURED 2026-09-02). Launches and plays. Its value is the
-  build it ran on: a `docker system prune -a` plus `docker volume prune -a`,
-  then `docker compose build` from `main` alone on this repo and on nvkvm-pv.
-  It is the first title confirmed on a clean-room build, so the Proton path is
-  known to reproduce from a fresh tree rather than only on a developer machine.
+- **Just Cause 2** (MEASURED 2026-09-02, RTX 3050 Laptop GPU / driver
+  580.173.02, Proton 11.0). Launches and plays on a build made from nothing: a
+  `docker system prune -a` plus `docker volume prune -a`, then
+  `docker compose build` from `main` alone on this repo and on nvkvm-pv. The
+  binary is PE32/i386, so this also exercises the 32-bit NVIDIA userspace --
+  `/usr/lib32/libGLX_nvidia.so.580.173.02` and a 32-bit `libvulkan` are mapped
+  into the running process. It reaches the driver through DXVK, not
+  vkd3d-proton, which is why it survives the gap below.
+
+### OPEN: RDR2 does not reproduce on a clean build -- `--profile steamos` trims libcuda
+
+MEASURED 2026-09-02 on the same fresh guest that runs Just Cause 2, using
+`tests/repro/vk_device_extensions.c` from nvkvm-pv, the acceptance test written
+for this bug:
+
+| requested device extensions | result |
+|---|---|
+| none | `VK_SUCCESS` |
+| `VK_KHR_swapchain` | `VK_SUCCESS` |
+| all seven ray-tracing extensions | `VK_ERROR_INITIALIZATION_FAILED` |
+| each of the seven, individually | `VK_ERROR_INITIALIZATION_FAILED` |
+
+That is the original RDR2 signature exactly, with both controls passing. The
+guest has 44 NVIDIA libraries staged in `/usr/lib` but **no `libcuda.so` at
+all**, and no `libnvidia-nvvm.so`.
+
+The cause is a design decision that the RDR2 finding invalidated.
+`boot/steamos_boot.sh` defaults to `PROFILE=steamos`, whose `TRIM_RE` discards
+`libcuda|libcudadebugger|libnvidia-nvvm|libnvidia-opencl|libnvoptix|nvidia-cuda-mps|OpenCL`
+-- upstream steamos-nvidia-installer's trim set, reused verbatim on the premise
+that a gaming profile has no use for CUDA. That premise is wrong for D3D12:
+NVIDIA's Vulkan ICD `dlopen`s `libcuda.so.1` while creating a device with any of
+the ray-tracing extensions, so vkd3d-proton cannot expose DXR without it.
+`tests/nvidia_userspace_completeness_test.sh` actively asserts that `libcuda` is
+never a completeness sentinel, so the trim is locked in by the test suite too.
+
+The RDR2 fix in nvkvm-pv (`scripts/stage_guest_libs.sh`, staging into `/usr/lib`
+on Arch-family guests) is real, but it is a *different code path*: a SteamOS
+guest is staged by `steamos_boot.sh`, which never consults it. The 2026-09-01
+RDR2 run therefore happened on a guest that had `libcuda` present; a reader
+building from `main` today with defaults will hit `ERR_GFX_INIT`.
+
+Not yet fixed, and deliberately not patched blind: dropping `libcuda` from
+`TRIM_RE` is a one-line change, but it costs image size, needs the assertion in
+the completeness test relaxed, and must be re-measured against the repro above
+before it is claimed to work.
 
 Neither entry is a frame-rate claim: nothing here measures frame timing. For
 RDR2 the low GPU utilisation alongside a smooth-looking frame rate suggests a
