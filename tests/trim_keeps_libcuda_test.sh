@@ -69,4 +69,50 @@ if printf 'libcudadebugger.so.1\n' | grep -qE "$TRIM_RE"; then
 else
     echo "FAIL: libcudadebugger is no longer trimmed"; rc=1
 fi
+
+# ── The other half: the trim not deleting libcuda is useless if nothing
+# INSTALLS it. nvidia-installer runs with CUDA_LIB/OPENCL_LIB diverted, and
+# restore_diverted_keepers() puts back exactly what TRIM_RE does not match --
+# so that function, driven by the .run's own .manifest, is what actually lands
+# libcuda on disk. Test it against a fixture payload.
+ROOT="$work/root2"; mkdir -p "$ROOT/usr/lib" "$ROOT/usr/lib32"
+payload="$work/payload"; mkdir -p "$payload/32"
+printf 'x' > "$payload/libcuda.so.$V"
+printf 'x' > "$payload/libcudadebugger.so.$V"
+printf 'x' > "$payload/libnvidia-opencl.so.$V"
+printf 'x' > "$payload/32/libcuda.so.$V"
+cat > "$payload/.manifest" <<MAN
+libcuda.so.$V 0644 CUDA_LIB
+libcudadebugger.so.$V 0644 CUDA_LIB
+libnvidia-opencl.so.$V 0644 OPENCL_LIB
+./32/libcuda.so.$V 0644 CUDA_LIB
+MAN
+warn() { :; }
+eval "$(awk '/^restore_diverted_keepers\(\) \{/,/^\}/' "$BOOT")"
+if declare -F restore_diverted_keepers >/dev/null; then
+    restore_diverted_keepers "$payload" >/dev/null 2>&1
+    if [ -e "$ROOT/usr/lib/libcuda.so.$V" ]; then
+        echo "ok: restore_diverted_keepers installed libcuda into /usr/lib"
+    else
+        echo "FAIL: libcuda was never installed -- not trimming it is not enough"; rc=1
+    fi
+    if [ -e "$ROOT/usr/lib32/libcuda.so.$V" ]; then
+        echo "ok: restore_diverted_keepers installed the lib32 libcuda"
+    else
+        echo "FAIL: lib32 libcuda was never installed"; rc=1
+    fi
+    if [ -e "$ROOT/usr/lib/libcudadebugger.so.$V" ]; then
+        echo "FAIL: libcudadebugger was restored; TRIM_RE should exclude it"; rc=1
+    else
+        echo "ok: libcudadebugger was not restored"
+    fi
+    if [ -e "$ROOT/usr/lib/libnvidia-opencl.so.$V" ]; then
+        echo "FAIL: libnvidia-opencl was restored; TRIM_RE should exclude it"; rc=1
+    else
+        echo "ok: libnvidia-opencl was not restored"
+    fi
+else
+    echo "FAIL: could not extract restore_diverted_keepers"; rc=1
+fi
+
 exit $rc
