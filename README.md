@@ -4,16 +4,18 @@
 using the same GPU.** No VFIO, no second graphics card, no rebooting into a
 passthrough setup, and nothing unbound from your desktop.
 
-![Shadow of the Tomb Raider running under nvkvm on SteamOS](screenshots/tomb_raider_under_nvkvm_steamos.png)
+![Red Dead Redemption 2 running under nvkvm on SteamOS](red-dead-redemption-2-on-nvkvm-steamos.png)
+
+*Red Dead Redemption 2, Proton with native Vulkan, in a SteamOS guest. RTX 4070 at 28-39% usage*
+
+| | |
+|---|---|
+| ![Portal 2](screenshots/portal2_nvkvm_steamos_qemu.jpg) | ![Shadow of the Tomb Raider running under nvkvm on SteamOS](screenshots/tomb_raider_under_nvkvm_steamos.png) |
+| Portal 2 in the guest | Shadow of the Tomb Raider |
 
 *Shadow of the Tomb Raider, native Linux/Vulkan, in a SteamOS guest at 3760×2118 —
 GPU at 80%, 168 W, full boost clocks, while the host desktop is still running on
 the same RTX 4070.*
-
-| | |
-|---|---|
-| ![Portal 2](screenshots/portal2_nvkvm_steamos_qemu.jpg) | ![Game startup](screenshots/startup_of_a_game_nvkvm_steamos.png) |
-| Portal 2 in the guest | Launching from the SteamOS desktop |
 
 ## What this is
 
