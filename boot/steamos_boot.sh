@@ -1132,7 +1132,12 @@ install_nvidia_userspace() {
 
     in_target ldconfig
     local lib
-    for lib in libnvidia-glsi libnvidia-tls libnvidia-glcore; do
+    # libcuda is in this list for the same reason the others are: its absence is
+    # SILENT at install time and only shows up much later as a broken feature.
+    # It was trimmed for a long time and nothing here objected, so every D3D12
+    # title died at ERR_GFX_INIT while the install reported success. If a future
+    # driver, profile or trim change loses it again, fail the install instead.
+    for lib in libnvidia-glsi libnvidia-tls libnvidia-glcore libcuda; do
         in_target sh -c "ls /usr/lib/${lib}.so.* >/dev/null 2>&1" \
             || { err "$lib missing after install"; rc=1; }
     done
