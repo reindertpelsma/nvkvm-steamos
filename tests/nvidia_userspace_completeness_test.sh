@@ -45,6 +45,7 @@ complete_tree() {
           "$r/usr/lib/libnvidia-glcore.so.$VER" \
           "$r/usr/lib/libnvidia-allocator.so.1" \
           "$r/usr/lib/libnvidia-egl-gbm.so.1" \
+          "$r/usr/lib/libcuda.so.1" \
           "$r/usr/lib/gbm/nvidia-drm_gbm.so" \
           "$r/usr/share/glvnd/egl_vendor.d/10_nvidia.json" \
           "$r/usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json"
@@ -74,6 +75,7 @@ fi
 # Every sentinel must matter: dropping any single one must be caught.
 for f in usr/lib/libEGL_nvidia.so.0 usr/lib/gbm/nvidia-drm_gbm.so \
          usr/lib/libnvidia-egl-gbm.so.1 usr/lib/libnvidia-allocator.so.1 \
+         usr/lib/libcuda.so.1 \
          usr/share/glvnd/egl_vendor.d/10_nvidia.json \
          usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json; do
     ROOTDIR="$work/one"; rm -rf "$ROOTDIR"; complete_tree "$ROOTDIR"
@@ -91,10 +93,33 @@ if grep -q 'nvidia_userspace_complete "\$iv"' "$BOOT"; then
 else
     echo "FAIL: convergence no longer calls nvidia_userspace_complete"; rc=1
 fi
+# OpenCL and GSP firmware are still discarded on purpose by --profile steamos
+# and must never become sentinels. libcuda USED TO BE IN THIS LIST, and that is
+# precisely how the RDR2 regression was locked in: the steamos profile trimmed
+# libcuda, this test forbade anyone from noticing, and every D3D12 title died at
+# ERR_GFX_INIT because the Vulkan ICD dlopens libcuda for each ray-tracing
+# extension. Both profiles ship libcuda now, so the assertion is inverted --
+# it must BE a sentinel, and must not be trimmed.
 if awk '/^nvidia_userspace_complete\(\) \{/,/^\}/' "$BOOT" \
      | grep -v '^[[:space:]]*#' \
-     | grep -qE 'libcuda|libnvidia-opencl|firmware'; then
+     | grep -qE 'libnvidia-opencl|firmware'; then
     echo "FAIL: a sentinel names a file --profile steamos deliberately discards"; rc=1
+fi
+if awk '/^nvidia_userspace_complete\(\) \{/,/^\}/' "$BOOT" \
+     | grep -v '^[[:space:]]*#' | grep -q 'libcuda'; then
+    echo "ok: libcuda is a sentinel, so a guest that loses it repairs itself"
+else
+    echo "FAIL: libcuda is not a sentinel -- VKD3D ray tracing will break silently"; rc=1
+fi
+if grep -q "^TRIM_RE=.*[|']libcuda[|']" "$BOOT"; then
+    echo "FAIL: TRIM_RE trims libcuda -- this is the RDR2 ERR_GFX_INIT regression"; rc=1
+else
+    echo "ok: TRIM_RE does not trim libcuda"
+fi
+if grep -q "^TRIM_RE=.*libcudadebugger" "$BOOT"; then
+    echo "ok: libcudadebugger is still trimmed"
+else
+    echo "FAIL: libcudadebugger should still be trimmed"; rc=1
 fi
 
 exit $rc
