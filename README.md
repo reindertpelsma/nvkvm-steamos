@@ -80,7 +80,21 @@ genuinely shared with the guest, similar to CUDA containers. The VM gets access 
 your GPU for graphics and compute; the host keeps using it throughout.
 
 **Why nvkvm and not Containers, VFIO, vGPU, VirtIO-gpu, GPU PV?**
-Containers are not a VM, meaning you can't run a full OS inside it that you can run on bare metal or KVM. VFIO gives up the GPU on your host, if your display output is on that gpu then your host desktop is unusable as your host has control seized control over display. vGPU is only for datacenter nvidia parts and licensed, vgpu unlock works only on certain cards by enabling legacy vgpu paths, its physically impossible to obtain on Blackwell (due to GSP being mandatory and legacy paths disabled, gpu sharing is fused off in firmware), and no open source code for Ampere exists yet, its unreliable and still doesn't forward your display zero copy natively. standard virtio-gpu in qemu is very limited and will not give you cuda/native vulkan in VMs. Microsoft's Hyper-V GPU PV only works on Windows hosts, nvidia's linux variant is the commercially gated vGPU.
+Each of the alternatives fails on a different axis:
+
+- **Containers** are not a VM. You cannot boot a full OS inside one the way you
+  can on bare metal or KVM, which is the whole point here.
+- **VFIO** takes the GPU away from the host. If your display output is on that
+  card, your host desktop goes with it -- the guest has seized the device.
+- **vGPU** is datacenter-only and licensed. `vgpu_unlock` re-enables legacy
+  paths on some consumer cards, but it is unreliable, has no open-source
+  Ampere support, and still does not forward your display zero-copy. On
+  Blackwell it is unavailable: GSP is mandatory and the legacy sharing paths
+  are gone.
+- **virtio-gpu** in stock QEMU is limited and gives you neither CUDA nor native
+  Vulkan in the guest.
+- **GPU PV** is Microsoft's, and needs a Windows host. NVIDIA's Linux
+  equivalent is vGPU, which is commercially gated -- see above.
 
 **Will my GPU work?**
 NVIDIA only, Turing (GTX 16xx / RTX 20xx) or newer. Six architectures are tested,
