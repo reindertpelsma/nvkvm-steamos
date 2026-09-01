@@ -4,7 +4,7 @@
 using the same GPU.** No VFIO, no second graphics card, no rebooting into a
 passthrough setup, and nothing unbound from your desktop.
 
-![Red Dead Redemption 2 running under nvkvm on SteamOS](red-dead-redemption-2-on-nvkvm-steamos.png)
+![Red Dead Redemption 2 running under nvkvm on SteamOS](screenshots/red-dead-redemption-2-on-nvkvm-steamos.png)
 
 *Red Dead Redemption 2, Proton with native Vulkan, in a SteamOS guest. RTX 4070 at 28-39% usage*
 
