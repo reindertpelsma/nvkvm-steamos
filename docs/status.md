@@ -325,3 +325,32 @@ version it was provisioned against.
 For raw chronology, failed hypotheses, and rig-specific notes, keep using
 [`../boot/TESTING.md`](../boot/TESTING.md) and
 [`../NOTES.md`](../NOTES.md).
+
+## Observation: a stuck W key during RDR2, self-resolved (2026-09-01)
+
+Reported during the first RDR2 gameplay session under nvkvm: the `W` key stopped
+releasing. It cleared on its own; the cause was not identified and it has not
+been reproduced. Recorded because a stuck key is a symptom this stack already
+takes seriously — `nvkvm_broker.h` lists "stuck-key release" among the things
+`nb_session_test.c` covers, and `nvkvm_broker.c` calls `nb_release_all()` across
+every grab transition precisely so that "whatever was held stays held in a guest
+that can no longer see the key-up" cannot happen.
+
+**The one structural fact found while looking**, which is the place to start if
+it recurs: the guest presents **two** keyboard devices.
+
+    N: Name="AT Translated Set 2 keyboard"   H: kbd event1     (emulated PS/2)
+    N: Name="QEMU Virtio Keyboard"           H: kbd event2     (the nvkvm path)
+
+A key-down delivered on one and a key-up on the other is a textbook stuck-key
+mechanism, and a game reading raw evdev may see both. Whether that is what
+happened here is **unknown** — nobody has measured it.
+
+If it happens again, the cheap decisive check is the per-device key state rather
+than anything in the logs:
+
+    evtest --query /dev/input/event1 EV_KEY KEY_W    # exit 10 = currently down
+    evtest --query /dev/input/event2 EV_KEY KEY_W
+
+`evtest` is present in the guest. `gcc` is **not**, so build any probe on the
+host and copy it in.
