@@ -25,6 +25,32 @@ RTX 4070 machine. See the amendment in [`../boot/TESTING.md`](../boot/TESTING.md
 That run proved the VMM/broker split, the broker reconnect path, and the
 capability-restricted container policy.
 
+## Windows titles through Proton
+
+Every title in the section above is native Linux/Vulkan. Proton adds a
+translation layer between the game and the driver, so it is worth recording
+separately -- it was also, for a while, broken here without our noticing.
+
+- **Red Dead Redemption 2** (MEASURED 2026-09-01, RTX 4070 / driver 595.84).
+  D3D12 through vkd3d-proton. It failed at `ERR_GFX_INIT` until 2026-09-01,
+  because `libcuda.so.1` was never staged on an Arch-family guest and the
+  NVIDIA Vulkan ICD could not build a device; fixed in nvkvm-pv. After the fix:
+  12 minutes of continuous gameplay, GPU 28-39%, VRAM ~5.07 GB, 49-65 W,
+  2.2-2.7 GHz, 41 C, with the host reporting 38-39% and ~5.08 GB for the same
+  GPU at the same moment.
+- **Just Cause 2** (MEASURED 2026-09-02). Launches and plays. Its value is the
+  build it ran on: a `docker system prune -a` plus `docker volume prune -a`,
+  then `docker compose build` from `main` alone on this repo and on nvkvm-pv.
+  It is the first title confirmed on a clean-room build, so the Proton path is
+  known to reproduce from a fresh tree rather than only on a developer machine.
+
+Neither entry is a frame-rate claim: nothing here measures frame timing. For
+RDR2 the low GPU utilisation alongside a smooth-looking frame rate suggests a
+vsync cap rather than a GPU-bound scene. No GPU counters were recorded for the
+Just Cause 2 run.
+
+Anti-cheat titles are out of scope and are expected to stay that way.
+
 ## Image creation
 
 There are two image paths:
