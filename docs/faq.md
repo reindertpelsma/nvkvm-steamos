@@ -62,32 +62,53 @@ nvkvm, libcuda and the CUDA/Vulkan libraries.
 nvkvm-pv supports headless rendering desktops you can connect to remotely, but the
 scripts in this repository are not configured for it.
 
-**Does Steam delete my games on every launch?**
-Not here, but it would without a fix, and it is worth knowing why. Valve's
-official download button gives you an **OOBE image**
-(`steamdeck-oobe-repair-*.img`) — that is what this project installs, because it
-is the current, maintained one — and its `/usr/bin/steam` runs
+**Do I have to update before installing games?**
+Yes, and this is a SteamOS thing rather than an nvkvm thing. Valve's download
+button gives you an **OOBE image** (`steamdeck-oobe-repair-*.img`) — that is what
+this project installs, because Valve's `steamdeck-repair-latest` alias resolves to
+it and the non-OOBE alias 404s. On an OOBE image, `steam-jupiter-oobe`'s
+`/usr/bin/steam` runs
 
 ```
 rm -rf --one-file-system "$HOME"/.steam "$HOME"/.local/share/Steam
 ```
 
-**unconditionally on every launch** — login, library index and installed games.
-Valve's own comment explains it: *"On OOBE images we want to always start with a
-fresh steam per boot as we lack the proper steam overlay/repair code."* That is
-fine for the handful of boots before a real Steam Deck's first update graduates
-it to normal SteamOS; it is catastrophic on a machine anyone actually uses.
+**on every launch**, by design. Valve's own comment says why: *"On OOBE images we
+want to always start with a fresh steam per boot as we lack the proper steam
+overlay/repair code."*
 
-Provisioning detects this and disables that line, so **your data is safe**. But an
-OOBE image genuinely lacks Steam's repair machinery, so a Steam install that does
-break will not self-heal. To move to real SteamOS, run inside the guest:
+**This is identical on bare metal.** Any SteamOS machine still on an
+un-graduated OOBE image behaves the same way; it is not VM-specific and not
+something Valve did to us. Nobody normally meets it, because setup walks you into
+the update before you have a library to lose.
+
+**How it became reachable here was our fault, and it is fixed.** This project
+used to force Plasma autologin, which skipped Valve's setup entirely and left the
+guest parked in a state meant to last minutes — permanently, with a usable
+desktop and no graduation. That, not the VM, is why Steam wiped itself on this
+stack. The default now leaves SteamOS's own session selection alone, so first
+boot lands in the OOBE installer exactly as it does on bare metal, and the OTA
+happens. `NVKVM_STEAMOS_FORCE_PLASMA=1` still exists for a guest where gamescope
+genuinely will not start — but setting it puts you back outside the OOBE flow,
+so update before you install anything if you use it. (A second contributor is
+also fixed: setup used to hang on "No networks found" because the guest had no
+Wi-Fi radio, so the update could not be taken even if you wanted it.)
+
+Belt and braces, provisioning also neutralises that line while `VARIANT_ID` is
+`steamdeck-oobe`, and the patch self-retires once an OTA graduates the guest.
+
+**The order still matters, so do the update first:**
 
 ```sh
 sudo steamos-update      # several GB; reboots into the other A/B slot
 ```
 
-After that the guest is `VARIANT_ID=steamdeck` with the normal launcher, and our
-patch stops applying by itself.
+Graduating *after* installing games does not save them. Real SteamOS's launcher
+keeps the same `rm -rf` behind a guard — it fires once, when `Steam.cfg` still
+carries `# OOBE Inhibit` — and it backs up `registry.vdf` first, so your **login**
+survives but `~/.local/share/Steam` does not, and that is where `steamapps` lives.
+Update first, install second.
+
 
 **Will anti-cheat work?**
 No, and this is a won't-fix. Anti-cheat generally breaks under VMs by design —

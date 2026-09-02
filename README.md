@@ -95,7 +95,7 @@ Answered in full in the [**FAQ**](docs/faq.md):
 
 - **Why nvkvm and not containers, VFIO, vGPU, virtio-gpu or GPU PV?** — each of
   them fails on a different axis, and the answer says which.
-- **Does Steam delete my games on every launch?** — it would, without a fix.
+- **Do I have to update before installing games?** — yes: run `steamos-update` first. Upstream SteamOS behaviour on OOBE images, not nvkvm-specific.
   Worth reading before you install anything.
 - **Why are there three containers — vmm, broker and audio?** — the privilege
   split, and what a breakout would actually land in.
