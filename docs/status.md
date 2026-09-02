@@ -135,6 +135,42 @@ fully playable for first-person games.
 
 ## Known open items
 
+### OPEN: the host driver must be a version NVIDIA actually publishes
+
+MEASURED 2026-09-02. The guest provisions its NVIDIA userspace by downloading
+the official runfile matching the *host* driver version -- that is what keeps
+guest and host in lockstep across host driver updates. If the host runs a
+version NVIDIA never published as a runfile, there is nothing to download and
+provisioning fails:
+
+```
+[nvkvm] ERROR: could not obtain the NVIDIA .run for 575.51.03
+[nvkvm] === Part 1 finished (rc=1) ===
+NVKVM-GUEST-RESULT: 1
+```
+
+Confirmed against NVIDIA's server: `575.51.03` returns **HTTP 404** while
+`575.51.02`, `575.64.03` and `580.95.05` all return 200. Cloud and OEM images
+sometimes ship such builds -- this one was a rented GPU host.
+
+Everything else in provisioning had already succeeded: the pacman keyring was
+trusted in the target, the guest module built, the OTA hook was installed and
+the in-image stub verified byte-for-byte. Only the download failed. The failure
+is at least loud and specific rather than silent.
+
+Workarounds, in order of preference:
+
+1. Run a published driver version on the host.
+2. Supply the runfile yourself: `--old-run-file DIR` takes a bind-mounted cache
+   directory of NVIDIA `.run` files, which is also the offline install path.
+
+Worth improving: falling back to the nearest published version in the same
+branch would be wrong (guest and host userspace must match exactly), so the
+honest options are to fail as it does now or to document the cache path more
+prominently. It currently fails after several minutes of successful work, which
+is a poor place to discover the problem -- checking that the runfile is
+obtainable *before* provisioning starts would turn minutes into seconds.
+
 ### RESOLVED: Steam wiped its own install inside the guest (2026-08-27/28)
 
 **Root cause: Valve's own `steam-jupiter-oobe` package, not nvkvm and not the
