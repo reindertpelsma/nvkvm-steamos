@@ -33,20 +33,32 @@ mkdir -p "$ROOT/usr/share/wayland-sessions"
 write_sddm_session_config
 
 OVERRIDE="$ROOT/etc/sddm.conf.d/zz-nvkvm-plasma.conf"
-[ -f "$OVERRIDE" ] || fail "SteamOS provisioning did not create the SDDM override"
+
+# BY DEFAULT WE LEAVE SDDM ALONE.  This assertion used to be the opposite --
+# it required the override to exist -- and that encoded the behaviour that
+# broke Return to Gaming Mode: forcing Session=plasma.desktop outranks the
+# user's own choice in the SDDM greeter, so a guest could never go back to
+# Gaming Mode. gamescope works, so there is nothing to override.
+[ ! -e "$OVERRIDE" ] \
+    || fail "provisioning forced the Plasma session; it must leave SDDM's own selection alone"
+
+# The override is still available, opt-in, for someone who wants the desktop.
+NVKVM_STEAMOS_FORCE_PLASMA=1 write_sddm_session_config
+[ -f "$OVERRIDE" ] \
+    || fail "NVKVM_STEAMOS_FORCE_PLASMA=1 did not create the SDDM override"
 EXPECTED=$'[Autologin]\nSession=plasma.desktop'
 [ "$(cat "$OVERRIDE")" = "$EXPECTED" ] \
-    || fail "the SDDM override does not select plasma.desktop exactly"
+    || fail "the forced SDDM override does not select plasma.desktop exactly"
 
 # A profile switch must remove policy that no longer belongs to this image.
 PROFILE=compute
 write_sddm_session_config
 [ ! -e "$OVERRIDE" ] || fail "compute convergence left a stale SteamOS override"
 
-# Do not write a session name the target image cannot resolve.
+# Do not write a session name the target image cannot resolve, even when forced.
 PROFILE=steamos
 rm -f "$ROOT/usr/share/wayland-sessions/plasma.desktop"
-write_sddm_session_config
+NVKVM_STEAMOS_FORCE_PLASMA=1 write_sddm_session_config
 [ ! -e "$OVERRIDE" ] || fail "provisioning selected an absent Plasma session"
 
 # Pin the setup call chain: the disposable Alpine builder must provision the
