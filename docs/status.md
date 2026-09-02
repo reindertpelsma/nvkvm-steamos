@@ -188,6 +188,37 @@ fully playable for first-person games.
 
 ## Known open items
 
+### OPEN: guest audio stutters
+
+REPORTED 2026-09-02 on the RTX 4070 reference machine, and it predates that
+day's CPU/RAM changes -- it is not a resource-allocation artifact.
+
+What has been ruled out:
+
+- **CPU starvation.** Host PSI `cpu` reads `some avg10=0.00 full=0.00` while
+  the guest is under full game load; the audio container uses 0.11% CPU and
+  its threads are unrestricted across all 24 host CPUs.
+- **The wrong player.** An earlier note in this project said to prefer `pacat`
+  because `pw-cat` before PipeWire 1.2 cannot read a fifo. That no longer
+  applies: the host runs PipeWire 1.6.2 and the invocation is correct --
+  `pw-cat --playback --raw --rate 48000 --channels 2 --format s16`.
+
+**Leading hypothesis, not yet confirmed: clock drift with no rate matching.**
+The chain is `guest ALSA -> ich9-intel-hda -> fifo -> pw-cat -> host PipeWire`.
+The guest's emulated HDA clocks samples at its own notion of 48 kHz and the
+host card consumes at its own; a raw fifo carries PCM with no resampling and no
+feedback path, so the two drift and periodically underrun or overrun. `pw-cat`
+defaults to a 100 ms buffer, which delays the symptom rather than removing it.
+The guest journal carries 9 xrun-shaped lines.
+
+The fifo is deliberate, not accidental: it is one-directional by construction,
+which is what keeps the untrusted VMM away from the host's microphone and every
+other application's streams. Any fix has to preserve that.
+
+To confirm or kill the hypothesis: raise `--latency` and see whether the
+interval between glitches scales with buffer size (drift) or stays fixed
+(delivery jitter), and check whether glitches persist with the guest idle.
+
 ### OPEN: the host driver must be a version NVIDIA actually publishes
 
 MEASURED 2026-09-02. The guest provisions its NVIDIA userspace by downloading
