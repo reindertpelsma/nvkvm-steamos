@@ -25,7 +25,10 @@ work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 ROOT="$work/root"
 rp() { printf '%s' "${ROOT%/}$1"; }
 log() { :; }
-PROFILE=steamos
+# Exported, not plain-assigned: trim_cuda_files is eval'd out of the shipped
+# script below and reads $PROFILE, which shellcheck cannot see through the
+# eval (SC2034).
+export PROFILE=steamos
 eval "$(awk '/^trim_cuda_files\(\) \{/,/^\}/' "$BOOT")"
 declare -F trim_cuda_files >/dev/null || { echo "FAIL: could not extract trim_cuda_files"; exit 1; }
 
