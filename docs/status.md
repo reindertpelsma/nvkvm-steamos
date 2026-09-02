@@ -103,6 +103,18 @@ hiding, both fixed in the same branch: the fresh-install path never grew the
 rootfs to fill its partition (788 MiB visible of 3860 MiB), and the runfile was
 only ever fetched from the `XFree86/` path and never `tesla/`.
 
+**It survives an OTA.** The same guest was then driven through a real update
+(`20260707.10` -> `20260716.1`, `steamdeck-oobe` -> `steamdeck`). The hook
+provisioned slot B, armed it, and the guest rebooted into it -- and slot B's
+`libcuda` is stamped 17:52 against slot A's 17:37, so it was written by the
+OTA's own provisioning pass rather than inherited. All seven extensions pass in
+slot B too. That closes the "does it survive SteamOS updates?" claim in the
+README, which until this fix was true only because nothing checked libcuda.
+
+This also re-measured [the OTA slot-provisioning
+failure](ota-slot-provisioning-failure.md), which was still marked OPEN and
+release-blocking: it is fixed, and that doc is now RESOLVED with evidence.
+
 Neither entry is a frame-rate claim: nothing here measures frame timing. For
 RDR2 the low GPU utilisation alongside a smooth-looking frame rate suggests a
 vsync cap rather than a GPU-bound scene. No GPU counters were recorded for the
