@@ -151,21 +151,34 @@ NVKVM-GUEST-RESULT: 1
 
 This is not an exotic configuration. The host had its driver from **NVIDIA's
 own CUDA apt repo** (`developer.download.nvidia.com/compute/cuda/repos/...`),
-which is the path NVIDIA's own container-toolkit instructions lead you down --
-and several driver builds published there have no corresponding runfile:
+which is the path NVIDIA's own container-toolkit instructions lead you down.
 
-| version | source | runfile on us.download.nvidia.com |
+nvkvm-pv already tracks this: `scripts/sweep-driver-availability.tsv` lists
+575.51.03 as `ABSENT` and exists precisely because "publishing an
+open-gpu-kernel-modules tag and publishing a downloadable driver are DIFFERENT
+THINGS" -- 87 of 216 supported tags have no runfile at either public path.
+Probed here against **both** paths it uses:
+
+| version | `XFree86/` | `tesla/` |
 |---|---|---|
-| 575.51.03 | CUDA apt repo (installed here) | **404** |
-| 570.133.20 | CUDA apt repo | **404** |
-| 570.124.06 | CUDA apt repo | **404** |
-| 575.57.08 | CUDA apt repo | 200 |
-| 580.82.09 / 580.65.06 / 580.95.05 | runfile only | 200 |
+| 575.51.03 (installed here) | 404 | **404** |
+| 570.133.20 | 404 | 206 |
+| 570.124.06 | 404 | 206 |
+| 575.57.08 | 206 | 206 |
+
+Only 575.51.03 is absent from both, which is why it specifically cannot be
+followed. Note that a 404 on `XFree86/` alone proves nothing -- several
+versions live only under `tesla/`.
+
+Also from that file, worth repeating because it is easy to misread: a **403 is
+not absence**. Requests from some regions are 301'd to NVIDIA's China CDN,
+which answers 403 for these paths, so the same URL that fails on one rented box
+succeeds from another. Do not conclude a driver is unpublished from a 403.
 
 So "install the NVIDIA driver the way NVIDIA documents it" can land a host on a
-version the guest cannot follow. Upgrading within the same repo (575.51.03 ->
-575.57.08) was enough to fix it here, which is the cheapest workaround: pick a
-packaged version that also ships a runfile.
+version the guest cannot follow. Moving within the same repo (575.51.03 ->
+575.57.08) is the cheapest workaround: pick a packaged version that also ships
+a runfile.
 
 Everything else in provisioning had already succeeded: the pacman keyring was
 trusted in the target, the guest module built, the OTA hook was installed and
