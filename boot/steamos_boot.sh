@@ -832,15 +832,28 @@ locate_or_fetch_run() {
     if [ -r "$cached" ] && sh "$cached" --check >/dev/null 2>&1; then
         log "using cached .run"; printf '%s' "$cached"; return 0
     fi
+    # TWO public paths, not one. NVIDIA publishes desktop drivers under
+    # XFree86/Linux-x86_64/ and datacenter ones under tesla/ -- and some
+    # versions exist ONLY under tesla/. MEASURED 2026-09-02: 570.133.20 and
+    # 570.124.06 are 404 on XFree86 and 206 on tesla. Trying one path made a
+    # host running such a driver unprovisionable for no reason, which matters
+    # most on exactly the parts that ship them (A100/H100-class hosts).
+    # nvkvm-pv's scripts/sweep-driver-availability.tsv probes both for the same
+    # reason; keep the order identical to it.
     log "downloading NVIDIA $ver"
-    if in_target curl -fL --no-progress-meter --retry 3 \
-         -o "$(run_cache)/$fname" \
-         "https://us.download.nvidia.com/XFree86/Linux-x86_64/${ver}/${fname}"; then
+    local url
+    for url in "https://us.download.nvidia.com/XFree86/Linux-x86_64/${ver}/${fname}" \
+               "https://us.download.nvidia.com/tesla/${ver}/${fname}"; do
+        in_target curl -fL --no-progress-meter --retry 3 -o "$(run_cache)/$fname" "$url" || continue
         if sh "$cached" --check >/dev/null 2>&1; then
             prune_run_cache; printf '%s' "$cached"; return 0
         fi
-        err ".run failed its own integrity check"; rm -f "$cached"
-    fi
+        err ".run from $url failed its own integrity check"; rm -f "$cached"
+    done
+    # A 403 here is NOT proof the driver is unpublished: requests from some
+    # regions are 301'd to NVIDIA's China CDN, which answers 403 for these
+    # paths. Same URL, different region, 206. Do not "fix" this by treating
+    # 403 as absent.
     return 1
 }
 prune_run_cache() {
