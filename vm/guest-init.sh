@@ -356,6 +356,7 @@ provision_setup() {
     mkdir -p "$CHROOT$TARGET_MNT"
     mount -t btrfs /dev/nvme0n1p4 "$CHROOT$TARGET_MNT" \
         || { log "FATAL: could not mount the installed rootfs-A (/dev/nvme0n1p4)"; return 1; }
+
     mount -t ext4 /dev/nvme0n1p8 "$CHROOT$TARGET_MNT/home" \
         || log "WARNING: could not mount the installed /home — build area falls back to the rootfs"
 

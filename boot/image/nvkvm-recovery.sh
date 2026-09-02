@@ -177,28 +177,33 @@ validate() {
         printf '%s\n' "$d" | grep -i nvkvm | tail -5 >&2
         return 5
     fi
-    # Profile-aware: a trimmed (steamos) profile has no libcuda by design, so
-    # checking for it would report a healthy machine as broken. Check the
-    # Vulkan/GL stack instead.
-    if ldconfig -p 2>/dev/null | grep -q libcuda; then
-        nvidia-smi -L >/dev/null 2>&1 || { err "CLASS 4: nvidia-smi cannot enumerate a GPU"; return 4; }
-    else
-        ldconfig -p 2>/dev/null | grep -q libGLX_nvidia \
-            || { err "CLASS 4: libGLX_nvidia missing (Vulkan/GL stack incomplete)"; return 4; }
-        # Loader searches /etc AND /usr/share; nvidia-installer writes to /etc.
-        [ -e /etc/vulkan/icd.d/nvidia_icd.json ] || [ -e /usr/share/vulkan/icd.d/nvidia_icd.json ] \
-            || { err "CLASS 4: NVIDIA Vulkan ICD manifest missing from both loader paths"; return 4; }
-        # A compositor opens a DRM node, not /dev/nvidiactl. If none is bound to
-        # the nvidia driver, the session cannot be on nvkvm however healthy the
-        # rest looks. A prerequisite for the desktop -- not a check OF it.
-        local c drv found=0
-        for c in /sys/class/drm/card[0-9]*; do
-            [ -e "$c/device/driver" ] || continue
-            drv="$(basename "$(readlink -f "$c/device/driver")" 2>/dev/null)"
-            [ "$drv" = nvidia ] && { found=1; break; }
-        done
-        [ "$found" = 1 ] || { err "CLASS 6: no /dev/dri node bound to the nvidia driver"; return 6; }
-    fi
+    # libcuda used to double as the "is this a compute profile?" probe: present
+    # meant compute and only nvidia-smi was checked, absent meant a trimmed
+    # steamos profile and the graphics stack was checked instead. Both profiles
+    # ship libcuda now -- the steamos profile keeps it because VKD3D's
+    # ray-tracing path dlopens it, and D3D12 titles die at ERR_GFX_INIT without
+    # it -- so that proxy no longer distinguishes anything. This is a SteamOS
+    # recovery image in any case, where the graphics checks are the ones that
+    # matter, so run them unconditionally and treat a missing libcuda as the
+    # fault it now is.
+    ldconfig -p 2>/dev/null | grep -q libcuda \
+        || { err "CLASS 4: libcuda missing -- the Vulkan ICD dlopens it for every"; \
+             err "ray-tracing extension, so VKD3D cannot create a device"; return 4; }
+    ldconfig -p 2>/dev/null | grep -q libGLX_nvidia \
+        || { err "CLASS 4: libGLX_nvidia missing (Vulkan/GL stack incomplete)"; return 4; }
+    # Loader searches /etc AND /usr/share; nvidia-installer writes to /etc.
+    [ -e /etc/vulkan/icd.d/nvidia_icd.json ] || [ -e /usr/share/vulkan/icd.d/nvidia_icd.json ] \
+        || { err "CLASS 4: NVIDIA Vulkan ICD manifest missing from both loader paths"; return 4; }
+    # A compositor opens a DRM node, not /dev/nvidiactl. If none is bound to
+    # the nvidia driver, the session cannot be on nvkvm however healthy the
+    # rest looks. A prerequisite for the desktop -- not a check OF it.
+    local c drv found=0
+    for c in /sys/class/drm/card[0-9]*; do
+        [ -e "$c/device/driver" ] || continue
+        drv="$(basename "$(readlink -f "$c/device/driver")" 2>/dev/null)"
+        [ "$drv" = nvidia ] && { found=1; break; }
+    done
+    [ "$found" = 1 ] || { err "CLASS 6: no /dev/dri node bound to the nvidia driver"; return 6; }
     return 0
 }
 

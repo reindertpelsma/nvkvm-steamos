@@ -38,9 +38,12 @@
 #   --old-run-file DIR      bind-mounted cache DIRECTORY of NVIDIA .run files
 #
 # PROFILES (deterministic, never chosen automatically)
-#   steamos  (default)  Trims CUDA/OpenCL/NVVM/OptiX. Gaming stack only.
-#                       Casualty: GPU PhysX. Vulkan, GL, DXVK, VKD3D, gamescope
-#                       and DLSS (libnvidia-ngx) are UNAFFECTED.
+#   steamos  (default)  Trims OpenCL/NVVM/OptiX/cuda-mps. Gaming stack only.
+#                       Casualty: GPU PhysX and OpenCL. Vulkan, GL, DXVK, VKD3D,
+#                       gamescope and DLSS (libnvidia-ngx) are UNAFFECTED --
+#                       which is only true because libcuda is KEPT; see TRIM_RE.
+#                       VKD3D's ray-tracing path needs it. Trimming it made RDR2
+#                       fail at ERR_GFX_INIT.
 #   compute             Installs everything. Nothing is trimmed.
 # The profile is NEVER switched on the basis of free disk space. If the disk is
 # too small the script fails and tells you to pick a profile, exactly like
@@ -73,10 +76,30 @@ DRM_CLASS_DIR="${NVKVM_DRM_CLASS_DIR:-/sys/class/drm}"
 # MEASURED -- checking only /usr/share reports a healthy install as broken.
 VULKAN_ICD_PATHS="${NVKVM_VULKAN_ICD_PATHS:-/etc/vulkan/icd.d/nvidia_icd.json /usr/share/vulkan/icd.d/nvidia_icd.json}"
 
-# Upstream steamos-nvidia-installer's tested trim set, reused verbatim
+# Upstream steamos-nvidia-installer's tested trim set, reused ALMOST verbatim
 # (steamos-nvidia-installer.sh:479). libnvidia-ngx is deliberately NOT here --
 # that is DLSS and it must survive.
-TRIM_RE='libcuda|libcudadebugger|libnvidia-nvvm|libnvidia-opencl|libnvoptix|nvidia-cuda-mps|OpenCL'
+#
+# libcuda is deliberately NOT here either, and that is our one departure from
+# upstream. Upstream trims it on the premise that a gaming profile has no use
+# for CUDA. MEASURED 2026-09-01/02, that premise is false for D3D12: the NVIDIA
+# Vulkan ICD dlopen()s libcuda.so.1 inside its own init path for each of
+# VK_KHR_acceleration_structure / ray_query / ray_tracing_pipeline,
+# VK_NV_ray_tracing / optical_flow / cuda_kernel_launch and VK_NVX_binary_import.
+# With libcuda absent that dlopen is ENOENT, vkCreateDevice returns
+# VK_ERROR_INITIALIZATION_FAILED for every one of those extensions
+# independently, vkd3d-proton cannot expose DXR, and Red Dead Redemption 2 dies
+# at ERR_GFX_INIT. The failure is silent: the extensions are still ADVERTISED
+# (enumerating a physical device is cheap; creating a logical one is what
+# breaks) and the dlopen failure happens inside the vendor ICD where nothing
+# nvkvm forwards or logs can see it.
+#
+# Staging libcuda.so.1 alone was confirmed sufficient -- all seven extensions,
+# and all seven together, went from -3 to VK_SUCCESS. DXVK titles never noticed
+# because DXVK falls back to a reduced extension set; only the D3D12 path cares.
+# Cost is roughly 45 MB across /usr/lib and /usr/lib32, which is why need_kb
+# below went up. Reproduce with nvkvm-pv tests/repro/vk_device_extensions.c.
+TRIM_RE='libcudadebugger|libnvidia-nvvm|libnvidia-opencl|libnvoptix|nvidia-cuda-mps|OpenCL'
 
 PROFILE="${NVKVM_PROFILE:-steamos}"
 RUN_CACHE_DIR=""          # set by --old-run-file, else derived below
@@ -765,8 +788,11 @@ nvidia_userspace_complete() {
     # libgallium every two seconds.
     #
     # So check for the FILES the display path actually needs, not the version.
-    # Deliberately profile-aware: CUDA/OpenCL/firmware are discarded on purpose
-    # by --profile steamos, so none of them belong in this list.
+    # OpenCL/NVVM/OptiX/firmware are discarded on purpose by --profile steamos
+    # and do not belong in this list. libcuda DOES belong: both profiles ship it
+    # now (VKD3D ray tracing dlopens it), and listing it here is what makes a
+    # guest that somehow lost it repair itself on the next converge instead of
+    # silently failing every D3D12 title.
     local ver="$1" f
     NVIDIA_MISSING=""
     for f in \
@@ -776,6 +802,7 @@ nvidia_userspace_complete() {
         /usr/lib/libnvidia-glcore.so."$ver" \
         /usr/lib/libnvidia-allocator.so.1 \
         /usr/lib/libnvidia-egl-gbm.so.1 \
+        /usr/lib/libcuda.so.1 \
         /usr/lib/gbm/nvidia-drm_gbm.so \
         /usr/share/glvnd/egl_vendor.d/10_nvidia.json \
         /usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json
@@ -805,15 +832,28 @@ locate_or_fetch_run() {
     if [ -r "$cached" ] && sh "$cached" --check >/dev/null 2>&1; then
         log "using cached .run"; printf '%s' "$cached"; return 0
     fi
+    # TWO public paths, not one. NVIDIA publishes desktop drivers under
+    # XFree86/Linux-x86_64/ and datacenter ones under tesla/ -- and some
+    # versions exist ONLY under tesla/. MEASURED 2026-09-02: 570.133.20 and
+    # 570.124.06 are 404 on XFree86 and 206 on tesla. Trying one path made a
+    # host running such a driver unprovisionable for no reason, which matters
+    # most on exactly the parts that ship them (A100/H100-class hosts).
+    # nvkvm-pv's scripts/sweep-driver-availability.tsv probes both for the same
+    # reason; keep the order identical to it.
     log "downloading NVIDIA $ver"
-    if in_target curl -fL --no-progress-meter --retry 3 \
-         -o "$(run_cache)/$fname" \
-         "https://us.download.nvidia.com/XFree86/Linux-x86_64/${ver}/${fname}"; then
+    local url
+    for url in "https://us.download.nvidia.com/XFree86/Linux-x86_64/${ver}/${fname}" \
+               "https://us.download.nvidia.com/tesla/${ver}/${fname}"; do
+        in_target curl -fL --no-progress-meter --retry 3 -o "$(run_cache)/$fname" "$url" || continue
         if sh "$cached" --check >/dev/null 2>&1; then
             prune_run_cache; printf '%s' "$cached"; return 0
         fi
-        err ".run failed its own integrity check"; rm -f "$cached"
-    fi
+        err ".run from $url failed its own integrity check"; rm -f "$cached"
+    done
+    # A 403 here is NOT proof the driver is unpublished: requests from some
+    # regions are 301'd to NVIDIA's China CDN, which answers 403 for these
+    # paths. Same URL, different region, 206. Do not "fix" this by treating
+    # 403 as absent.
     return 1
 }
 prune_run_cache() {
@@ -824,7 +864,8 @@ prune_run_cache() {
 
 trim_cuda_files() {
     # Deterministic, profile-driven. Never triggered by free space.
-    log "profile '$PROFILE': trimming CUDA/OpenCL/NVVM/OptiX (GPU PhysX is the casualty;"
+    log "profile '$PROFILE': trimming OpenCL/NVVM/OptiX (GPU PhysX and OpenCL are"
+    log "the casualties; libcuda is KEPT because VKD3D ray tracing dlopens it;"
     log "Vulkan, GL, DXVK, VKD3D, gamescope and DLSS/libnvidia-ngx are unaffected)"
     local d f n=0
     for d in /usr/lib /usr/lib32 /usr/bin /usr/share/vulkan/icd.d /etc/OpenCL; do
@@ -998,7 +1039,11 @@ install_nvidia_userspace() {
     # a userspace actually costs HERE, so use that plus a margin instead of
     # guessing.  A fresh install has no such measurement and keeps the constant.
     local need_kb=1310720
-    [ "$PROFILE" = steamos ] && need_kb=786432
+    # +128 MB over the old 786432, from MEASUREMENT not estimate: the steamos
+    # profile now KEEPS libcuda because VKD3D ray tracing dlopens it, and in
+    # 580.95.05 that is 91.8 MiB for /usr/lib plus 26.7 MiB for the 32-bit copy
+    # -- 118.5 MiB, not the ~45 MiB I first guessed. Rounded up for headroom.
+    [ "$PROFILE" = steamos ] && need_kb=917504
     [ "${NVKVM_NO_COMPAT32:-0}" = "1" ] && need_kb=$((need_kb/2))
     #
     # Remember the measurement across runs.  A reclaim only happens on an
@@ -1056,6 +1101,30 @@ install_nvidia_userspace() {
     # geometry or a rootfs that was never grown to fill its partition, and
     # silently eating firmware would hide both.
     #
+    # An 8 GiB slot only helps if the FILESYSTEM can use it. repair_device.sh
+    # dd's a 5 GiB btrfs image into the partition and never resizes it; --image
+    # grows it, but the fresh-install path is `--install-only --root` and did
+    # not -- so this check saw ~788 MiB of an ungrown filesystem while ~3 GiB
+    # sat idle in the partition. That is exactly the "rootfs that was never
+    # grown to fill its partition" the comment above names. MEASURED 2026-09-02.
+    #
+    # Do it HERE rather than in the installer that mounts the slot: the Alpine
+    # installer image has no btrfs tool, and the target does. Best effort -- if
+    # it cannot grow, fall through to the honest failure below.
+    if [ -n "$free_kb" ] && [ "$free_kb" -lt "$need_kb" ]; then
+        if in_target sh -c 'command -v btrfs >/dev/null 2>&1'; then
+            log "short of space ($((free_kb/1024))M); growing the rootfs to fill its partition"
+            if in_target btrfs filesystem resize max / >/dev/null 2>&1; then
+                free_kb="$(df -Pk "$(rp /usr)" 2>/dev/null | awk 'NR==2{print $4}')"
+                log "after growing: $((free_kb/1024))M free"
+            else
+                warn "could not grow the rootfs to fill its partition"
+            fi
+        else
+            warn "no btrfs tool in the target; cannot grow the rootfs"
+        fi
+    fi
+
     if [ -n "$free_kb" ] && [ "$free_kb" -lt "$need_kb" ]; then
         err "not enough space for the NVIDIA userspace: free=$((free_kb/1024))M needed=$((need_kb/1024))M"
         err "Pick a smaller profile (--profile steamos trims CUDA/OpenCL), set"
@@ -1102,7 +1171,12 @@ install_nvidia_userspace() {
 
     in_target ldconfig
     local lib
-    for lib in libnvidia-glsi libnvidia-tls libnvidia-glcore; do
+    # libcuda is in this list for the same reason the others are: its absence is
+    # SILENT at install time and only shows up much later as a broken feature.
+    # It was trimmed for a long time and nothing here objected, so every D3D12
+    # title died at ERR_GFX_INIT while the install reported success. If a future
+    # driver, profile or trim change loses it again, fail the install instead.
+    for lib in libnvidia-glsi libnvidia-tls libnvidia-glcore libcuda; do
         in_target sh -c "ls /usr/lib/${lib}.so.* >/dev/null 2>&1" \
             || { err "$lib missing after install"; rc=1; }
     done
@@ -2482,11 +2556,19 @@ validate() {
         return 5
     fi
 
-    # Profile-aware. A trimmed profile HAS no libcuda, so checking for it would
-    # report a healthy system as broken.
+    # BOTH profiles ship libcuda now. It used to be checked only under
+    # profile=compute, on the assumption that a trimmed profile has none by
+    # design -- which is exactly why nothing noticed that its absence breaks
+    # VKD3D ray tracing and kills RDR2 at ERR_GFX_INIT. This check is what
+    # would have caught that before a user did, so it is unconditional.
+    ldconfig -p 2>/dev/null | grep -q libcuda || {
+        err "CLASS 4: libcuda is not in the linker cache. The NVIDIA Vulkan ICD"
+        err "dlopens it while creating a device with any ray-tracing extension,"
+        err "so VKD3D cannot expose DXR and D3D12 titles die at ERR_GFX_INIT."
+        return 4
+    }
+
     if [ "$PROFILE" = compute ]; then
-        ldconfig -p 2>/dev/null | grep -q libcuda \
-            || { err "CLASS 4: profile=compute but libcuda is not in the linker cache"; return 4; }
         nvidia-smi -L >/dev/null 2>&1 \
             || { err "CLASS 4: nvidia-smi cannot enumerate a GPU"; return 4; }
     else
@@ -2523,8 +2605,8 @@ validate() {
 # next to validate() so the two cannot drift: if you add a check up there, say
 # so down here, and if you remove one, stop claiming it.
 validate_verified_summary() {
-    printf 'module loaded and not faulting, %s opens' "$DEV_NVIDIACTL"
-    [ "$PROFILE" = compute ] && printf ', libcuda present, nvidia-smi enumerates a GPU' \
+    printf 'module loaded and not faulting, %s opens, libcuda present' "$DEV_NVIDIACTL"
+    [ "$PROFILE" = compute ] && printf ', nvidia-smi enumerates a GPU' \
                              || printf ', GL/Vulkan userspace installed, a DRM node is bound to nvidia'
     printf '\n'
 }

@@ -1,8 +1,44 @@
 # The OTA never boots: slot-B provisioning fails on an untrusted pacman keyring
 
-**Status: OPEN, release-blocking.** `steamos-update` completes and reports
-success; the machine then stays on the old slot forever. Measured end to end on
-the physical PC, 2026-08-29, against nvkvm-steamos `b28af1d`.
+**Status: RESOLVED, verified 2026-09-02.** Kept for the diagnosis, which is a
+good example of the failure shape ("the check read the wrong root").
+
+The fix is `48cb655` / `f56fd8e` / `67d53db` on main: `ensure_pacman_keyring()`
+now evaluates the key with `in_target`, so the gpg homedir resolves inside the
+slot being provisioned rather than the running one, with a last-resort seed
+from the running system and a trustdb refresh. The status line here was simply
+never updated after those landed, which is why this doc still read
+release-blocking on the eve of a release.
+
+Re-measured end to end on a rented RTX 3070 host, driver 580.95.05, guest built
+from `fix/steamos-profile-keeps-libcuda`:
+
+```
+[nvkvm] pacman keyring populated; package signatures now validate
+[nvkvm-ota] handing the newly written slot to steamos_boot.sh --image
+[nvkvm] === Part 1 finished (rc=0) ===
+[nvkvm-ota] the new slot is provisioned and armed; it is safe to reboot into it
+```
+
+and the arming, which is the thing that used to be wrong:
+
+| | before (2026-08-29) | after (2026-09-02) |
+|---|---|---|
+| activated slot | A -- B disarmed, `boot-requested-at: 0` | **B** |
+| booted after reboot | A, forever | **B** |
+| `VARIANT_ID` | `steamdeck-oobe` | **`steamdeck`** |
+| `BUILD_ID` | `20260707.10` | **`20260716.1`** |
+
+The new slot also carries the NVIDIA userspace written by its own provisioning
+pass -- `libcuda` in slot B is stamped 17:52 against slot A's 17:37 -- so this
+also demonstrates that provisioning reaches the OTA slot, not only the initial
+install. Evidence: `nvkvm-w330-evidence/libcuda-trim-20260902/ota.log`.
+
+The severity note below still stands as a design point: this failure mode is
+silent, and the OTA stage of any sweep should assert that the activated slot
+actually changed rather than trusting `steamos-update`'s exit code.
+
+## The original report follows
 
 ## The visible symptom
 

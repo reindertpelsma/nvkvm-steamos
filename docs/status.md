@@ -47,7 +47,7 @@ separately -- it was also, for a while, broken here without our noticing.
   into the running process. It reaches the driver through DXVK, not
   vkd3d-proton, which is why it survives the gap below.
 
-### OPEN: RDR2 does not reproduce on a clean build -- `--profile steamos` trims libcuda
+### FIXED 2026-09-02: RDR2 did not reproduce on a clean build -- `--profile steamos` trimmed libcuda
 
 MEASURED 2026-09-02 on the same fresh guest that runs Just Cause 2, using
 `tests/repro/vk_device_extensions.c` from nvkvm-pv, the acceptance test written
@@ -80,10 +80,63 @@ guest is staged by `steamos_boot.sh`, which never consults it. The 2026-09-01
 RDR2 run therefore happened on a guest that had `libcuda` present; a reader
 building from `main` today with defaults will hit `ERR_GFX_INIT`.
 
-Not yet fixed, and deliberately not patched blind: dropping `libcuda` from
-`TRIM_RE` is a one-line change, but it costs image size, needs the assertion in
-the completeness test relaxed, and must be re-measured against the repro above
-before it is claimed to work.
+**Fixed and verified on hardware.** `libcuda` is no longer trimmed; it is a
+completeness sentinel so an already-broken guest repairs itself, `validate()`
+checks it for both profiles, and the install fails loudly if it is missing.
+
+Re-run of the same acceptance test on a fresh guest built from the fix
+(RTX 3070, driver 580.95.05 open kernel module -- deliberately different
+hardware and driver from the box that reproduced the bug):
+
+| requested device extensions | before | after |
+|---|---|---|
+| none | `VK_SUCCESS` | `VK_SUCCESS` |
+| `VK_KHR_swapchain` | `VK_SUCCESS` | `VK_SUCCESS` |
+| each of the seven, individually | `VK_ERROR_INITIALIZATION_FAILED` | **`VK_SUCCESS`** |
+| all seven together | `VK_ERROR_INITIALIZATION_FAILED` | **`VK_SUCCESS`** |
+
+The guest carries `/usr/lib/libcuda.so.580.95.05` (91.8 MiB) and the 32-bit
+copy (26.7 MiB), while `libcudadebugger` and `libnvidia-opencl` stay trimmed.
+
+Getting there surfaced two further pre-existing bugs that the trim had been
+hiding, both fixed in the same branch: the fresh-install path never grew the
+rootfs to fill its partition (788 MiB visible of 3860 MiB), and the runfile was
+only ever fetched from the `XFree86/` path and never `tesla/`.
+
+**It survives an OTA.** The same guest was then driven through a real update
+(`20260707.10` -> `20260716.1`, `steamdeck-oobe` -> `steamdeck`). The hook
+provisioned slot B, armed it, and the guest rebooted into it -- and slot B's
+`libcuda` is stamped 17:52 against slot A's 17:37, so it was written by the
+OTA's own provisioning pass rather than inherited. All seven extensions pass in
+slot B too. That closes the "does it survive SteamOS updates?" claim in the
+README, which until this fix was true only because nothing checked libcuda.
+
+This also re-measured [the OTA slot-provisioning
+failure](ota-slot-provisioning-failure.md), which was still marked OPEN and
+release-blocking: it is fixed, and that doc is now RESOLVED with evidence.
+
+**It survives a host driver change, unattended.** With the guest already
+installed and running, the HOST driver was replaced underneath it
+(580.95.05 -> 575.57.08). On the next boot the guest noticed
+`host != guest`, fetched the right runfile and reinstalled its userspace with
+no manual staging:
+
+```
+[nvkvm] restored 7 library file(s) that the diverted types contain but the trim list keeps
+[nvkvm] profile 'steamos': trimming OpenCL/NVVM/OptiX ... libcuda is KEPT because
+        VKD3D ray tracing dlopens it
+[nvkvm] trimmed 17 CUDA/OpenCL paths
+[nvkvm] === Part 1 finished (rc=0) ===
+[nvkvm] nvkvm checks passed: ... libcuda present, GL/Vulkan userspace installed
+```
+
+`libcuda.so.575.57.08` (92.3 MiB) and its 32-bit copy replaced the 580.95.05
+pair, and all seven extensions still pass. That `libcuda present` in the
+summary is the point of the `validate()` change: before it, that line reported
+success on a guest with no libcuda at all.
+
+Between them these three runs cover the whole lifecycle the README promises --
+fresh install, A/B update, and host driver change -- on one guest, in order.
 
 Neither entry is a frame-rate claim: nothing here measures frame timing. For
 RDR2 the low GPU utilisation alongside a smooth-looking frame rate suggests a
@@ -134,6 +187,70 @@ render, or GTK needs a usable pointer-lock path, before the SteamOS result is
 fully playable for first-person games.
 
 ## Known open items
+
+### OPEN: the host driver must be a version NVIDIA actually publishes
+
+MEASURED 2026-09-02. The guest provisions its NVIDIA userspace by downloading
+the official runfile matching the *host* driver version -- that is what keeps
+guest and host in lockstep across host driver updates. If the host runs a
+version NVIDIA never published as a runfile, there is nothing to download and
+provisioning fails:
+
+```
+[nvkvm] ERROR: could not obtain the NVIDIA .run for 575.51.03
+[nvkvm] === Part 1 finished (rc=1) ===
+NVKVM-GUEST-RESULT: 1
+```
+
+This is not an exotic configuration. The host had its driver from **NVIDIA's
+own CUDA apt repo** (`developer.download.nvidia.com/compute/cuda/repos/...`),
+which is the path NVIDIA's own container-toolkit instructions lead you down.
+
+nvkvm-pv already tracks this: `scripts/sweep-driver-availability.tsv` lists
+575.51.03 as `ABSENT` and exists precisely because "publishing an
+open-gpu-kernel-modules tag and publishing a downloadable driver are DIFFERENT
+THINGS" -- 87 of 216 supported tags have no runfile at either public path.
+Probed here against **both** paths it uses:
+
+| version | `XFree86/` | `tesla/` |
+|---|---|---|
+| 575.51.03 (installed here) | 404 | **404** |
+| 570.133.20 | 404 | 206 |
+| 570.124.06 | 404 | 206 |
+| 575.57.08 | 206 | 206 |
+
+Only 575.51.03 is absent from both, which is why it specifically cannot be
+followed. Note that a 404 on `XFree86/` alone proves nothing -- several
+versions live only under `tesla/`.
+
+Also from that file, worth repeating because it is easy to misread: a **403 is
+not absence**. Requests from some regions are 301'd to NVIDIA's China CDN,
+which answers 403 for these paths, so the same URL that fails on one rented box
+succeeds from another. Do not conclude a driver is unpublished from a 403.
+
+So "install the NVIDIA driver the way NVIDIA documents it" can land a host on a
+version the guest cannot follow. Moving within the same repo (575.51.03 ->
+575.57.08) is the cheapest workaround: pick a packaged version that also ships
+a runfile.
+
+Everything else in provisioning had already succeeded: the pacman keyring was
+trusted in the target, the guest module built, the OTA hook was installed and
+the in-image stub verified byte-for-byte. Only the download failed. The failure
+is at least loud and specific rather than silent.
+
+Workarounds, in order of preference:
+
+1. Pick a host driver version that ships both ways -- e.g. 575.57.08 rather
+   than 575.51.03, both of which are in NVIDIA's CUDA apt repo.
+2. Supply the runfile yourself: `--old-run-file DIR` takes a bind-mounted cache
+   directory of NVIDIA `.run` files, which is also the offline install path.
+
+Worth improving: falling back to the nearest published version in the same
+branch would be wrong (guest and host userspace must match exactly), so the
+honest options are to fail as it does now or to document the cache path more
+prominently. It currently fails after several minutes of successful work, which
+is a poor place to discover the problem -- checking that the runfile is
+obtainable *before* provisioning starts would turn minutes into seconds.
 
 ### RESOLVED: Steam wiped its own install inside the guest (2026-08-27/28)
 
