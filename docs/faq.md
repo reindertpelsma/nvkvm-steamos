@@ -62,6 +62,23 @@ nvkvm, libcuda and the CUDA/Vulkan libraries.
 nvkvm-pv supports headless rendering desktops you can connect to remotely, but the
 scripts in this repository are not configured for it.
 
+**Which SteamOS images are supported?**
+The current official recovery image, whichever that is on the day you install.
+The installer resolves Valve's own `steamdeck-repair-latest` alias at install
+time (today that is `steamdeck-oobe-repair-20260707.10-3.8.14`) and falls back to
+a pinned known-good image only if the alias stops resolving.
+
+Older **plain** `steamdeck-repair-*` images are not tracked. They are in one
+sense nicer — they install `VARIANT_ID=steamdeck` directly, with
+`steam-jupiter-stable` and none of the OOBE wiping wrapper — but the newest one
+Valve published is 3.7.7 from May 2025 and it appears to have stopped being
+republished. Following the official alias means we do not depend on a file Valve
+may remove, at the cost of getting the OOBE variant. That trade is deliberate,
+and it is why the previous answer exists.
+
+You can still point `install_steamos_vm.sh --repair` at any image you like;
+nothing rejects one. Only the image the alias resolves to is tested.
+
 **Do I have to update before installing games?**
 Yes, and this is a SteamOS thing rather than an nvkvm thing. Valve's download
 button gives you an **OOBE image** (`steamdeck-oobe-repair-*.img`) — that is what
@@ -77,13 +94,13 @@ rm -rf --one-file-system "$HOME"/.steam "$HOME"/.local/share/Steam
 want to always start with a fresh steam per boot as we lack the proper steam
 overlay/repair code."*
 
-**This is identical on bare metal.** Any SteamOS machine still on an
+This is identical on bare metal: any SteamOS machine still on an
 un-graduated OOBE image behaves the same way; it is not VM-specific and not
 something Valve did to us. Nobody normally meets it, because setup walks you into
 the update before you have a library to lose.
 
-**How it became reachable here was our fault, and it is fixed.** This project
-used to force Plasma autologin, which skipped Valve's setup entirely and left the
+How it became reachable here was our fault, and it is fixed. This project used
+to force Plasma autologin, which skipped Valve's setup entirely and left the
 guest parked in a state meant to last minutes — permanently, with a usable
 desktop and no graduation. That, not the VM, is why Steam wiped itself on this
 stack. The default now leaves SteamOS's own session selection alone, so first
@@ -97,7 +114,7 @@ Wi-Fi radio, so the update could not be taken even if you wanted it.)
 Belt and braces, provisioning also neutralises that line while `VARIANT_ID` is
 `steamdeck-oobe`, and the patch self-retires once an OTA graduates the guest.
 
-**The order still matters, so do the update first:**
+The order still matters, so do the update first:
 
 ```sh
 sudo steamos-update      # several GB; reboots into the other A/B slot
