@@ -149,9 +149,23 @@ provisioning fails:
 NVKVM-GUEST-RESULT: 1
 ```
 
-Confirmed against NVIDIA's server: `575.51.03` returns **HTTP 404** while
-`575.51.02`, `575.64.03` and `580.95.05` all return 200. Cloud and OEM images
-sometimes ship such builds -- this one was a rented GPU host.
+This is not an exotic configuration. The host had its driver from **NVIDIA's
+own CUDA apt repo** (`developer.download.nvidia.com/compute/cuda/repos/...`),
+which is the path NVIDIA's own container-toolkit instructions lead you down --
+and several driver builds published there have no corresponding runfile:
+
+| version | source | runfile on us.download.nvidia.com |
+|---|---|---|
+| 575.51.03 | CUDA apt repo (installed here) | **404** |
+| 570.133.20 | CUDA apt repo | **404** |
+| 570.124.06 | CUDA apt repo | **404** |
+| 575.57.08 | CUDA apt repo | 200 |
+| 580.82.09 / 580.65.06 / 580.95.05 | runfile only | 200 |
+
+So "install the NVIDIA driver the way NVIDIA documents it" can land a host on a
+version the guest cannot follow. Upgrading within the same repo (575.51.03 ->
+575.57.08) was enough to fix it here, which is the cheapest workaround: pick a
+packaged version that also ships a runfile.
 
 Everything else in provisioning had already succeeded: the pacman keyring was
 trusted in the target, the guest module built, the OTA hook was installed and
@@ -160,7 +174,8 @@ is at least loud and specific rather than silent.
 
 Workarounds, in order of preference:
 
-1. Run a published driver version on the host.
+1. Pick a host driver version that ships both ways -- e.g. 575.57.08 rather
+   than 575.51.03, both of which are in NVIDIA's CUDA apt repo.
 2. Supply the runfile yourself: `--old-run-file DIR` takes a bind-mounted cache
    directory of NVIDIA `.run` files, which is also the offline install path.
 
