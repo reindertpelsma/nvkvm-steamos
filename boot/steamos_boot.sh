@@ -1039,9 +1039,11 @@ install_nvidia_userspace() {
     # a userspace actually costs HERE, so use that plus a margin instead of
     # guessing.  A fresh install has no such measurement and keeps the constant.
     local need_kb=1310720
-    # +64 MB over the old 786432: the steamos profile now KEEPS libcuda (~45 MB
-    # across /usr/lib and /usr/lib32), because VKD3D ray tracing dlopens it.
-    [ "$PROFILE" = steamos ] && need_kb=851968
+    # +128 MB over the old 786432, from MEASUREMENT not estimate: the steamos
+    # profile now KEEPS libcuda because VKD3D ray tracing dlopens it, and in
+    # 580.95.05 that is 91.8 MiB for /usr/lib plus 26.7 MiB for the 32-bit copy
+    # -- 118.5 MiB, not the ~45 MiB I first guessed. Rounded up for headroom.
+    [ "$PROFILE" = steamos ] && need_kb=917504
     [ "${NVKVM_NO_COMPAT32:-0}" = "1" ] && need_kb=$((need_kb/2))
     #
     # Remember the measurement across runs.  A reclaim only happens on an

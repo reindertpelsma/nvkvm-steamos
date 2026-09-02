@@ -356,6 +356,31 @@ provision_setup() {
     mkdir -p "$CHROOT$TARGET_MNT"
     mount -t btrfs /dev/nvme0n1p4 "$CHROOT$TARGET_MNT" \
         || { log "FATAL: could not mount the installed rootfs-A (/dev/nvme0n1p4)"; return 1; }
+
+    # GROW IT BEFORE PROVISIONING, not after.
+    #
+    # repair_device.sh dd's a 5 GiB btrfs image into an 8 GiB partition and
+    # never resizes it (see boot/patches/0002-repair-device-rootfs-size.patch,
+    # which buys that headroom precisely so the untrimmed NVIDIA userspace
+    # fits). steamos_boot.sh --image does the grow, but the FRESH INSTALL path
+    # is --install-only --root, which does not -- so provisioning ran against
+    # the ungrown 5 GiB filesystem and saw ~788 MiB free instead of ~3.8 GiB.
+    #
+    # MEASURED 2026-09-02: that is why keeping libcuda (91.8 MiB + 26.7 MiB for
+    # the 32-bit copy) failed with "not enough space: free=788M needed=832M".
+    # The headroom was bought and then never made reachable. Trimming used to
+    # hide it by squeaking under the old threshold.
+    if command -v btrfs >/dev/null 2>&1; then
+        before="$(df -k "$CHROOT$TARGET_MNT" 2>/dev/null | awk 'NR==2{print $2}')"
+        if btrfs filesystem resize max "$CHROOT$TARGET_MNT" >/dev/null 2>&1; then
+            after="$(df -k "$CHROOT$TARGET_MNT" 2>/dev/null | awk 'NR==2{print $2}')"
+            log "rootfs-A grown to fill its partition: $((before/1024))M -> $((after/1024))M"
+        else
+            log "WARNING: could not grow rootfs-A to fill its partition; provisioning may run short of space"
+        fi
+    else
+        log "WARNING: no btrfs tool in the installer image; rootfs-A stays at its dd'd size"
+    fi
     mount -t ext4 /dev/nvme0n1p8 "$CHROOT$TARGET_MNT/home" \
         || log "WARNING: could not mount the installed /home — build area falls back to the rootfs"
 
