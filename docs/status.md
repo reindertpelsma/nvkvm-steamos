@@ -47,7 +47,7 @@ separately -- it was also, for a while, broken here without our noticing.
   into the running process. It reaches the driver through DXVK, not
   vkd3d-proton, which is why it survives the gap below.
 
-### OPEN: RDR2 does not reproduce on a clean build -- `--profile steamos` trims libcuda
+### FIXED 2026-09-02: RDR2 did not reproduce on a clean build -- `--profile steamos` trimmed libcuda
 
 MEASURED 2026-09-02 on the same fresh guest that runs Just Cause 2, using
 `tests/repro/vk_device_extensions.c` from nvkvm-pv, the acceptance test written
@@ -80,10 +80,28 @@ guest is staged by `steamos_boot.sh`, which never consults it. The 2026-09-01
 RDR2 run therefore happened on a guest that had `libcuda` present; a reader
 building from `main` today with defaults will hit `ERR_GFX_INIT`.
 
-Not yet fixed, and deliberately not patched blind: dropping `libcuda` from
-`TRIM_RE` is a one-line change, but it costs image size, needs the assertion in
-the completeness test relaxed, and must be re-measured against the repro above
-before it is claimed to work.
+**Fixed and verified on hardware.** `libcuda` is no longer trimmed; it is a
+completeness sentinel so an already-broken guest repairs itself, `validate()`
+checks it for both profiles, and the install fails loudly if it is missing.
+
+Re-run of the same acceptance test on a fresh guest built from the fix
+(RTX 3070, driver 580.95.05 open kernel module -- deliberately different
+hardware and driver from the box that reproduced the bug):
+
+| requested device extensions | before | after |
+|---|---|---|
+| none | `VK_SUCCESS` | `VK_SUCCESS` |
+| `VK_KHR_swapchain` | `VK_SUCCESS` | `VK_SUCCESS` |
+| each of the seven, individually | `VK_ERROR_INITIALIZATION_FAILED` | **`VK_SUCCESS`** |
+| all seven together | `VK_ERROR_INITIALIZATION_FAILED` | **`VK_SUCCESS`** |
+
+The guest carries `/usr/lib/libcuda.so.580.95.05` (91.8 MiB) and the 32-bit
+copy (26.7 MiB), while `libcudadebugger` and `libnvidia-opencl` stay trimmed.
+
+Getting there surfaced two further pre-existing bugs that the trim had been
+hiding, both fixed in the same branch: the fresh-install path never grew the
+rootfs to fill its partition (788 MiB visible of 3860 MiB), and the runfile was
+only ever fetched from the `XFree86/` path and never `tesla/`.
 
 Neither entry is a frame-rate claim: nothing here measures frame timing. For
 RDR2 the low GPU utilisation alongside a smooth-looking frame rate suggests a
