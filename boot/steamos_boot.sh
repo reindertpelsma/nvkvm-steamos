@@ -1388,6 +1388,75 @@ SSHCONF
     log "ssh:   -netdev user,id=net0,hostfwd=tcp::15022-:22"
 }
 
+# ── gamescope readiness race ─────────────────────────────────────────────────
+ensure_gamescope_ready_timeout() {
+    # WHY THE OOBE gamescope SESSION NEVER CAME UP.  MEASURED on the PC,
+    # 2026-08-30, and it is not a KMS problem, not Vulkan, and not nvkvm.
+    #
+    # /usr/lib/steamos/gamescope-session hands gamescope a FIFO with -R and then
+    # reads its display names back with a THREE SECOND deadline:
+    #
+    #     read_gamescope_env() {
+    #         if read -r -t 3 response_x_display response_wl_display <> "$socket"; then
+    #             env > $XDG_RUNTIME_DIR/gamescope-environment
+    #             systemd-notify --ready
+    #         fi
+    #     }
+    #     (read_gamescope_env &)      # the 3s clock starts HERE
+    #     exec gamescope ...
+    #
+    # The clock starts before gamescope is even exec'd.  Under nvkvm gamescope
+    # needs ~3.5-4s to reach that write (DRM open at +2s, Xwayland at +3s,
+    # pipewire at +3-4s), the read times out SILENTLY -- no error, no log line --
+    # and the reader closes its end.  gamescope's write to the FIFO then BLOCKS
+    # FOREVER: it never enters its compositor loop, never commits, never flips.
+    # PROVEN by attaching a reader to that socket by hand at 20s and again at
+    # 121s of uptime -- both returned instantly with ":0 gamescope-0", i.e. it
+    # had been parked on that write the whole time.  So systemd-notify never  gamescope-session.service is Type=notify, so systemd holds the unit
+    # in "activating" forever and every downstream unit waits behind it:
+    # steam-launcher, graphical-session.target, gamescope-session.target,
+    # mangoapp, xbindkeys, ibus, steam-notif-daemon.
+    #
+    # Steam therefore never launches, gamescope has no client, the connector
+    # stays enabled=disabled, nothing is ever flipped, and the screen looks
+    # frozen while the guest is in fact healthy and idle.
+    #
+    # MEASURED, widening ONLY this timeout to 30s:
+    #   gamescope-session.service  activating -> active/running
+    #   gamescope-session.target   inactive   -> active
+    #   graphical-session.target   inactive   -> active
+    #   steam-launcher.service     waiting    -> active
+    #   card0-Virtual-1/enabled    disabled   -> enabled
+    #   Steam processes            0          -> 15
+    #   QEMU CPU                   0%         -> 60% (frames actually flowing)
+    #
+    # The race is winnable on a warm cache -- one observed cycle came ready in 4s
+    # and ran Game Mode properly (CRTC fb 1920x1080, host counters
+    # consumed=8510->11185 dropped=0 failed=0 at 30-58 fps).  That intermittency
+    # is why this looked machine-dependent for weeks: a faster host won the race
+    # and a slower one lost it, with identical software.
+    #
+    # NOTE the TimeoutStartSec=120 drop-in cannot help.  The fatal deadline is
+    # this 3s read inside the script, not systemd's start timeout.
+    #
+    # This supersedes the older workaround of forcing the Plasma session to dodge
+    # gamescope: the OOBE session works, it was just racing a 3s timer. It also
+    # explains the SIGKILL/retry loop noted in write_sddm_session_config -- the
+    # unit was killed for never reporting ready, not for being slow to render.
+    local sess; sess="$(rp /usr/lib/steamos/gamescope-session)"
+    [ -f "$sess" ] || { log "no gamescope-session script; skipping readiness fixup"; return 0; }
+    if ! grep -q 'read -r -t 3 ' "$sess" 2>/dev/null; then
+        log "gamescope readiness timeout already widened (or upstream changed it)"
+        return 0
+    fi
+    cp -n "$sess" "$sess.nvkvm-orig" 2>/dev/null || true
+    if sed -i 's/read -r -t 3 /read -r -t 30 /' "$sess" 2>/dev/null; then
+        log "widened gamescope readiness read 3s -> 30s (original at $sess.nvkvm-orig)"
+    else
+        warn "could not widen the gamescope readiness timeout; the OOBE session may hang"
+    fi
+}
+
 # ── Desktop config + in-image stub ───────────────────────────────────────────
 write_sddm_session_config() {
     # The SteamOS recovery image may select `gamescope-wayland.desktop` as the
@@ -1424,12 +1493,32 @@ write_sddm_session_config() {
     # NVKVM_STEAMOS_FORCE_PLASMA=1 overrides this, for a guest where the
     # gamescope OOBE session does not come up (its KMS expectations against
     # nvkvm's single-plane, cursor-less pipe are UNTESTED as of 2026-08-28).
-    local _oobe=0
-    [ "$(sed -n 's/^VARIANT_ID=//p' "$(rp /etc/os-release)" 2>/dev/null | tr -d '"')" = "steamdeck-oobe" ] \
-        && _oobe=1
-    if [ "$_oobe" = 1 ] && [ "${NVKVM_STEAMOS_FORCE_PLASMA:-0}" != 1 ]; then
+    # DEFAULT IS NOW: DO NOT TOUCH SDDM'S SESSION AT ALL.
+    #
+    # This override existed to dodge gamescope while gamescope could not start.
+    # That cause is fixed (ensure_gamescope_ready_timeout: SteamOS's own session
+    # script gave gamescope a 3s deadline to report ready and gamescope needs
+    # ~4s under nvkvm), and a graduated guest now reaches Game Mode normally.
+    #
+    # Leaving the override in place actively BREAKS SteamOS, because zz- sorts
+    # after everything and therefore outranks the user's own choice. MEASURED
+    # 2026-08-30 on a fully installed, graduated guest: the desktop's "Return to
+    # Gaming Mode" shortcut runs
+    #     if [ "$(steamosctl get-default-login-mode)" = desktop ]
+    #         then steamosctl switch-to-game-mode
+    #         else qdbus ... logout          # relies on SDDM autologin
+    # and get-default-login-mode returns "game", so it takes the LOGOUT branch and
+    # lets autologin choose. Autologin then read our Session=plasma.desktop and
+    # put the user straight back on the desktop. The shortcut looked broken; it
+    # was us.
+    #
+    # So: never write it unless explicitly asked. NVKVM_STEAMOS_FORCE_PLASMA=1
+    # remains for a guest where gamescope genuinely will not come up -- that is a
+    # deliberate operator choice, not a default.
+    if [ "${NVKVM_STEAMOS_FORCE_PLASMA:-0}" != 1 ]; then
         rm -f "$sddm_override"
-        log "OOBE image: leaving SteamOS's own session in place so Valve's setup flow runs"
+        log "leaving SteamOS's own SDDM session selection alone (gamescope works; the"
+        log "  override outranks the user's choice and breaks Return to Gaming Mode)"
         log "  it performs the OTA that graduates this guest to VARIANT_ID=steamdeck"
         log "  (set NVKVM_STEAMOS_FORCE_PLASMA=1 to force the Plasma desktop instead)"
     elif [ "$PROFILE" = steamos ] \
@@ -1671,6 +1760,7 @@ KSCREENLOCK
     # do_install() is shared by live boot, fresh `--install-only --root`, and
     # the A/B update hook. Keeping this here makes every convergence reassert
     # Plasma instead of relying on a one-off edit to the current image.
+    ensure_gamescope_ready_timeout
     write_sddm_session_config
 
     in_target systemctl enable nvkvm-drm-env.service 2>/dev/null || true
