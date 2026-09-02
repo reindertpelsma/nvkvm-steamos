@@ -115,6 +115,29 @@ This also re-measured [the OTA slot-provisioning
 failure](ota-slot-provisioning-failure.md), which was still marked OPEN and
 release-blocking: it is fixed, and that doc is now RESOLVED with evidence.
 
+**It survives a host driver change, unattended.** With the guest already
+installed and running, the HOST driver was replaced underneath it
+(580.95.05 -> 575.57.08). On the next boot the guest noticed
+`host != guest`, fetched the right runfile and reinstalled its userspace with
+no manual staging:
+
+```
+[nvkvm] restored 7 library file(s) that the diverted types contain but the trim list keeps
+[nvkvm] profile 'steamos': trimming OpenCL/NVVM/OptiX ... libcuda is KEPT because
+        VKD3D ray tracing dlopens it
+[nvkvm] trimmed 17 CUDA/OpenCL paths
+[nvkvm] === Part 1 finished (rc=0) ===
+[nvkvm] nvkvm checks passed: ... libcuda present, GL/Vulkan userspace installed
+```
+
+`libcuda.so.575.57.08` (92.3 MiB) and its 32-bit copy replaced the 580.95.05
+pair, and all seven extensions still pass. That `libcuda present` in the
+summary is the point of the `validate()` change: before it, that line reported
+success on a guest with no libcuda at all.
+
+Between them these three runs cover the whole lifecycle the README promises --
+fresh install, A/B update, and host driver change -- on one guest, in order.
+
 Neither entry is a frame-rate claim: nothing here measures frame timing. For
 RDR2 the low GPU utilisation alongside a smooth-looking frame rate suggests a
 vsync cap rather than a GPU-bound scene. No GPU counters were recorded for the
