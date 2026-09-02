@@ -1101,6 +1101,30 @@ install_nvidia_userspace() {
     # geometry or a rootfs that was never grown to fill its partition, and
     # silently eating firmware would hide both.
     #
+    # An 8 GiB slot only helps if the FILESYSTEM can use it. repair_device.sh
+    # dd's a 5 GiB btrfs image into the partition and never resizes it; --image
+    # grows it, but the fresh-install path is `--install-only --root` and did
+    # not -- so this check saw ~788 MiB of an ungrown filesystem while ~3 GiB
+    # sat idle in the partition. That is exactly the "rootfs that was never
+    # grown to fill its partition" the comment above names. MEASURED 2026-09-02.
+    #
+    # Do it HERE rather than in the installer that mounts the slot: the Alpine
+    # installer image has no btrfs tool, and the target does. Best effort -- if
+    # it cannot grow, fall through to the honest failure below.
+    if [ -n "$free_kb" ] && [ "$free_kb" -lt "$need_kb" ]; then
+        if in_target sh -c 'command -v btrfs >/dev/null 2>&1'; then
+            log "short of space ($((free_kb/1024))M); growing the rootfs to fill its partition"
+            if in_target btrfs filesystem resize max / >/dev/null 2>&1; then
+                free_kb="$(df -Pk "$(rp /usr)" 2>/dev/null | awk 'NR==2{print $4}')"
+                log "after growing: $((free_kb/1024))M free"
+            else
+                warn "could not grow the rootfs to fill its partition"
+            fi
+        else
+            warn "no btrfs tool in the target; cannot grow the rootfs"
+        fi
+    fi
+
     if [ -n "$free_kb" ] && [ "$free_kb" -lt "$need_kb" ]; then
         err "not enough space for the NVIDIA userspace: free=$((free_kb/1024))M needed=$((need_kb/1024))M"
         err "Pick a smaller profile (--profile steamos trims CUDA/OpenCL), set"
