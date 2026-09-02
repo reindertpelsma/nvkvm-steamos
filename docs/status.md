@@ -18,6 +18,11 @@ logs are in [`../evidence-pc-20260823/`](../evidence-pc-20260823/).
 - Portal 2 launches and plays under the GTK display backend. It is a 32-bit
   Source title, so this also exercises the `lib32` NVIDIA userspace kept by the
   SteamOS profile.
+- Shadow of the Tomb Raider (native Linux/Vulkan) launches and plays under the
+  broker at 3760x2118, with the GPU at 80%, 168 W and full boost clocks, while
+  the host desktop keeps running on the same RTX 4070. Screenshot:
+  [`../screenshots/tomb_raider_under_nvkvm_steamos.png`](../screenshots/tomb_raider_under_nvkvm_steamos.png).
+  Not a frame-rate claim: nothing here measures frame timing.
 - The boot script converges at every boot after one-time provisioning.
 
 The two-container deployment was re-tested on 2026-08-25 on the same physical
@@ -34,7 +39,8 @@ separately -- it was also, for a while, broken here without our noticing.
 - **Red Dead Redemption 2** (MEASURED 2026-09-01, RTX 4070 / driver 595.84).
   D3D12 through vkd3d-proton. It failed at `ERR_GFX_INIT` until 2026-09-01,
   because `libcuda.so.1` was never staged on an Arch-family guest and the
-  NVIDIA Vulkan ICD could not build a device; fixed in nvkvm-pv. After the fix:
+  NVIDIA Vulkan ICD could not build a device; fixed in nvkvm-pv. After the fix,
+  fullscreen with the broker grab active:
   12 minutes of continuous gameplay, GPU 28-39%, VRAM ~5.07 GB, 49-65 W,
   2.2-2.7 GHz, 41 C, with the host reporting 38-39% and ~5.08 GB for the same
   GPU at the same moment.
@@ -176,6 +182,15 @@ those up caused several wrong conclusions during bring-up.
 
 SDL is the backend with working pointer lock. The Minecraft result is from the
 non-SteamOS Linux guest used during nvkvm bring-up, not from SteamOS.
+
+Under the broker there is a presentation ladder rather than a single path. GL
+zero-copy is the fast rung and the one the 2026-08-23 result was measured on
+(60 fps with `-vga none`, so no emulated VGA device to fall back to). Below it
+sit a linear dma-buf path and a universal shm path, which exist for hosts where
+the display is driven by an iGPU or an AMD GPU while rendering happens on a
+discrete NVIDIA card -- the common laptop arrangement. The rung is selected by
+`NVKVM_BROKER_PRESENT_MODE` (`auto`, `native`, `linear`, `shm`); see
+[`container-compose.md`](container-compose.md).
 
 GTK is the backend that renders SteamOS today. It can show the desktop and run
 Portal 2, but it does not provide usable mouse-look: the pointer-lock
