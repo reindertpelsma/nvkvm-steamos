@@ -55,22 +55,25 @@ compositor, games, audio, and a guest that expects to own its display.
 docker compose build
 docker compose up -d
 docker compose logs -f broker vmm
-./steamos-ssh
+./steamos-ssh # if you want shell access
 ```
 
 On first start this downloads the SteamOS recovery image, boots a disposable
 installer VM, lets Valve's installer create a real dual-slot A/B qcow2, provisions
-it with nvkvm's guest module and NVIDIA userspace matching your host driver, then
-boots Plasma. It takes a while and needs no input.
+it with nvkvm's guest module and NVIDIA userspace matching your host driver, during that time you will be starring to a broker screen so if needed check the docker logs or install.log to see progress, then it
+boots in gamescope OOBE OTA installer. Follow the installation (primarily language + timezone) and let it update, this takes a while and the guest window might freeze several times whilst the install scripts run, like at '1 sec remaining' or shutting down.  After the update, it will reboot and you will be greeted with the gamescope login screen. 
 
-![The broker window before the guest attaches](screenshots/placeholder_nvkvm_broker.jpg)
+*`CTRL+ALT+F`* toggles fullscreen; *`CTRL+ALT+G`* toggles grab mode: it hands your keyboard and mouse to the
+guest, which is what first- and third-person games need for real mouse-look. Instead of fullscreen resize the guest window on the edges to the necessary resolution. Some games cannot handle a display resize without completely glitching, so its best to enter fullscreen, maximize or resize before you start the game.
 
-`CTRL+ALT+F` toggles fullscreen; `CTRL+ALT+G` hands your keyboard and mouse to the
-guest, which is what first- and third-person games need for real mouse-look.
+Grabbing your input is mandatory to play most games, gamescope doesn't support yet QEMU's absolute input properly so to use mouse in gamescope you need to enter grab mode. 
+The non-grab/normal input (mouse on hover over window) only works on the desktop and many games launched using the desktop that use a mouse cursor instead of moving a camera. Games launched on gamescope have the same issue as gamescope itself.
 
 Persistent state, security boundaries, Wayland/X11 selection, published images and
 configuration knobs are documented in
 [`docs/container-compose.md`](docs/container-compose.md).
+
+Login on the serial is user deck and has by default no password.
 
 ## What has been verified
 

@@ -73,7 +73,7 @@ sense nicer — they install `VARIANT_ID=steamdeck` directly, with
 Valve published is 3.7.7 from May 2025 and it appears to have stopped being
 republished. Following the official alias means we do not depend on a file Valve
 may remove, at the cost of getting the OOBE variant. That trade is deliberate,
-and it is why the previous answer exists.
+and it is why the next answer exists.
 
 You can still point `install_steamos_vm.sh --repair` at any image you like;
 nothing rejects one. Only the image the alias resolves to is tested.
