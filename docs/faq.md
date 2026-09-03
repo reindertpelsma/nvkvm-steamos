@@ -12,17 +12,15 @@ your GPU for graphics and compute; the host keeps using it throughout.
 **Why nvkvm and not Containers, VFIO, vGPU, VirtIO-gpu, GPU PV?**
 Each of the alternatives fails on a different axis:
 
-- **Containers** are not a VM. You cannot boot a full OS inside one the way you
-  can on bare metal or KVM, which is the whole point here. There is also a
-  concrete compatibility problem: Steam's own runtime is already a container
-  (pressure-vessel, on bubblewrap) and it must create a **user namespace**.
-  Docker's default seccomp profile denies that, so containerised Steam only
-  runs if you weaken the outer container -- `docker-steam-headless` ships
-  `CAP_SYS_ADMIN`, `seccomp:unconfined`, `apparmor:unconfined`, `ipc: host`
-  and `network_mode: host`. Sysbox, built for exactly this nesting problem,
-  supports neither nested user namespaces nor GPU passthrough. A VM has no
-  such conflict: the guest is a different kernel, so nvkvm's own containers
-  keep `cap_drop: ALL` and the default seccomp profile.
+- **Containers** are not a VM: you cannot boot a full OS in one. There is also a
+  hard compatibility problem. Steam's own runtime is already a container
+  (pressure-vessel, on bubblewrap) and must create a user namespace, which
+  Docker's default seccomp profile denies -- so containerised Steam only runs
+  once you weaken the outer container (`docker-steam-headless` ships
+  `CAP_SYS_ADMIN`, `seccomp:unconfined`, `ipc: host`, `network_mode: host`).
+  Sysbox, built for that nesting problem, supports neither nested user
+  namespaces nor GPU passthrough. A VM has no such conflict, which is why our
+  own containers keep `cap_drop: ALL`.
 - **VFIO** takes the GPU away from the host. If your display output is on that
   card, your host desktop goes with it -- the guest has seized the device.
 - **vGPU** is datacenter-only and licensed. `vgpu_unlock` re-enables legacy
@@ -89,52 +87,30 @@ You can still point `install_steamos_vm.sh --repair` at any image you like;
 nothing rejects one. Only the image the alias resolves to is tested.
 
 **Do I have to update before installing games?**
-Yes, and this is a SteamOS thing rather than an nvkvm thing. Valve's download
-button gives you an **OOBE image** (`steamdeck-oobe-repair-*.img`) — that is what
-this project installs, because Valve's `steamdeck-repair-latest` alias resolves to
-it and the non-OOBE alias 404s. On an OOBE image, `steam-jupiter-oobe`'s
-`/usr/bin/steam` runs
+Yes. Run `sudo steamos-update` first, then install games.
 
-```
-rm -rf --one-file-system "$HOME"/.steam "$HOME"/.local/share/Steam
-```
+This is SteamOS behaviour, not an nvkvm one. Valve's download button gives an **OOBE
+image** (`steamdeck-oobe-repair-*.img`) -- the alias `steamdeck-repair-latest`
+resolves to it, the non-OOBE alias 404s -- and on those images
+`steam-jupiter-oobe`'s `/usr/bin/steam` runs
+`rm -rf --one-file-system "$HOME"/.steam "$HOME"/.local/share/Steam` on every
+launch, by design: *"we lack the proper steam overlay/repair code"*, says Valve's
+own comment. Any bare-metal SteamOS machine still on an un-graduated OOBE image
+does the same. Nobody normally meets it, because setup walks you into the update
+before you have a library to lose.
 
-**on every launch**, by design. Valve's own comment says why: *"On OOBE images we
-want to always start with a fresh steam per boot as we lack the proper steam
-overlay/repair code."*
+It became reachable here because this project used to force Plasma autologin,
+which skipped Valve's setup and parked the guest on an un-graduated image with a
+usable desktop. That default is fixed -- first boot now lands in the OOBE
+installer, as on bare metal. `NVKVM_STEAMOS_FORCE_PLASMA=1` puts you back outside
+that flow, so update before installing anything if you set it. Provisioning also
+neutralises the wipe while `VARIANT_ID` is `steamdeck-oobe`, and the patch
+self-retires after an OTA.
 
-This is identical on bare metal: any SteamOS machine still on an
-un-graduated OOBE image behaves the same way; it is not VM-specific and not
-something Valve did to us. Nobody normally meets it, because setup walks you into
-the update before you have a library to lose.
-
-How it became reachable here was our fault, and it is fixed. This project used
-to force Plasma autologin, which skipped Valve's setup entirely and left the
-guest parked in a state meant to last minutes — permanently, with a usable
-desktop and no graduation. That, not the VM, is why Steam wiped itself on this
-stack. The default now leaves SteamOS's own session selection alone, so first
-boot lands in the OOBE installer exactly as it does on bare metal, and the OTA
-happens. `NVKVM_STEAMOS_FORCE_PLASMA=1` still exists for a guest where gamescope
-genuinely will not start — but setting it puts you back outside the OOBE flow,
-so update before you install anything if you use it. (A second contributor is
-also fixed: setup used to hang on "No networks found" because the guest had no
-Wi-Fi radio, so the update could not be taken even if you wanted it.)
-
-Belt and braces, provisioning also neutralises that line while `VARIANT_ID` is
-`steamdeck-oobe`, and the patch self-retires once an OTA graduates the guest.
-
-The order still matters, so do the update first:
-
-```sh
-sudo steamos-update      # several GB; reboots into the other A/B slot
-```
-
-Graduating *after* installing games does not save them. Real SteamOS's launcher
-keeps the same `rm -rf` behind a guard — it fires once, when `Steam.cfg` still
-carries `# OOBE Inhibit` — and it backs up `registry.vdf` first, so your **login**
-survives but `~/.local/share/Steam` does not, and that is where `steamapps` lives.
-Update first, install second.
-
+Graduating *after* installing does not save your games: real SteamOS keeps the
+same `rm -rf` behind a guard on `# OOBE Inhibit` in `Steam.cfg`, fires it once,
+and backs up `registry.vdf` first -- so your login survives but
+`~/.local/share/Steam`, which holds `steamapps`, does not.
 
 **Will anti-cheat work?**
 No, and this is a won't-fix. Anti-cheat generally breaks under VMs by design —
