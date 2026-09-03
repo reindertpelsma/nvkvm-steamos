@@ -13,7 +13,16 @@ your GPU for graphics and compute; the host keeps using it throughout.
 Each of the alternatives fails on a different axis:
 
 - **Containers** are not a VM. You cannot boot a full OS inside one the way you
-  can on bare metal or KVM, which is the whole point here.
+  can on bare metal or KVM, which is the whole point here. There is also a
+  concrete compatibility problem: Steam's own runtime is already a container
+  (pressure-vessel, on bubblewrap) and it must create a **user namespace**.
+  Docker's default seccomp profile denies that, so containerised Steam only
+  runs if you weaken the outer container -- `docker-steam-headless` ships
+  `CAP_SYS_ADMIN`, `seccomp:unconfined`, `apparmor:unconfined`, `ipc: host`
+  and `network_mode: host`. Sysbox, built for exactly this nesting problem,
+  supports neither nested user namespaces nor GPU passthrough. A VM has no
+  such conflict: the guest is a different kernel, so nvkvm's own containers
+  keep `cap_drop: ALL` and the default seccomp profile.
 - **VFIO** takes the GPU away from the host. If your display output is on that
   card, your host desktop goes with it -- the guest has seized the device.
 - **vGPU** is datacenter-only and licensed. `vgpu_unlock` re-enables legacy
@@ -152,6 +161,25 @@ focus; paste requires explicit consent — press `CTRL+V` or `CTRL+SHIFT+V` whil
 focused, the same model Firefox and Safari use. Pasting from a right-click menu may
 therefore not receive the host clipboard: press `CTRL+V` to send it, even if that
 shortcut does nothing in the guest application itself.
+
+**Is it safe to give the containers `/dev/kvm`?**
+Yes, and it is not comparable to mounting the Docker socket. `/dev/kvm` is
+designed for unprivileged use -- QEMU and libvirt run VMs as ordinary users,
+and systemd ships the node world-accessible on that basis. Holding it is not
+root-equivalent, and a privilege escalation through it would be a Linux kernel
+vulnerability rather than a misconfiguration here. The Docker socket, by
+contrast, *is* root-equivalent by design.
+
+`/dev/udmabuf` is a narrower and much less exercised interface. It rides the
+same `root:kvm 0660` gate, which is a reason to allow it, not a safety proof;
+our own review records it as an accepted risk rather than a neutral one. Both
+nodes are held by the VMM and broker, never by the guest, so they are reachable
+only after an escape out of the VM -- which is the boundary nvkvm exists to
+defend.
+
+**Should I run this multi-tenant?**
+No. Not because of a known flaw, but because nvkvm has had **no external
+security review**. Treat the isolation as untested by anyone but us.
 
 **Why are there three containers — vmm, broker and audio?**
 Security, and it is not SteamOS-specific. For native performance the VMM needs the

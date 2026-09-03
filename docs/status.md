@@ -392,7 +392,27 @@ clients collapse the host.
 
 Capture in `evidence-steam-wipe-20260828/drm-disabled/`.
 
-### OPEN: host BAR1 address-space leak, 59 mappings per guest client teardown
+### RESOLVED 2026-09-03: the BAR1 "leak" is deferred cleanup, not a leak
+
+Re-measured on a 16 GB BAR1 host. After 1849 cumulative failed auto-unmaps,
+with **every** host referrer dead (`qemu=0 stubs=0 containers=0`),
+`va_capacity` reports `MAXCONTIG 11340` vs `CUDA_FREE 11370` -- healthy, and
+higher than with the stack up. `status=0x23` is `NV_ERR_INVALID_CLIENT`: RM
+correctly declining to unmap for a dead guest client while live host referrers
+(the stubs and QEMU, holding `/dev/nvidia-uvm`) still legitimately hold the
+mapping. A resource referenced by a living process is not leaked.
+
+GPU containers do not leak either: one drives BAR1 to 6337 MiB and returns
+every byte on exit, 8 cycles flat. What saturates a 256 MiB aperture is the
+desktop -- a bare desktop baseline here is 411-423 MiB, larger than that whole
+aperture. That is a hardware requirement (ReBAR), not a defect.
+
+WARNING for anyone re-deriving this: `nvidia-smi` BAR1 *Used* cannot see the
+per-teardown mappings at all, and reads healthy throughout. Count
+`journalctl -k | grep -c "Failed to auto-unmap"` instead, and see
+`nvkvm-pv docs/investigations/va-space-leak/`.
+
+### SUPERSEDED (kept for the measurements): host BAR1 address-space leak, 59 mappings per guest client teardown
 
 The host runs out of **GPU BAR1 aperture address space** (not VRAM) until no
 process on the machine can create a Vulkan device.  It is the cause of the
