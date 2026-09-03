@@ -20,8 +20,16 @@ Each of the alternatives fails on a different axis:
   Ampere support, and still does not forward your display zero-copy. On
   Blackwell it is unavailable: GSP is mandatory and the legacy sharing paths
   are gone.
-- **virtio-gpu** in stock QEMU is limited and gives you neither CUDA nor native
-  Vulkan in the guest.
+- **virtio-gpu / VirGL** does let the host keep using the card while a guest
+  renders -- that part is real, and it needs no custom kernel module. What it
+  does not give you is the guest-side API surface: VirGL remotes OpenGL command
+  streams and caps out around GL 4.2 compatibility, with **no CUDA and no native
+  Vulkan** (Venus exists on paper but is known to freeze on NVIDIA), and Linux
+  guests only. It also has no local display path -- the usual advice is to run
+  Sunshine/Moonlight *inside* the guest, so you are back to an encoder and a
+  network hop. nvkvm forwards the real RM ioctl surface, so the guest gets CUDA
+  and native Vulkan from NVIDIA's own driver, and presents frames zero-copy onto
+  the host screen.
 - **GPU PV / GPU-P** is Microsoft's, needs a Windows host, and gives the guest a
   *partitioned slice* rather than the real driver. It also has no local display
   path: the working setups capture inside the guest and stream out with NVENC
