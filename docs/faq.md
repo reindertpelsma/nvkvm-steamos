@@ -136,7 +136,7 @@ Steam's own runtime contains pressure-vessel, a mandatory sub container created 
   Pressure-vessel must create a user namespace, which Docker's default seccomp
   profile denies. So containerised Steam only runs once you weaken the outer
   container -- `docker-steam-headless` ships `CAP_SYS_ADMIN` (which is widely regarded as just root equivalent),
-  `seccomp:unconfined`, `ipc: host` and `network_mode: host`, in addition to mounting display or other sockets with root access. Mounting X/Wayland or full dbus systems of a host desktop is risky by itself, but unlike sys_admin they do not imply root access. Ours keep all default docker security, except 2 added devices that are pretty safe in case the container is compromised, the rest is only hardening on top of docker like
+  `seccomp:unconfined`, `ipc: host` and `network_mode: host`, in addition to mounting display or other sockets with root access. Sys_admin in a cuda container allows for example to open the /dev/dri/card* display device and take master of/capture your host display. Mounting X/Wayland or full dbus systems of a host desktop is risky by itself, but unlike sys_admin they do not imply root access. Ours keep all default docker security, except 2 added devices that are pretty safe in case the container is compromised, the rest is only hardening on top of docker like
   `cap_drop: ALL` and re-adding caps like chroot, setuid/gid a default container already has.
 
 **Is securing steam that important?**
