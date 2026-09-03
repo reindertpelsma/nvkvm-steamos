@@ -12,15 +12,12 @@ your GPU for graphics and compute; the host keeps using it throughout.
 **Why nvkvm and not Containers, VFIO, vGPU, VirtIO-gpu, GPU PV?**
 Each of the alternatives fails on a different axis:
 
-- **Containers** are not a VM: you cannot boot a full OS in one. There is also a
-  hard compatibility problem. Steam's own runtime is already a container
-  (pressure-vessel, on bubblewrap) and must create a user namespace, which
-  Docker's default seccomp profile denies -- so containerised Steam only runs
-  once you weaken the outer container (`docker-steam-headless` ships
-  `CAP_SYS_ADMIN`, `seccomp:unconfined`, `ipc: host`, `network_mode: host`).
-  Sysbox, built for that nesting problem, supports neither nested user
-  namespaces nor GPU passthrough. A VM has no such conflict, which is why our
-  own containers keep `cap_drop: ALL`.
+- **Containers** are not a VM, and Steam's own runtime already is one:
+  pressure-vessel must create a user namespace, which Docker's default seccomp
+  profile denies. So containerised Steam only runs once you weaken the outer
+  container -- `docker-steam-headless` ships `CAP_SYS_ADMIN`,
+  `seccomp:unconfined`, `ipc: host` and `network_mode: host`. Ours keep
+  `cap_drop: ALL`.
 - **VFIO** takes the GPU away from the host. If your display output is on that
   card, your host desktop goes with it -- the guest has seized the device.
 - **vGPU** is datacenter-only and licensed. `vgpu_unlock` re-enables legacy
