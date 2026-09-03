@@ -1,7 +1,7 @@
 # nvkvm-pv on SteamOS
 
-**Run SteamOS in a VM, play Steam games on your NVIDIA GPU — while the host keeps
-using the same GPU.** No VFIO, no second graphics card, no rebooting into a
+Run SteamOS in a VM, play Steam games on your NVIDIA GPU — while the host keeps
+using the same GPU. No VFIO, no second graphics card, no rebooting into a
 passthrough setup, and nothing unbound from your desktop.
 
 ![Red Dead Redemption 2 running under nvkvm on SteamOS](screenshots/red-dead-redemption-2-on-nvkvm-steamos.png)
@@ -23,22 +23,11 @@ paravirtualization implementation; this repo builds the SteamOS image, provision
 it, and ships the deployment that puts a guest desktop in a window on your host.
 
 **It is not VFIO.** No real GPU device is bound to the VM and the host never loses
-the card. The guest talks to your host's NVIDIA driver through nvkvm — closer to
+the card. The guest talks to your host's NVIDIA driver through nvkvm - closer to
 how a CUDA container shares a GPU than to passthrough.
 
 SteamOS is a demanding test target for nvkvm-pv: a full Plasma desktop, a real
 compositor, games, audio, and a guest that expects to own its display.
-
-## What it is not
-
-- **Not a claim that your library runs.** What is listed below is what was
-  actually launched on real hardware. Everything else is untried, not "supported".
-- **Not anti-cheat compatible**, and that is a won't-fix — anti-cheat
-  deliberately requires bare metal ([why](docs/faq.md)).
-- **Not a hardened security boundary.** nvkvm-pv is experimental; do not put
-  untrusted tenants behind it.
-- **Not a frame-rate benchmark.** Nothing in this repository measures frame
-  timing, so no result here is a performance claim.
 
 ## Requirements
 
@@ -60,20 +49,27 @@ docker compose logs -f broker vmm
 
 On first start this downloads the SteamOS recovery image, boots a disposable
 installer VM, lets Valve's installer create a real dual-slot A/B qcow2, provisions
-it with nvkvm's guest module and NVIDIA userspace matching your host driver, during that time you will be starring to a broker screen so if needed check the docker logs or install.log to see progress, then it
-boots in gamescope OOBE OTA installer. Follow the installation (primarily language + timezone) and let it update, this takes a while and the guest window might freeze several times whilst the install scripts run, like at '1 sec remaining' or shutting down.  After the update, it will reboot and you will be greeted with the gamescope login screen. 
+it with nvkvm's guest module and NVIDIA userspace matching your host driver.
+boots in gamescope OOBE OTA installer. Follow the installation (primarily language + timezone) and let it update, this takes a while and the guest window might freeze several times whilst the install scripts run, like at the broker saying no VM attached, '1 sec remaining' or shutting down.  After the update, it will reboot and you will be greeted with the gamescope login screen. 
 
 *`CTRL+ALT+F`* toggles fullscreen; *`CTRL+ALT+G`* toggles grab mode: it hands your keyboard and mouse to the
 guest, which is what first- and third-person games need for real mouse-look. Instead of fullscreen resize the guest window on the edges to the necessary resolution. Some games cannot handle a display resize without completely glitching, so its best to enter fullscreen, maximize or resize before you start the game.
 
 Grabbing your input is mandatory to play most games, gamescope doesn't support yet QEMU's absolute input properly so to use mouse in gamescope you need to enter grab mode. 
-The non-grab/normal input (mouse on hover over window) only works on the desktop and many games launched using the desktop that use a mouse cursor instead of moving a camera. Games launched on gamescope have the same issue as gamescope itself.
 
 Persistent state, security boundaries, Wayland/X11 selection, published images and
 configuration knobs are documented in
 [`docs/container-compose.md`](docs/container-compose.md).
 
 Login on the serial is user deck and has by default no password.
+
+## What it is not
+
+- Not a claim that your library runs. What is listed below is what was
+  actually launched on real hardware. It will not perform better than what regular VFIO allows, such as in [https://vmdb.it/](https://vmdb.it/)
+- Not anti-cheat compatible, and that is a won't-fix. ([why](docs/faq.md)). 
+- Not a hardened security boundary. nvkvm-pv is experimental
+- Not a frame-rate benchmark yet.
 
 ## What has been verified
 
