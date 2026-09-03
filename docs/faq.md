@@ -146,12 +146,18 @@ root-equivalent, and a privilege escalation through it would be a Linux kernel
 vulnerability rather than a misconfiguration here. The Docker socket, by
 contrast, *is* root-equivalent by design.
 
-`/dev/udmabuf` is a narrower and much less exercised interface. It rides the
-same `root:kvm 0660` gate, which is a reason to allow it, not a safety proof;
-our own review records it as an accepted risk rather than a neutral one. Both
-nodes are held by the VMM and broker, never by the guest, so they are reachable
-only after an escape out of the VM -- which is the boundary nvkvm exists to
-defend.
+`/dev/udmabuf` is smaller and less exercised, but not alarming: ~550 lines,
+three ioctls, one exploitable escalation in eight years, syzkaller descriptions
+written for it, and no capability check has ever existed -- the dma-buf
+maintainers signed off on unprivileged local access in 2024, which is why
+systemd hands it to the logged-in desktop user. We still record it as an
+accepted risk rather than neutral for one reason: it pins host memory no cgroup
+accounts for. That is a denial of service on your own machine -- no code
+execution, no data access, cleared by a reboot -- and it is granted only for the
+zero-copy display path, so headless deployments never receive it at all.
+
+Neither node is ever held by the guest. Both sit with the VMM and broker, so
+reaching either needs an escape out of the VM first.
 
 **What does this image weaken compared to nvkvm's defaults?**
 Two things, both deliberate, both worth knowing:
