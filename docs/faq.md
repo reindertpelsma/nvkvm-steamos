@@ -12,12 +12,7 @@ your GPU for graphics and compute; the host keeps using it throughout.
 **Why nvkvm and not Containers, VFIO, vGPU, VirtIO-gpu, GPU PV?**
 Each of the alternatives fails on a different axis:
 
-- **Containers** are not a VM, and Steam's own runtime already is one:
-  pressure-vessel must create a user namespace, which Docker's default seccomp
-  profile denies. So containerised Steam only runs once you weaken the outer
-  container -- `docker-steam-headless` ships `CAP_SYS_ADMIN`,
-  `seccomp:unconfined`, `ipc: host` and `network_mode: host`. Ours keep
-  `cap_drop: ALL`.
+- **Containers/Flatpak** are not a VM, so they do not allow you to run a full seperate stock OS and secondly to get steam/games even to run it you need to give so many capabilities or display/services access that Steam basically runs as root or atleast not much better than your desktop user, the entire sandbox is decorative theater. See below.
 - **VFIO** takes the GPU away from the host. If your display output is on that
   card, your host desktop goes with it -- the guest has seized the device.
 - **vGPU** is datacenter-only and licensed. `vgpu_unlock` re-enables legacy
@@ -135,7 +130,23 @@ focused, the same model Firefox and Safari use. Pasting from a right-click menu 
 therefore not receive the host clipboard: press `CTRL+V` to send it, even if that
 shortcut does nothing in the guest application itself.
 
-**Is it safe to give the containers `/dev/kvm`?**
+**How does your container security differ from a regular Steam app container or Flatpak?**
+Significantly, most steam containers give so much access the boundary is theater.
+Steam's own runtime contains pressure-vessel, a mandatory sub container created per game so the environment is consistent, without it steam wont launch. Steam explicitly indicated its only for environment consistency, there is no sandbox as most games would break otherwise that need access to your home directory, gpu, steam client for overlay or display.
+  Pressure-vessel must create a user namespace, which Docker's default seccomp
+  profile denies. So containerised Steam only runs once you weaken the outer
+  container -- `docker-steam-headless` ships `CAP_SYS_ADMIN` (which is widely regarded as just root equivalent),
+  `seccomp:unconfined`, `ipc: host` and `network_mode: host`, in addition to mounting display or other sockets with root access. Mounting X/Wayland or full dbus systems of a host desktop is risky by itself, but unlike sys_admin they do not imply root access. Ours keep all default docker security, except 2 added devices that are pretty safe in case the container is compromised, the rest is only hardening on top of docker like
+  `cap_drop: ALL` and re-adding caps like chroot, setuid/gid a default container already has.
+
+**Is securing steam that important?**
+The security of a game OS of a trusted platform and titles might be unnecessary for many users. However multiplayer is the biggest threat, since game parsers usually dont have the proper scrunity to be secure against hostile input, like from other players on a server, third pary servers, when joining someone else's hosted game on a stranger's PC or MITM of custom TCP/UDP game connections on the network itself. It doesn't prevent a seizure of steam but it does prevent a takeover of your device. 
+
+There is one thing that a VM provides for your privacy: games collecting your data. There is only data collectable accessible in the vm. no host processes or other stuff you do can't be seen. 
+
+Nevertheless, this project is mostly a great test target to test the limits of nvkvm for apps where it actually does matter more.
+
+**Is it safe to give the containers `/dev/kvm` or `/dev/udmabuf`?**
 Yes, and it is not comparable to mounting the Docker socket. `/dev/kvm` is
 designed for unprivileged use -- QEMU and libvirt run VMs as ordinary users,
 and systemd ships the node world-accessible on that basis. Holding it is not
