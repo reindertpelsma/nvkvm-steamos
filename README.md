@@ -113,8 +113,10 @@ Answered in full in the [**FAQ**](docs/faq.md):
   with no access to your display socket, which limits the damage of a breakout —
   it does not eliminate it.
 
-Open items with evidence, including guest audio stutter and the host BAR1
-address-space leak, are in [`docs/status.md`](docs/status.md#known-open-items).
+Open items with evidence, including guest audio stutter, are in
+[`docs/status.md`](docs/status.md#known-open-items). The host BAR1
+"address-space leak" listed there is **resolved** — it was deferred cleanup,
+not a leak, and every byte returns once the last host referrer exits.
 
 ## Build an image outside Docker
 
