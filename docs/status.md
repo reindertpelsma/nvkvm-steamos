@@ -491,11 +491,13 @@ and the watchdog fired at 19:35:13 UTC -- 112s later, far longer than a
 watchdog interval, so the buffer event is not the trigger.  Both are consistent
 with the HOST compositor stalling the present path.
 
-A third candidate now exists, untested: the **BAR1 address-space leak** above.
-Chromium-based UI layers spawn and tear down GPU clients repeatedly, which is
-exactly the pattern that leaks, and a GPU operation that stalls on exhausted
-address space would blow the watchdog interval while reporting nothing.  The
-20-minute time-to-crash is consistent with a host that degrades gradually.
+A third candidate was proposed here -- the BAR1 "leak" -- on the reasoning that
+Chromium-based UI layers spawn and tear down GPU clients repeatedly. **That
+premise is now disproved** (see the RESOLVED section above): the mappings are
+released once the last host referrer exits, and VA capacity does not degrade.
+Keeping the note because the observation that Chromium churns GPU clients is
+still true and still the right place to look -- but not for address-space
+exhaustion.
 Testing this needs only the `Failed to auto-unmap` counter sampled during a
 play session.
 

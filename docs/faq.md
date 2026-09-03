@@ -177,6 +177,22 @@ nodes are held by the VMM and broker, never by the guest, so they are reachable
 only after an escape out of the VM -- which is the boundary nvkvm exists to
 defend.
 
+**What does this image weaken compared to nvkvm's defaults?**
+Two things, both deliberate, both worth knowing:
+
+- Every image sets `privileged_modeset=0` (`boot/steamos_boot.sh`), which lets
+  any process in the guest open the primary DRM node — so an unprivileged guest
+  process can drive **and capture** the guest's screen. On SteamOS this changes
+  little in practice, because `deck` has passwordless sudo and could take the
+  gate down anyway, but it is a real difference from nvkvm-pv's default and it
+  was previously documented only as a functional step.
+- The compose file pins `NVKVM_ISOLATE_MODE=uid+chroot`, which nvkvm's own docs
+  describe as materially weaker than the namespace rung.
+
+Neither affects the host boundary — they are both *inside* the guest. They
+matter if you plan to run software in the guest that you do not trust, which is
+covered by the next answer.
+
 **Should I run this multi-tenant?**
 No. Not because of a known flaw, but because nvkvm has had **no external
 security review**. Treat the isolation as untested by anyone but us.
