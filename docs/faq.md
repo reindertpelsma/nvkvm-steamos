@@ -160,9 +160,11 @@ written for it, and no capability check has ever existed -- the dma-buf
 maintainers signed off on unprivileged local access in 2024, which is why
 systemd hands it to the logged-in desktop user. We still record it as an
 accepted risk rather than neutral for one reason: it pins host memory no cgroup
-accounts for. That is a denial of service on your own machine -- no code
+accounts for, which is probably why on many current distros requires KVM group. That is a well known denial of service on your own machine -- no code
 execution, no data access, cleared by a reboot -- and it is granted only for the
-zero-copy display path, so headless deployments never receive it at all.
+zero-copy display path, so headless deployments never receive it at all
+
+The reasoning is that a Denial of Service (i.e crashing your PC), thats only usuable after a nvkvm/QEMU breakout, for a device that allows low latency display for gaming is probably acceptable for most users. A 550 lines kernel module that has been allowed for non-admin linux desktop users, reviewed by multiple people, is probably not an easy target to get root on host unlike cap_sys_admin.
 
 Neither node is ever held by the guest. Both sit with the VMM and broker, so
 reaching either needs an escape out of the VM first.
