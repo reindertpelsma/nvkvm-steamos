@@ -22,8 +22,17 @@ Each of the alternatives fails on a different axis:
   are gone.
 - **virtio-gpu** in stock QEMU is limited and gives you neither CUDA nor native
   Vulkan in the guest.
-- **GPU PV** is Microsoft's, and needs a Windows host. NVIDIA's Linux
-  equivalent is vGPU, which is commercially gated -- see above.
+- **GPU PV / GPU-P** is Microsoft's, needs a Windows host, and gives the guest a
+  *partitioned slice* rather than the real driver. It also has no local display
+  path: the working setups capture inside the guest and stream out with NVENC
+  (Sunshine and similar) to a separate client, so there is an encoder and a
+  network hop between you and the frame. nvkvm forwards the RM ioctl surface and
+  presents guest frames zero-copy onto the host's own screen, with the host
+  driver still live for host processes.
+- **Looking Glass** solves the display half well, but it moves frames out of a
+  guest that already owns a GPU — by passthrough or partitioning — through a
+  shared-memory capture device. nvkvm needs no capture device and no second GPU:
+  the guest talks to the host's real driver, and the host keeps using it.
 
 **Will my GPU work?**
 NVIDIA only, Turing (GTX 16xx / RTX 20xx) or newer. Six architectures are tested,
