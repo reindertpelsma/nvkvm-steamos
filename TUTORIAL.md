@@ -33,6 +33,7 @@ ls -l /dev/kvm                             # must exist and be readable by you
 cat /proc/driver/nvidia/version            # the NVIDIA driver must be loaded
 cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null   # 1, or absent
 nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
+ls /dev/dri                                # must exist -- see below if it does not
 ```
 
 - **x86-64 only.** nvkvm's isolate stub is x86-64 assembly; the build refuses
@@ -45,6 +46,24 @@ nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
   which one you are running.
 - **You do not need root to run the guest.** Running QEMU as an ordinary user
   was verified on the bare-metal box: full forwarding, zero-copy, 60 fps.
+- **`/dev/dri` must exist, and on a headless host it usually does not.** A
+  compute-only machine loads the NVIDIA driver without `nvidia_drm`, so there
+  are no DRM nodes at all, and no compositor in the guest can ever start. Load
+  it with modesetting:
+
+  ```sh
+  sudo modprobe nvidia-drm modeset=1
+  ls /dev/dri                              # card0 / renderD128 should appear now
+  ```
+
+  Persist it with `options nvidia-drm modeset=1` in `/etc/modprobe.d/`. Note
+  that `docs/` elsewhere says a compute host "has no `/dev/dri` and does not
+  need one" — that is true for CUDA, and false here. Rented GPU boxes are all
+  in this state.
+- **A display server the host can actually present to.** `Xvfb` does not work:
+  it has no DRI3, and the broker refuses it (with an explicit error saying so).
+  You need a real X11 or Wayland session, or the container path with the host's
+  own compositor.
 
 Note the driver version from `nvidia-smi`. Everything downstream pins to it.
 
