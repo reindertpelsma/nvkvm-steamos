@@ -2012,13 +2012,59 @@ NVKVM_W2X_EOF
     chmod 0755 "$(rp /usr/local/bin/nvkvm-clip-w2x)" 2>/dev/null \
         || warn "clipboard: could not install the Wayland->X11 helper"
 
+    # FIND THE WAYLAND SOCKET.  wl-paste defaults to wayland-0; a gamescope
+    # session publishes gamescope-0 and nothing else, so the bridge failed at
+    # once ("Failed to connect to a Wayland server ... WAYLAND_DISPLAY is
+    # unset") and Restart=on-failure/RestartSec=2 turned that into a permanent
+    # spin.  MEASURED on a Game Mode guest: NRestarts=1898 after ~70 minutes,
+    # about 11 restarts a minute, each cycling spice-vdagent.service with it
+    # because both are PartOf=graphical-session.target.
+    cat > "$(rp /usr/local/bin/nvkvm-clip-watch)" <<'NVKVM_WATCH_EOF'
+#!/bin/sh
+# Written by nvkvm steamos_boot.sh.  Pick a Wayland socket that exists before
+# handing off to wl-paste: Game Mode names its socket gamescope-0 and a Plasma
+# session names it wayland-0, and neither is reliably exported into the user
+# manager's environment.
+d="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+if [ -z "$WAYLAND_DISPLAY" ] || [ ! -S "$d/$WAYLAND_DISPLAY" ]; then
+    WAYLAND_DISPLAY=
+    for s in "$d"/wayland-[0-9] "$d"/gamescope-[0-9]; do
+        [ -S "$s" ] || continue
+        WAYLAND_DISPLAY=${s##*/}
+        break
+    done
+fi
+if [ -z "$WAYLAND_DISPLAY" ]; then
+    echo "nvkvm-clip-watch: no Wayland socket in $d yet; nothing to bridge" >&2
+    exit 0
+fi
+export WAYLAND_DISPLAY
+# gamescope does not implement wl_data_device_manager, so wl-clipboard cannot
+# work in Game Mode at all -- verified in-guest: `wl-paste --list-types` exits
+# 1 with "The compositor does not seem to implement wl_data_device_manager".
+# A capability the session will never gain is not a failure to retry: exit 0
+# and say so once.  Retrying it is exactly how this unit restarted 1953 times.
+if ! probe=$(/usr/bin/wl-paste --list-types 2>&1); then
+    case "$probe" in
+        *wl_data_device_manager*)
+            echo "nvkvm-clip-watch: $WAYLAND_DISPLAY has no wl_data_device_manager;" >&2
+            echo "  clipboard bridging is unavailable in this session (gamescope)." >&2
+            exit 0 ;;
+    esac
+fi
+exec /usr/bin/wl-paste --type text --watch /usr/local/bin/nvkvm-clip-w2x
+NVKVM_WATCH_EOF
+    chmod 0755 "$(rp /usr/local/bin/nvkvm-clip-watch)" 2>/dev/null \
+        || warn "clipboard: could not install the socket-discovery wrapper"
+
     mkdir -p "$(rp /etc/systemd/user)" 2>/dev/null
     {
         printf '[Unit]\nDescription=nvkvm: mirror the Wayland clipboard into X11 for spice-vdagent\n'
-        printf 'After=graphical-session.target\nPartOf=graphical-session.target\n\n'
+        printf 'After=graphical-session.target\nPartOf=graphical-session.target\n'
+        printf 'StartLimitIntervalSec=120\nStartLimitBurst=5\n\n'
         printf '[Service]\n'
-        printf 'ExecStart=/usr/bin/wl-paste --type text --watch /usr/local/bin/nvkvm-clip-w2x\n'
-        printf 'Restart=on-failure\nRestartSec=2\n\n'
+        printf 'ExecStart=/usr/local/bin/nvkvm-clip-watch\n'
+        printf 'Restart=on-failure\nRestartSec=10\n\n'
         printf '[Install]\nWantedBy=graphical-session.target\n'
     } > "$(rp /etc/systemd/user/nvkvm-clipboard-bridge.service)" 2>/dev/null \
         || warn "clipboard: could not write the bridge unit"
