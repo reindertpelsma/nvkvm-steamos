@@ -152,3 +152,15 @@ throwaway chroot, and survive atomic updates.
 
 This project substitutes nvkvm's guest module into that pattern while keeping the
 NVIDIA userspace side intact.
+
+## Licence
+
+**Apache License 2.0** — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+
+That covers everything authored here: `boot/`, `scripts/`, the compose files,
+the systemd units, configuration and documentation. The upstream installer this
+builds on is MIT licensed and its notice is preserved in [`NOTICE`](NOTICE);
+nothing from Valve or NVIDIA is redistributed by this repository.
+
+This is an independent, non-commercial project with no affiliation to Valve or
+NVIDIA — the full trademark position is in [`NOTICE`](NOTICE).
