@@ -416,6 +416,7 @@ mount_data_share() {
 ko_path()        { printf '%s' "/usr/lib/modules/$1/updates/${MODULE_NAME}.ko"; }
 ko_commit_path() { printf '%s' "$(ko_path "$1").commit"; }
 built_commit()   { cat "$(rp "$(ko_commit_path "$1")")" 2>/dev/null; }
+ko_reboot_stamp() { printf '%s' "$(ko_path "$1").rebooted"; }
 
 # ── Packages: query, never record ────────────────────────────────────────────
 # What we installed is derived by diffing the installed set before and after,
@@ -747,16 +748,61 @@ host_driver_version() {
         /proc/driver/nvidia/version 2>/dev/null
 }
 
+# Do NOT hot-swap this module on a live system.
+#
+# MEASURED 2026-09-04, first boot of a fresh SteamOS guest: the module was out
+# of date, so this function rmmod'd the resident copy and modprobe'd the new
+# one.  ~400 ms later the guest took a general protection fault on a
+# non-canonical address inside __kmalloc_cache_noprof and panicked:
+#
+#   Oops: general protection fault, probably for non-canonical address
+#   0x38d3e47b3d040a39 ... RIP: __kmalloc_cache_noprof+0x1c3/0x410
+#   Kernel panic - not syncing: Fatal exception
+#
+# The faulting insn is `mov r8,[rdi+rax]` with RDI = 0x38d3e47b3d03fa39 -- a
+# corrupted SLUB freelist next-pointer, not a wild jump.  The call trace
+# (unshare(CLONE_NEWNET) -> copy_net_ns -> ipv4_sysctl_init_net -> kmalloc) is
+# an innocent victim: it was simply the next allocation out of a cache another
+# writer had already poisoned.  Do not go debugging network namespaces.
+#
+# The kernel named the suspect itself:
+#   Unloaded tainted modules: nvkvm_guest(OE):1 [last unloaded: nvkvm_guest(OE)]
+# rmmod succeeded, so the refcount was zero -- but a zero refcount does not
+# prove nothing dangles.  A timer, workqueue, RCU callback, per-CPU datum or a
+# still-registered char/DRM device all outlive module_exit and will write into
+# freed memory afterwards.  The second boot, which skips the rebuild and so
+# never hot-swaps, is clean.
+#
+# Until that dangling reference is found, reboot instead: a first boot can
+# afford one reboot, it cannot afford a kernel panic.  The stamp below keeps
+# that from looping if a rebuild somehow happens on every boot.
 load_nvkvm_module() {
     [ "$MODULE_LOAD_REFRESHED" = 0 ] || return 0
     if [ "$MODULE_REBUILT" != 1 ] && grep -qw "$MODULE_MOD" "$PROC_MODULES" 2>/dev/null; then
+        # Steady state: clear the stamp so a LATER rebuild may reboot once too.
+        rm -f "$(rp "$(ko_reboot_stamp "$(uname -r)")")" 2>/dev/null
         MODULE_LOAD_REFRESHED=1
         return 0
     fi
     if [ "$MODULE_REBUILT" = 1 ] && grep -qw "$MODULE_MOD" "$PROC_MODULES" 2>/dev/null; then
-        log "module was rebuilt this run -- unloading the resident copy first"
-        rmmod "$MODULE_NAME" 2>/dev/null \
-            || warn "could not unload the running module; a reboot may be needed"
+        _kver="$(uname -r)"
+        _want="$(repo_commit)"
+        _seen="$(cat "$(rp "$(ko_reboot_stamp "$_kver")")" 2>/dev/null)"
+        if [ -n "$_want" ] && [ "$_seen" = "$_want" ]; then
+            warn "already rebooted once for this build and an old module is STILL resident."
+            warn "  Falling back to rmmod+modprobe -- this has panicked the guest before."
+            rmmod "$MODULE_NAME" 2>/dev/null \
+                || warn "could not unload the running module; a reboot may be needed"
+        else
+            log "module was rebuilt and an older copy is resident -- rebooting once"
+            log "  (hot-swapping it has corrupted the guest slab allocator; see above)"
+            printf '%s\n' "$_want" > "$(rp "$(ko_reboot_stamp "$_kver")")" 2>/dev/null
+            sync
+            systemctl --no-block reboot 2>/dev/null \
+                || reboot 2>/dev/null || reboot -f 2>/dev/null
+            sleep 600      # do not fall through into modprobe while the reboot lands
+            return 1
+        fi
     fi
     if modprobe "$MODULE_NAME" 2>/dev/null; then
         MODULE_LOAD_REFRESHED=1
