@@ -60,6 +60,22 @@ ls /dev/dri                                # must exist -- see below if it does 
   that `docs/` elsewhere says a compute host "has no `/dev/dri` and does not
   need one" — that is true for CUDA, and false here. Rented GPU boxes are all
   in this state.
+- **On an X11 host, authorise the container to the X server first.** Run this
+  once per login, before `docker compose up`:
+
+  ```sh
+  xhost +si:localuser:root
+  ```
+
+  Without it the broker fails with `Authorization required, but no
+  authorization protocol specified` and `xcb_connect failed`, *even when
+  `XAUTHORITY` is set and the cookie file is valid* — X cookies are keyed by
+  hostname and display, and the container matches neither. Check which session
+  you are actually in first, because it is not always the one you think:
+
+  ```sh
+  echo $XDG_SESSION_TYPE      # x11 or wayland
+  ```
 - **A display server the host can actually present to.** `Xvfb` does not work:
   it has no DRI3, and the broker refuses it (with an explicit error saying so).
   You need a real X11 or Wayland session, or the container path with the host's

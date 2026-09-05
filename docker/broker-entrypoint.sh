@@ -98,6 +98,15 @@ if [ "$BACKEND" = auto ]; then
         log "auto: a Wayland socket is present; the broker will try it first"
     elif [ -n "${DISPLAY:-}" ] && [ -d /tmp/.X11-unix ]; then
         log "auto: no Wayland socket at $_wl_path, but DISPLAY is set and X11 is mounted"
+        # Say this BEFORE the connect fails, not after. On X11 the mounted
+        # cookie is usually not enough -- it is keyed by hostname and display,
+        # and this container matches neither -- so the broker sends nothing and
+        # the server answers "Authorization required, but no authorization
+        # protocol specified". Measured on GNOME/X11 2026-09-05 with a valid
+        # two-entry cookie, one of them already FamilyWild.
+        log "  X11 note: if the broker cannot open the display, run this on the"
+        log "  HOST and retry:  xhost +si:localuser:root"
+        log "  (grants local root only, which is what this container runs as)"
     else
         die "no usable Wayland or X11 display socket was mounted"
     fi

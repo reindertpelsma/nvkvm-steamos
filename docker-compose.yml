@@ -115,6 +115,25 @@ services:
         bind:
           create_host_path: false
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      # X11 HOSTS: MOUNTING THE COOKIE IS NOT ENOUGH.
+      #
+      # X cookies are keyed by hostname AND display, and the container matches
+      # neither. MEASURED 2026-09-05 on GNOME/X11: XAUTHORITY was set, the file
+      # held two valid entries -- including one already in FamilyWild form --
+      # and the broker STILL got
+      #     Authorization required, but no authorization protocol specified
+      #     ERROR: xcb_connect failed (DISPLAY=:1)
+      # Both entries were recorded for a different display than :1, so xauth
+      # matched nothing and sent NO credentials at all. Note the wording: the
+      # server refused because nothing was offered, not because something was
+      # rejected -- that distinction is the whole diagnosis.
+      #
+      # Rewriting the cookie to FamilyWild does NOT fix this; one already was.
+      # Authorise the container by identity instead, on the HOST, before `up`:
+      #
+      #     xhost +si:localuser:root
+      #
+      # That grants local root only, and root is what the broker runs as.
       - ${XAUTHORITY:-/dev/null}:/run/host-xauthority:ro
     tmpfs:
       - /tmp:rw,nosuid,nodev,noexec,size=16m
