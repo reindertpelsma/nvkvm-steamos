@@ -41,10 +41,23 @@ compositor, games, audio, and a guest that expects to own its display.
 ## Quick start
 
 ```sh
-docker compose build
-docker compose up -d
+make up                       # build + start, and see the X11 note below
+                              # (if Docker needs root for you: sudo -E make up)
 docker compose logs -f broker vmm
 ./steamos-ssh # if you want shell access
+```
+
+`make up` is `docker compose up --build -d` plus the two things
+an X11 host needs and a Wayland host does not: it runs `xhost +si:localuser:root`
+so the broker may open your display, and it binds `/dev/null` where the Wayland
+socket would be, because compose refuses to invent that path. Straight compose
+works too, and on Wayland it is all you need:
+
+```sh
+docker compose build
+docker compose up -d                                  # Wayland
+xhost +si:localuser:root                              # X11: both of these,
+NVKVM_WAYLAND_SOCKET=/dev/null docker compose up -d   # X11: or just use `make up`
 ```
 
 On first start this downloads the SteamOS recovery image, boots a disposable

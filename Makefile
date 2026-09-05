@@ -17,6 +17,11 @@ build:
 # Note: run `make up` as YOURSELF. Under sudo, xhost acts on root's session and
 # this does nothing useful.
 up:
+	@if [ -n "$${SUDO_USER:-}" ] && [ -z "$${DISPLAY:-}" ] && [ -z "$${WAYLAND_DISPLAY:-}" ]; then \
+		echo "WARNING: under sudo with no DISPLAY and no WAYLAND_DISPLAY."; \
+		echo "         sudo dropped your session environment, so the broker will be"; \
+		echo "         pointed at a display that is not yours.  Use:  sudo -E make up"; \
+	fi
 	@if [ -z "$${NVKVM_NO_XHOST:-}" ] && [ -n "$${DISPLAY:-}" ] && [ -z "$${WAYLAND_DISPLAY:-}" ]; then \
 		echo "X11 session detected -- granting local root access to your X server:"; \
 		echo "    xhost +si:localuser:root"; \

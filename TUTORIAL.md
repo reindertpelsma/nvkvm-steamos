@@ -60,12 +60,26 @@ ls /dev/dri                                # must exist -- see below if it does 
   that `docs/` elsewhere says a compute host "has no `/dev/dri` and does not
   need one" — that is true for CUDA, and false here. Rented GPU boxes are all
   in this state.
-- **On an X11 host, authorise the container to the X server first.** Run this
-  once per login, before `docker compose up`:
+- **On an X11 host, two things differ.** `make up` does both for you; if you
+  drive compose directly, do them yourself. First, authorise the container to
+  the X server, once per login:
 
   ```sh
   xhost +si:localuser:root
   ```
+
+  Second, give the Wayland mount a path that exists. Compose declares one and
+  deliberately will not create it (Docker used to, leaving a root-owned
+  directory that broke every later run), so on a host with no Wayland session
+  it stops with `bind source path does not exist: /run/user/1000/wayland-0`:
+
+  ```sh
+  NVKVM_WAYLAND_SOCKET=/dev/null docker compose up -d
+  ```
+
+  Do not reach for `NVKVM_DESKTOP_RUNTIME_DIR=/dev` instead — that variable also
+  backs the PipeWire and Pulse mounts, so it would have Docker create
+  `/dev/pipewire-0` and `/dev/pulse/native` and silently disable guest audio.
 
   Without it the broker fails with `Authorization required, but no
   authorization protocol specified` and `xcb_connect failed`, *even when
