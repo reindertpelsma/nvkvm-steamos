@@ -88,8 +88,8 @@ services:
       # then CREATES a root-owned directory there rather than failing. The broker
       # stat()s it and reports desktop_uid=0, which looks like a permission bug
       # and is really a missing socket. Same remedy as the audio sockets below:
-      #   NVKVM_DESKTOP_RUNTIME_DIR=/dev NVKVM_... or point WAYLAND_DISPLAY at a
-      # path that exists. On X11 you want the X socket and XAUTHORITY instead.
+      #   NVKVM_WAYLAND_SOCKET=/dev/null  -- see the escape note below.
+      # On X11 you want the X socket and XAUTHORITY instead.
       # create_host_path:false is LOAD-BEARING, do not shorten this back to the
       # one-line form.  MEASURED 2026-09-05 on a Wayland laptop: the operator's
       # shell had WAYLAND_DISPLAY empty (a terminal that never inherited the
@@ -106,11 +106,20 @@ services:
       # path, and compose names the file it could not find.
       #
       # If you have no Wayland session, point this at something that exists
-      # rather than deleting the mount -- same remedy as the audio sockets
-      # below:  NVKVM_DESKTOP_RUNTIME_DIR=/dev WAYLAND_DISPLAY=null
+      # rather than deleting the mount -- one dedicated variable, exactly like
+      # the audio sockets below:
+      #
+      #     NVKVM_WAYLAND_SOCKET=/dev/null docker compose up
+      #
+      # `make up` sets that for you when it finds no Wayland socket, so an X11
+      # host needs nothing.  Do NOT reach for NVKVM_DESKTOP_RUNTIME_DIR=/dev to
+      # escape this one mount: that variable also backs the PipeWire and Pulse
+      # sources two stanzas down, which are short-form mounts, so Docker would
+      # create /dev/pipewire-0 and /dev/pulse/native on the host -- trading one
+      # poisoned path for two, and silently disabling guest audio.
       # To clean up a host already poisoned:  rmdir /run/user/$(id -u)/wayland-0
       - type: bind
-        source: ${NVKVM_DESKTOP_RUNTIME_DIR:-/run/user/1000}/${WAYLAND_DISPLAY:-wayland-0}
+        source: ${NVKVM_WAYLAND_SOCKET:-${NVKVM_DESKTOP_RUNTIME_DIR:-/run/user/1000}/${WAYLAND_DISPLAY:-wayland-0}}
         target: /run/host-runtime/${WAYLAND_DISPLAY:-wayland-0}
         bind:
           create_host_path: false

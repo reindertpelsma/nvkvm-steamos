@@ -3,8 +3,37 @@
 build:
 	docker compose build
 
+# On an X11 host the broker cannot open the display with the mounted cookie
+# alone: X cookies are keyed by hostname and display and the container matches
+# neither, so xauth sends nothing and the server answers "Authorization
+# required, but no authorization protocol specified". Measured on GNOME/X11
+# 2026-09-05 with a valid two-entry cookie, one already FamilyWild -- rewriting
+# it does not help. Authorising local root by identity does, and root is what
+# the broker runs as.
+#
+# Done here rather than left to the reader because every X11 user hits it, and
+# the failure names the display and no cause. Announced, not silent: it grants
+# another uid access to your X server. Set NVKVM_NO_XHOST=1 to skip.
+# Note: run `make up` as YOURSELF. Under sudo, xhost acts on root's session and
+# this does nothing useful.
 up:
-	docker compose up --build -d
+	@if [ -z "$${NVKVM_NO_XHOST:-}" ] && [ -n "$${DISPLAY:-}" ] && [ -z "$${WAYLAND_DISPLAY:-}" ]; then \
+		echo "X11 session detected -- granting local root access to your X server:"; \
+		echo "    xhost +si:localuser:root"; \
+		xhost +si:localuser:root >/dev/null 2>&1 \
+			|| echo "    (xhost failed; run it yourself, or you are not on the seat)"; \
+	fi
+	@set -e; \
+	rt="$${XDG_RUNTIME_DIR:-/run/user/$${SUDO_UID:-$$(id -u)}}"; \
+	wl="$${WAYLAND_DISPLAY:-wayland-0}"; \
+	case "$$wl" in /*) sock="$$wl" ;; *) sock="$$rt/$$wl" ;; esac; \
+	if [ -S "$$sock" ]; then \
+		docker compose up --build -d; \
+	else \
+		echo "no Wayland socket at $$sock -- binding /dev/null there instead"; \
+		echo "    (the broker will use X11; override with NVKVM_WAYLAND_SOCKET=...)"; \
+		NVKVM_WAYLAND_SOCKET=/dev/null docker compose up --build -d; \
+	fi
 
 down:
 	docker compose down
