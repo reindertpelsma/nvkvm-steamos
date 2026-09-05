@@ -48,7 +48,7 @@ docker compose logs -f broker vmm
 ```
 
 `make up` is `docker compose up --build -d` plus the two things
-an X11 host needs and a Wayland host does not: it runs `xhost +si:localuser:root`
+an X11 host needs and a Wayland host does not: it runs `xhost +si:localuser:$USER`
 so the broker may open your display, and it binds `/dev/null` where the Wayland
 socket would be, because compose refuses to invent that path. Straight compose
 works too, and on Wayland it is all you need:
@@ -56,7 +56,7 @@ works too, and on Wayland it is all you need:
 ```sh
 docker compose build
 docker compose up -d                                  # Wayland
-xhost +si:localuser:root                              # X11: both of these,
+xhost +si:localuser:$USER                             # X11: both of these,
 NVKVM_WAYLAND_SOCKET=/dev/null docker compose up -d   # X11: or just use `make up`
 ```
 

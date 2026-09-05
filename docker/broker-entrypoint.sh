@@ -20,6 +20,35 @@ warn() { printf '[broker-container] WARNING: %s\n' "$*" >&2; }
 # root.  Stat'ing it would put us back at desktop_uid=0 -- the exact bug that
 # made the broker unable to reach the session it was pointed at.
 uid_probe="$RUNTIME_DIR/${WAYLAND_DISPLAY##*/}"
+# ON AN X11 HOST, THE X SOCKET IS THE ONLY THING LEFT TO ASK.
+#
+# There is no Wayland socket to stat -- `make up` binds /dev/null at that path
+# so the mount can stay declared -- and falling back to $RUNTIME_DIR yields
+# desktop_uid=0, so the broker stays root.  That is not merely cosmetic:
+# cap_drop:ALL means container root has no CAP_DAC_OVERRIDE, and mutter's
+# Xwayland creates /tmp/.X11-unix/X0 as 0775 owned by the desktop user.  Root
+# is "other", "other" has no write bit, and connect(2) on a unix socket needs
+# one -- so the broker was refused by PERMISSION before authorization was ever
+# reached, which is why the failure never printed an auth error.
+#
+# MEASURED on GNOME/Xwayland 2026-09-05, same mounts each time:
+#   default caps, root                   -> connects (DAC_OVERRIDE covers it)
+#   cap_drop ALL, root                   -> "unable to open display :0"
+#   cap_drop ALL, +DAC_OVERRIDE, root    -> connects
+#   cap_drop ALL, uid 1000               -> reaches AUTH ("Authorization required")
+#   cap_drop ALL, uid 1000 + xhost user  -> connects
+#
+# Classic Xorg makes that socket 0777, which is why a real X11 laptop worked and
+# this did not.  The X socket is owned by the seat, so it answers the same
+# question the Wayland socket answers: who is the desktop user.
+if [ ! -S "$uid_probe" ] && [ -n "${DISPLAY:-}" ]; then
+    _x_n="${DISPLAY##*:}"
+    _x_n="${_x_n%%.*}"
+    case "$_x_n" in
+        ''|*[!0-9]*) : ;;
+        *) [ -S "/tmp/.X11-unix/X$_x_n" ] && uid_probe="/tmp/.X11-unix/X$_x_n" ;;
+    esac
+fi
 # -S, NOT -e.  An X11 host has no Wayland socket, and `make up` binds /dev/null
 # at this path so the mount can stay declared (see docker-compose.yml).  /dev/null
 # EXISTS and is owned by root, so -e would stat it and hand back desktop_uid=0 --
@@ -110,8 +139,10 @@ if [ "$BACKEND" = auto ]; then
         # protocol specified". Measured on GNOME/X11 2026-09-05 with a valid
         # two-entry cookie, one of them already FamilyWild.
         log "  X11 note: if the broker cannot open the display, run this on the"
-        log "  HOST and retry:  xhost +si:localuser:root"
-        log "  (grants local root only, which is what this container runs as)"
+        log '  HOST, as the seat user, and retry:  xhost +si:localuser:$USER'
+        log "  (the broker takes its uid from your X socket, so the SEAT user is"
+        log "   the identity to authorise. Granting root does not help: cap_drop ALL"
+        log "   leaves it without DAC_OVERRIDE for a 0775 socket.)"
     else
         die "no usable Wayland or X11 display socket was mounted"
     fi
