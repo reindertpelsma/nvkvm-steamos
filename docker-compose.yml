@@ -90,7 +90,30 @@ services:
       # and is really a missing socket. Same remedy as the audio sockets below:
       #   NVKVM_DESKTOP_RUNTIME_DIR=/dev NVKVM_... or point WAYLAND_DISPLAY at a
       # path that exists. On X11 you want the X socket and XAUTHORITY instead.
-      - ${NVKVM_DESKTOP_RUNTIME_DIR:-/run/user/1000}/${WAYLAND_DISPLAY:-wayland-0}:/run/host-runtime/${WAYLAND_DISPLAY:-wayland-0}
+      # create_host_path:false is LOAD-BEARING, do not shorten this back to the
+      # one-line form.  MEASURED 2026-09-05 on a Wayland laptop: the operator's
+      # shell had WAYLAND_DISPLAY empty (a terminal that never inherited the
+      # desktop environment), compose substituted its own default, and the
+      # source path /run/user/1000/wayland-0 did not exist -- so Docker CREATED
+      # IT, as a root-owned directory, on the HOST.  It is still there after the
+      # container exits, so every later run finds a directory where the socket
+      # belongs, reports desktop_uid=0, fails wl_display_connect, falls through
+      # to Xwayland and dies on an authorization error that names nothing
+      # relevant.  The damage is persistent and self-inflicted, and it looked
+      # exactly like "the last git pull broke it".
+      #
+      # With create_host_path:false Docker refuses instead of inventing the
+      # path, and compose names the file it could not find.
+      #
+      # If you have no Wayland session, point this at something that exists
+      # rather than deleting the mount -- same remedy as the audio sockets
+      # below:  NVKVM_DESKTOP_RUNTIME_DIR=/dev WAYLAND_DISPLAY=null
+      # To clean up a host already poisoned:  rmdir /run/user/$(id -u)/wayland-0
+      - type: bind
+        source: ${NVKVM_DESKTOP_RUNTIME_DIR:-/run/user/1000}/${WAYLAND_DISPLAY:-wayland-0}
+        target: /run/host-runtime/${WAYLAND_DISPLAY:-wayland-0}
+        bind:
+          create_host_path: false
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
       - ${XAUTHORITY:-/dev/null}:/run/host-xauthority:ro
     tmpfs:

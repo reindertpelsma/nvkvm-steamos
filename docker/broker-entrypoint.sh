@@ -9,6 +9,7 @@ SCALE="${NVKVM_BROKER_SCALE:-aspect}"
 
 die() { printf '[broker-container] ERROR: %s\n' "$*" >&2; exit 1; }
 log() { printf '[broker-container] %s\n' "$*" >&2; }
+warn() { printf '[broker-container] WARNING: %s\n' "$*" >&2; }
 
 [ -d "$RUNTIME_DIR" ] || die "$RUNTIME_DIR is not the host desktop runtime mount"
 [ -d /run/nvkvm ] || die "/run/nvkvm is not the shared broker-socket volume"
@@ -74,11 +75,29 @@ if [ "$BACKEND" = auto ]; then
     # So keep the fail-fast for "nothing was mounted at all", which is a
     # deployment mistake worth naming, and hand the actual choice to the code
     # that can recover from a wrong guess.
+    _wl_path="$RUNTIME_DIR/${WAYLAND_DISPLAY##*/}"
+    #
+    # A DIRECTORY here is not the same as nothing, and saying so saves an hour.
+    # Docker used to create the bind source when it was missing, so a run with
+    # an empty WAYLAND_DISPLAY left a root-owned DIRECTORY at the socket path on
+    # the host -- permanently.  Every later run then reported desktop_uid=0,
+    # failed wl_display_connect, fell through to X11 and died on an
+    # authorization error pointing at nothing relevant.  MEASURED 2026-09-05.
+    # compose now sets create_host_path:false so it cannot recur, but a host
+    # poisoned before that fix still needs the directory removed by hand.
+    if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -d "$_wl_path" ] && [ ! -S "$_wl_path" ]; then
+        warn "$_wl_path is a DIRECTORY, not a socket."
+        warn "  An older compose created it because the real socket was missing"
+        warn "  (usually WAYLAND_DISPLAY empty in the shell that ran compose)."
+        warn "  It will keep failing until you remove it:  rmdir $_wl_path"
+        warn "  Then re-run from a shell where WAYLAND_DISPLAY is set, or pass"
+        warn "  NVKVM_DESKTOP_RUNTIME_DIR and WAYLAND_DISPLAY explicitly."
+    fi
     if [ -n "${WAYLAND_DISPLAY:-}" ] \
-       && [ -S "$RUNTIME_DIR/${WAYLAND_DISPLAY##*/}" ]; then
+       && [ -S "$_wl_path" ]; then
         log "auto: a Wayland socket is present; the broker will try it first"
     elif [ -n "${DISPLAY:-}" ] && [ -d /tmp/.X11-unix ]; then
-        log "auto: no Wayland socket, but DISPLAY is set and X11 is mounted"
+        log "auto: no Wayland socket at $_wl_path, but DISPLAY is set and X11 is mounted"
     else
         die "no usable Wayland or X11 display socket was mounted"
     fi
