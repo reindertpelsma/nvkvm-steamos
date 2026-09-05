@@ -1624,10 +1624,13 @@ KSCREENLOCK
     # MEASURED on the physical PC 2026-08-28: caught mid-act, the rm as a direct
     # child of the launcher, with a 40 GB game install already lost to it.
     #
-    # The cause is upstream of this script -- the wrong recovery image was
-    # fetched -- and the fix is to install from a plain steamdeck-repair-*.img
-    # rather than steamdeck-oobe-repair-*.img.  This check exists so an image
-    # built before that fix says so loudly instead of quietly eating data.
+    # NOT a fetch mistake, and there is no plain image to switch to: Valve's
+    # steamdeck-repair-latest.img.bz2 alias RESOLVES TO the -oobe- build, and
+    # steamdeck-oobe-repair-latest.img.bz2 is a 404 (see the alias notes in
+    # scripts/steamos-container-entrypoint.sh).  The OOBE image is what Valve
+    # currently publishes, so we install it and neutralise this line instead.
+    # Reachable here mainly because setup could not complete the network step
+    # without a Wi-Fi radio, so the OTA that graduates the guest never ran.
     _variant="$(sed -n 's/^VARIANT_ID=//p' "$(rp /etc/os-release)" 2>/dev/null | tr -d '"')"
     if [ "$_variant" = "steamdeck-oobe" ]; then
         # NEUTRALISE THE WIPE FIRST, WARN SECOND.  A warning alone leaves a

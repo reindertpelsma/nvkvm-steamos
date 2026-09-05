@@ -18,6 +18,11 @@ logs are in [`../evidence-pc-20260823/`](../evidence-pc-20260823/).
 - Portal 2 launches and plays under the GTK display backend. It is a 32-bit
   Source title, so this also exercises the `lib32` NVIDIA userspace kept by the
   SteamOS profile.
+- Shadow of the Tomb Raider (native Linux/Vulkan) launches and plays under the
+  broker at 3760x2118, with the GPU at 80%, 168 W and full boost clocks, while
+  the host desktop keeps running on the same RTX 4070. Screenshot:
+  [`../screenshots/tomb_raider_under_nvkvm_steamos.png`](../screenshots/tomb_raider_under_nvkvm_steamos.png).
+  Not a frame-rate claim: nothing here measures frame timing.
 - The boot script converges at every boot after one-time provisioning.
 
 The two-container deployment was re-tested on 2026-08-25 on the same physical
@@ -34,7 +39,8 @@ separately -- it was also, for a while, broken here without our noticing.
 - **Red Dead Redemption 2** (MEASURED 2026-09-01, RTX 4070 / driver 595.84).
   D3D12 through vkd3d-proton. It failed at `ERR_GFX_INIT` until 2026-09-01,
   because `libcuda.so.1` was never staged on an Arch-family guest and the
-  NVIDIA Vulkan ICD could not build a device; fixed in nvkvm-pv. After the fix:
+  NVIDIA Vulkan ICD could not build a device; fixed in nvkvm-pv. After the fix,
+  fullscreen with the broker grab active:
   12 minutes of continuous gameplay, GPU 28-39%, VRAM ~5.07 GB, 49-65 W,
   2.2-2.7 GHz, 41 C, with the host reporting 38-39% and ~5.08 GB for the same
   GPU at the same moment.
@@ -176,6 +182,15 @@ those up caused several wrong conclusions during bring-up.
 
 SDL is the backend with working pointer lock. The Minecraft result is from the
 non-SteamOS Linux guest used during nvkvm bring-up, not from SteamOS.
+
+Under the broker there is a presentation ladder rather than a single path. GL
+zero-copy is the fast rung and the one the 2026-08-23 result was measured on
+(60 fps with `-vga none`, so no emulated VGA device to fall back to). Below it
+sit a linear dma-buf path and a universal shm path, which exist for hosts where
+the display is driven by an iGPU or an AMD GPU while rendering happens on a
+discrete NVIDIA card -- the common laptop arrangement. The rung is selected by
+`NVKVM_BROKER_PRESENT_MODE` (`auto`, `native`, `linear`, `shm`); see
+[`container-compose.md`](container-compose.md).
 
 GTK is the backend that renders SteamOS today. It can show the desktop and run
 Portal 2, but it does not provide usable mouse-look: the pointer-lock
@@ -377,7 +392,27 @@ clients collapse the host.
 
 Capture in `evidence-steam-wipe-20260828/drm-disabled/`.
 
-### OPEN: host BAR1 address-space leak, 59 mappings per guest client teardown
+### RESOLVED 2026-09-03: the BAR1 "leak" is deferred cleanup, not a leak
+
+Re-measured on a 16 GB BAR1 host. After 1849 cumulative failed auto-unmaps,
+with **every** host referrer dead (`qemu=0 stubs=0 containers=0`),
+`va_capacity` reports `MAXCONTIG 11340` vs `CUDA_FREE 11370` -- healthy, and
+higher than with the stack up. `status=0x23` is `NV_ERR_INVALID_CLIENT`: RM
+correctly declining to unmap for a dead guest client while live host referrers
+(the stubs and QEMU, holding `/dev/nvidia-uvm`) still legitimately hold the
+mapping. A resource referenced by a living process is not leaked.
+
+GPU containers do not leak either: one drives BAR1 to 6337 MiB and returns
+every byte on exit, 8 cycles flat. What saturates a 256 MiB aperture is the
+desktop -- a bare desktop baseline here is 411-423 MiB, larger than that whole
+aperture. That is a hardware requirement (ReBAR), not a defect.
+
+WARNING for anyone re-deriving this: `nvidia-smi` BAR1 *Used* cannot see the
+per-teardown mappings at all, and reads healthy throughout. Count
+`journalctl -k | grep -c "Failed to auto-unmap"` instead, and see
+`nvkvm-pv docs/investigations/va-space-leak/`.
+
+### SUPERSEDED (kept for the measurements): host BAR1 address-space leak, 59 mappings per guest client teardown
 
 The host runs out of **GPU BAR1 aperture address space** (not VRAM) until no
 process on the machine can create a Vulkan device.  It is the cause of the
@@ -456,11 +491,13 @@ and the watchdog fired at 19:35:13 UTC -- 112s later, far longer than a
 watchdog interval, so the buffer event is not the trigger.  Both are consistent
 with the HOST compositor stalling the present path.
 
-A third candidate now exists, untested: the **BAR1 address-space leak** above.
-Chromium-based UI layers spawn and tear down GPU clients repeatedly, which is
-exactly the pattern that leaks, and a GPU operation that stalls on exhausted
-address space would blow the watchdog interval while reporting nothing.  The
-20-minute time-to-crash is consistent with a host that degrades gradually.
+A third candidate was proposed here -- the BAR1 "leak" -- on the reasoning that
+Chromium-based UI layers spawn and tear down GPU clients repeatedly. **That
+premise is now disproved** (see the RESOLVED section above): the mappings are
+released once the last host referrer exits, and VA capacity does not degrade.
+Keeping the note because the observation that Chromium churns GPU clients is
+still true and still the right place to look -- but not for address-space
+exhaustion.
 Testing this needs only the `Failed to auto-unmap` counter sampled during a
 play session.
 

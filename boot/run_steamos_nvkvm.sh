@@ -24,9 +24,42 @@ OVMF_VARS="${OVMF_VARS:-$WORK/OVMF_VARS.fd}"
 # service, a remote shell or a different user than the one holding the seat.
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+# Remember whether the SEAT gave us a DISPLAY, before the default below hides it.
+# The backend detection underneath needs "was X11 actually running", and once
+# DISPLAY is unconditionally :0 that question can no longer be asked.
+if [ -n "${DISPLAY:-}" ]; then _nvkvm_had_display=1; else _nvkvm_had_display=0; fi
 export DISPLAY="${DISPLAY:-:0}"
-export GDK_BACKEND="${GDK_BACKEND:-wayland}"
-export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
+
+# Pick the toolkit backend from what is actually running, do not assume Wayland.
+#
+# These used to default to wayland unconditionally.  On an X11 host GTK then has
+# no GL-capable backend and QEMU exits with
+#
+#   OpenGL is not supported by display backend 'gtk'
+#
+# which reads as a build problem -- the failure table below even sends you to
+# check NVKVM_QEMU_UI=1, which by then you have already done.  Reported from an
+# X11 host on a rented box, 2026-09-05.  Both stay overridable.
+if [ -z "${GDK_BACKEND:-}" ] || [ -z "${SDL_VIDEODRIVER:-}" ]; then
+    # $_nvkvm_had_display, NOT $DISPLAY: DISPLAY was defaulted to :0 above, so
+    # testing it here matched on every host and the headless branch below could
+    # never run.  MEASURED with a stubbed qemu: a host with neither a Wayland
+    # socket nor a seat DISPLAY selected x11, not the historical default this
+    # comment promises.
+    if [ -S "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" ]; then
+        _nvkvm_backend=wayland
+    elif [ "$_nvkvm_had_display" = 1 ]; then
+        _nvkvm_backend=x11
+    else
+        _nvkvm_backend=wayland   # nothing to detect; keep the historical default
+    fi
+    export GDK_BACKEND="${GDK_BACKEND:-$_nvkvm_backend}"
+    export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-$_nvkvm_backend}"
+    # Report what was EXPORTED, not what was detected.  With one of the two
+    # already set the block still runs, so announcing $_nvkvm_backend claimed a
+    # backend the caller had just overridden.
+    echo "== display backend: gtk=$GDK_BACKEND sdl=$SDL_VIDEODRIVER (detected: $_nvkvm_backend; override with GDK_BACKEND=/SDL_VIDEODRIVER=) =="
+fi
 # Per-second present stats: opt-in, same as the container path.  This used to be
 # forced on here, which is why a run started through this script still printed a
 # line every second after the container default was fixed.
@@ -37,6 +70,17 @@ export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland}"
 VGA_ARGS=(-vga none)
 [ "${VGA:-none}" = "vga" ] && VGA_ARGS=(-device "VGA,id=bootvga")
 
+# Bind the guest's SSH forward to loopback unless told otherwise.
+#
+# This was `hostfwd=tcp::15022-:22`, and an empty host address means 0.0.0.0 --
+# the SteamOS guest's SSH offered to the whole network.  On a rented GPU box
+# that is the public internet.  docker-compose.yml already publishes it as
+# 127.0.0.1:...:15022 and nvkvm-pv's run_test_vm.sh already defaults
+# VM_SSH_BIND=127.0.0.1; this path was the one that did not.
+SSH_BIND="${VM_SSH_BIND:-127.0.0.1}"
+[ "$SSH_BIND" = "127.0.0.1" ] || \
+  echo "== WARNING: guest SSH bound to $SSH_BIND, not loopback =="
+
 DISP="${VM_DISPLAY:-gtk,gl=on}"
 echo "== display=$DISP vga=${VGA:-none} present_mode=${NVKVM_PRESENT_MODE:-auto} qcow=$QCOW =="
 exec "$QEMU" \
@@ -45,7 +89,7 @@ exec "$QEMU" \
   -drive if=pflash,format=raw,file="$OVMF_VARS" \
   -drive file="$QCOW",format=qcow2,if=none,id=nvm0 \
   -device nvme,drive=nvm0,serial=nvkvmsteamos \
-  -netdev user,id=net0,hostfwd=tcp::15022-:22 \
+  -netdev user,id=net0,hostfwd=tcp:"$SSH_BIND":15022-:22 \
   -device virtio-net-pci,netdev=net0 \
   "${VGA_ARGS[@]}" \
   -device virtio-nvgpu-pci-non-transitional,id=nvkvm0 \

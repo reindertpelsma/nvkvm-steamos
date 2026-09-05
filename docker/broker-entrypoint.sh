@@ -9,6 +9,7 @@ SCALE="${NVKVM_BROKER_SCALE:-aspect}"
 
 die() { printf '[broker-container] ERROR: %s\n' "$*" >&2; exit 1; }
 log() { printf '[broker-container] %s\n' "$*" >&2; }
+warn() { printf '[broker-container] WARNING: %s\n' "$*" >&2; }
 
 [ -d "$RUNTIME_DIR" ] || die "$RUNTIME_DIR is not the host desktop runtime mount"
 [ -d /run/nvkvm ] || die "/run/nvkvm is not the shared broker-socket volume"
@@ -19,7 +20,12 @@ log() { printf '[broker-container] %s\n' "$*" >&2; }
 # root.  Stat'ing it would put us back at desktop_uid=0 -- the exact bug that
 # made the broker unable to reach the session it was pointed at.
 uid_probe="$RUNTIME_DIR/${WAYLAND_DISPLAY##*/}"
-[ -e "$uid_probe" ] || uid_probe="$RUNTIME_DIR"
+# -S, NOT -e.  An X11 host has no Wayland socket, and `make up` binds /dev/null
+# at this path so the mount can stay declared (see docker-compose.yml).  /dev/null
+# EXISTS and is owned by root, so -e would stat it and hand back desktop_uid=0 --
+# indistinguishable from the poisoned-directory bug this probe exists to avoid.
+# Only a real socket says anything about who owns the session.
+[ -S "$uid_probe" ] || uid_probe="$RUNTIME_DIR"
 desktop_uid="$(stat -c %u "$uid_probe")"
 desktop_gid="$(stat -c %g "$uid_probe")"
 case "$desktop_uid:$desktop_gid" in
@@ -74,11 +80,38 @@ if [ "$BACKEND" = auto ]; then
     # So keep the fail-fast for "nothing was mounted at all", which is a
     # deployment mistake worth naming, and hand the actual choice to the code
     # that can recover from a wrong guess.
+    _wl_path="$RUNTIME_DIR/${WAYLAND_DISPLAY##*/}"
+    #
+    # A DIRECTORY here is not the same as nothing, and saying so saves an hour.
+    # Docker used to create the bind source when it was missing, so a run with
+    # an empty WAYLAND_DISPLAY left a root-owned DIRECTORY at the socket path on
+    # the host -- permanently.  Every later run then reported desktop_uid=0,
+    # failed wl_display_connect, fell through to X11 and died on an
+    # authorization error pointing at nothing relevant.  MEASURED 2026-09-05.
+    # compose now sets create_host_path:false so it cannot recur, but a host
+    # poisoned before that fix still needs the directory removed by hand.
+    if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -d "$_wl_path" ] && [ ! -S "$_wl_path" ]; then
+        warn "$_wl_path is a DIRECTORY, not a socket."
+        warn "  An older compose created it because the real socket was missing"
+        warn "  (usually WAYLAND_DISPLAY empty in the shell that ran compose)."
+        warn "  It will keep failing until you remove it:  rmdir $_wl_path"
+        warn "  Then re-run from a shell where WAYLAND_DISPLAY is set, or pass"
+        warn "  NVKVM_DESKTOP_RUNTIME_DIR and WAYLAND_DISPLAY explicitly."
+    fi
     if [ -n "${WAYLAND_DISPLAY:-}" ] \
-       && [ -S "$RUNTIME_DIR/${WAYLAND_DISPLAY##*/}" ]; then
+       && [ -S "$_wl_path" ]; then
         log "auto: a Wayland socket is present; the broker will try it first"
     elif [ -n "${DISPLAY:-}" ] && [ -d /tmp/.X11-unix ]; then
-        log "auto: no Wayland socket, but DISPLAY is set and X11 is mounted"
+        log "auto: no Wayland socket at $_wl_path, but DISPLAY is set and X11 is mounted"
+        # Say this BEFORE the connect fails, not after. On X11 the mounted
+        # cookie is usually not enough -- it is keyed by hostname and display,
+        # and this container matches neither -- so the broker sends nothing and
+        # the server answers "Authorization required, but no authorization
+        # protocol specified". Measured on GNOME/X11 2026-09-05 with a valid
+        # two-entry cookie, one of them already FamilyWild.
+        log "  X11 note: if the broker cannot open the display, run this on the"
+        log "  HOST and retry:  xhost +si:localuser:root"
+        log "  (grants local root only, which is what this container runs as)"
     else
         die "no usable Wayland or X11 display socket was mounted"
     fi
@@ -99,9 +132,18 @@ case "$BACKEND" in
         # Wayland, then falls back to X11, and whichever it picks has what it
         # needs already exported.
         #
-        if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+        # Only advertise Wayland if a SOCKET is really there.  compose always
+        # sets WAYLAND_DISPLAY (it defaults to wayland-0), so its mere presence
+        # proves nothing; on an X11 host the path is the /dev/null `make up`
+        # bound.  Exporting it anyway sent the broker into a wl_display_connect
+        # that could not succeed, and the X11 fallback it then took was logged
+        # as a Wayland failure -- the wrong thing to go read about.
+        if [ -n "${WAYLAND_DISPLAY:-}" ] \
+           && [ -S "$RUNTIME_DIR/${WAYLAND_DISPLAY##*/}" ]; then
             export XDG_RUNTIME_DIR="$RUNTIME_DIR"
             export WAYLAND_DISPLAY="${WAYLAND_DISPLAY##*/}"
+        else
+            unset WAYLAND_DISPLAY
         fi
         if [ -s /run/host-xauthority ]; then
             export XAUTHORITY=/run/host-xauthority
@@ -154,9 +196,17 @@ extra+=(--drop-user "${NVKVM_BROKER_DROP_UID:-auto}")
 # container, which supplies the qemu-vdagent chardev and a guest with
 # spice-vdagent installed.  The broker binary itself still defaults to off,
 # because a hand-rolled QEMU has no transport until you add one.
-case "${NVKVM_BROKER_CLIPBOARD:-consent}" in
+# Resolve the default ONCE into a local, and pass the LOCAL on.  The case head
+# defaulted but the body passed the bare variable, so the two disagreed exactly
+# when they mattered: unset aborted the script outright under `set -u` (no exec,
+# no broker), and NVKVM_BROKER_CLIPBOARD= took the `consent` branch and then
+# handed the broker --clipboard "".  MEASURED 2026-09-05 running this entrypoint
+# outside compose, which is the only reason it stayed hidden -- compose always
+# sets the variable, so nothing here was reachable through `make up` alone.
+clipboard="${NVKVM_BROKER_CLIPBOARD:-consent}"
+case "$clipboard" in
     off)                       ;;
-    guest-to-host|consent)     extra+=(--clipboard "$NVKVM_BROKER_CLIPBOARD") ;;
+    guest-to-host|consent)     extra+=(--clipboard "$clipboard") ;;
     *) die "NVKVM_BROKER_CLIPBOARD must be off, guest-to-host or consent" ;;
 esac
 # Which keys mean "paste".  The broker validates the list itself and refuses to
