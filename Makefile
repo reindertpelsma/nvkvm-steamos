@@ -8,14 +8,21 @@ build:
 # neither, so xauth sends nothing and the server answers "Authorization
 # required, but no authorization protocol specified". Measured on GNOME/X11
 # 2026-09-05 with a valid two-entry cookie, one already FamilyWild -- rewriting
-# it does not help. Authorising local root by identity does, and root is what
-# the broker runs as.
+# it does not help. Authorising by identity does.
+#
+# THE SEAT USER, NOT ROOT.  This granted root, and root is the one identity that
+# cannot use it: cap_drop:ALL leaves container root without CAP_DAC_OVERRIDE,
+# and mutter's Xwayland creates /tmp/.X11-unix/X0 as 0775 owned by the seat, so
+# root is refused by PERMISSION before authorization is reached.  The entrypoint
+# now takes the desktop uid from that same X socket, so the broker runs AS the
+# seat user -- which is therefore the identity to authorise.  Classic Xorg makes
+# the socket 0777, which is why granting root appeared to work on a real X11
+# laptop and failed under Xwayland.
 #
 # Done here rather than left to the reader because every X11 user hits it, and
 # the failure names the display and no cause. Announced, not silent: it grants
-# another uid access to your X server. Set NVKVM_NO_XHOST=1 to skip.
-# Note: run `make up` as YOURSELF. Under sudo, xhost acts on root's session and
-# this does nothing useful.
+# an identity access to your X server. Set NVKVM_NO_XHOST=1 to skip.
+# Under `sudo -E`, $SUDO_USER is the seat; a bare `sudo` has no session to act on.
 up:
 	@if [ -n "$${SUDO_USER:-}" ] && [ -z "$${DISPLAY:-}" ] && [ -z "$${WAYLAND_DISPLAY:-}" ]; then \
 		echo "WARNING: under sudo with no DISPLAY and no WAYLAND_DISPLAY."; \
@@ -23,9 +30,10 @@ up:
 		echo "         pointed at a display that is not yours.  Use:  sudo -E make up"; \
 	fi
 	@if [ -z "$${NVKVM_NO_XHOST:-}" ] && [ -n "$${DISPLAY:-}" ] && [ -z "$${WAYLAND_DISPLAY:-}" ]; then \
-		echo "X11 session detected -- granting local root access to your X server:"; \
-		echo "    xhost +si:localuser:root"; \
-		xhost +si:localuser:root >/dev/null 2>&1 \
+		seat="$${SUDO_USER:-$$(id -un)}"; \
+		echo "X11 session detected -- authorising the seat user on your X server:"; \
+		echo "    xhost +si:localuser:$$seat"; \
+		xhost "+si:localuser:$$seat" >/dev/null 2>&1 \
 			|| echo "    (xhost failed; run it yourself, or you are not on the seat)"; \
 	fi
 	@set -e; \

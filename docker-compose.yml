@@ -140,7 +140,7 @@ services:
       # Rewriting the cookie to FamilyWild does NOT fix this; one already was.
       # Authorise the container by identity instead, on the HOST, before `up`:
       #
-      #     xhost +si:localuser:root
+      #     xhost +si:localuser:$USER   # the SEAT user, not root
       #
       # That grants local root only, and root is what the broker runs as.
       - ${XAUTHORITY:-/dev/null}:/run/host-xauthority:ro

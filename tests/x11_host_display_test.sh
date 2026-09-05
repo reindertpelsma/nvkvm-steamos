@@ -38,7 +38,7 @@ trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/bin" "$TMP/rt" "$TMP/empty" "$TMP/work"
 cat > "$TMP/bin/xhost" <<'SH'
 #!/bin/sh
-echo XHOST >> "$LOG"
+echo "XHOST $*" >> "$LOG"
 exit "${XHOST_RC:-0}"
 SH
 cat > "$TMP/bin/docker" <<'SH'
@@ -70,7 +70,7 @@ mk() {
         "$@" make -C "$TMP" up >/dev/null 2>&1
     local got_sock got_xhost
     got_sock="$(sed -n 's/^DOCKER sock=\([^ ]*\).*/\1/p' "$TMP/log" | head -1)"
-    got_xhost="$(grep -c '^XHOST$' "$TMP/log")"
+    got_xhost="$(grep -c '^XHOST ' "$TMP/log")"
     if [ "$got_sock" = "$want_sock" ] && [ "$got_xhost" = "$want_xhost" ]; then
         ok "$desc"
     else
@@ -101,6 +101,21 @@ else
     bad "make up: a failing xhost aborted the run"
 fi
 
+# The grant must name the SEAT user, not root.  cap_drop:ALL leaves container
+# root without CAP_DAC_OVERRIDE, and an Xwayland socket is 0775 owned by the
+# seat -- so root is refused by PERMISSION before authorization is even reached.
+# MEASURED on GNOME/Xwayland: cap_drop ALL + root -> "unable to open display";
+# cap_drop ALL + uid 1000 + xhost on that user -> connects.
+: > "$TMP/log"
+env -i PATH="$TMP/bin:/usr/bin:/bin" LOG="$TMP/log" HOME="$TMP" \
+    DISPLAY=:1 XDG_RUNTIME_DIR="$TMP/empty" SUDO_USER=seatuser \
+    make -C "$TMP" up >/dev/null 2>&1
+if grep -q '^XHOST +si:localuser:seatuser$' "$TMP/log"; then
+    ok "make up: authorises the seat user, not root"
+else
+    bad "make up: granted '$(sed -n 's/^XHOST //p' "$TMP/log" | head -1)', expected +si:localuser:seatuser"
+fi
+
 # ------------------------------------------------------------ compose mount
 # The escape must be its OWN variable.  If this reverts to
 # NVKVM_DESKTOP_RUNTIME_DIR, escaping the Wayland mount silently redirects the
@@ -128,6 +143,13 @@ if grep -q '\[ -S "\$uid_probe" \]' "$ENTRY"; then
     ok "entrypoint: only a real socket speaks for the desktop uid"
 else
     bad "entrypoint: uid probe no longer requires a socket (-S)"
+fi
+# With no Wayland socket the X socket is the only thing that knows the seat,
+# and without it desktop_uid falls back to 0 and the broker stays root.
+if grep -q '/tmp/.X11-unix/X\$_x_n' "$ENTRY"; then
+    ok "entrypoint: the X socket answers the desktop-uid question"
+else
+    bad "entrypoint: no X-socket uid probe -- an X11 host will run the broker as root"
 fi
 if grep -q 'unset WAYLAND_DISPLAY' "$ENTRY"; then
     ok "entrypoint: Wayland is not advertised without a socket"

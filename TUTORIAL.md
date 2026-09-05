@@ -65,7 +65,7 @@ ls /dev/dri                                # must exist -- see below if it does 
   the X server, once per login:
 
   ```sh
-  xhost +si:localuser:root
+  xhost +si:localuser:$USER
   ```
 
   Second, give the Wayland mount a path that exists. Compose declares one and
