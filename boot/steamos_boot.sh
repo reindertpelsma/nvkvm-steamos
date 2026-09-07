@@ -1436,8 +1436,17 @@ ensure_gamescope_ready_timeout() {
     # is why this looked machine-dependent for weeks: a faster host won the race
     # and a slower one lost it, with identical software.
     #
-    # NOTE the TimeoutStartSec=120 drop-in cannot help.  The fatal deadline is
-    # this 3s read inside the script, not systemd's start timeout.
+    # NOTE the TimeoutStartSec drop-in cannot help *on its own*.  While this 3s
+    # read is still in place gamescope blocks forever on the FIFO write, so no
+    # systemd deadline is ever the binding one and raising it changes nothing.
+    #
+    # It is a different story ONCE THIS READ IS WIDENED, which is why
+    # ensure_gamescope_start_timeout() runs straight after this and must not be
+    # deleted as redundant: gamescope then really does report ready, but it has to
+    # do so inside gamescope-session.service's TimeoutStartSec=5, and the fastest
+    # cycle ever measured here came ready in 4s.  That is a one-second margin on a
+    # Type=notify unit.  A slower GPU, a cold cache, or a host busy with other VMs
+    # loses it, and the guest then reports a start operation timeout.
     #
     # This supersedes the older workaround of forcing the Plasma session to dodge
     # gamescope: the OOBE session works, it was just racing a 3s timer. It also
@@ -1454,6 +1463,57 @@ ensure_gamescope_ready_timeout() {
         log "widened gamescope readiness read 3s -> 30s (original at $sess.nvkvm-orig)"
     else
         warn "could not widen the gamescope readiness timeout; the OOBE session may hang"
+    fi
+}
+
+ensure_gamescope_start_timeout() {
+    # THE SECOND DEADLINE -- the one that survives the readiness fix above.
+    #
+    # gamescope-session.service ships Type=notify with TimeoutStartSec=5.  Read
+    # out of the shipping 3.8.14 OOBE image
+    # (/usr/lib/systemd/user/gamescope-session.service, whose only drop-in is
+    # drm_janitor.conf, so nothing upstream relaxes it).
+    #
+    # Widening the script's own 3s readiness read stops gamescope deadlocking on
+    # the FIFO write, but it must still SIGNAL readiness inside those 5 seconds.
+    # Under nvkvm every RM ioctl is forwarded, so startup is slower than the Steam
+    # Deck hardware that deadline was tuned for.  The fastest cycle measured here
+    # came ready in 4s: a one-second margin.
+    #
+    # Hosts that lose it report exactly
+    #
+    #     gamescope-session.service: start operation timed out. Terminating.
+    #     A dependency job for gamescope-session.target failed.
+    #
+    # after which SDDM exits 1/FAILURE -- which reads like a broken display
+    # manager rather than a stopwatch.  Reported by two users on GTX 3060 hosts,
+    # one of them running other KVM guests alongside; both slower to first frame
+    # than the machine where this passes.
+    #
+    # 120s is not tuned, it is simply far outside the range where this races.  The
+    # unit stays Type=notify, so a genuinely broken session still fails -- it just
+    # fails after a wait instead of at a stopwatch.
+    if [ "${NVKVM_STEAMOS_KEEP_START_TIMEOUT:-0}" = 1 ]; then
+        log "leaving gamescope-session TimeoutStartSec alone (NVKVM_STEAMOS_KEEP_START_TIMEOUT=1)"
+        return 0
+    fi
+    local dir conf want
+    dir="$(rp /etc/systemd/user/gamescope-session.service.d)"
+    conf="$dir/10-nvkvm-start-timeout.conf"
+    want="[Service]
+TimeoutStartSec=120"
+    if ! mkdir -p "$dir" 2>/dev/null; then
+        warn "could not create $dir -- gamescope may be killed at its 5s start deadline"
+        return 0
+    fi
+    if [ -f "$conf" ] && [ "$(cat "$conf" 2>/dev/null)" = "$want" ]; then
+        log "gamescope start timeout already widened ($conf)"
+        return 0
+    fi
+    if printf '%s\n' "$want" > "$conf" 2>/dev/null; then
+        log "widened gamescope-session TimeoutStartSec 5s -> 120s ($conf)"
+    else
+        warn "could not write $conf -- gamescope may be killed at its 5s start deadline"
     fi
 }
 
@@ -1764,6 +1824,7 @@ KSCREENLOCK
     # the A/B update hook. Keeping this here makes every convergence reassert
     # Plasma instead of relying on a one-off edit to the current image.
     ensure_gamescope_ready_timeout
+    ensure_gamescope_start_timeout
     write_sddm_session_config
 
     in_target systemctl enable nvkvm-drm-env.service 2>/dev/null || true
